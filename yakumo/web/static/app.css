@@ -486,6 +486,8 @@ body.compact .avatar { --size: calc(var(--avatar-size, 232px) * .82); }
 @media (max-width: 720px) {
   :root { --rail: 52px; }
   .avatar, body.compact .avatar { --size: min(calc(var(--avatar-size, 232px) * .62), 85vw); }
+  /* Место под аватаром внизу: последние строки страницы можно прокрутить из-под него */
+  body:has(.avatar:not([hidden])) .content { padding-bottom: calc(min(var(--avatar-size, 232px) * .62, 85vw) + 24px); }
 
   .brand span { display: none; }
   /* Текст состояния скрыт визуально, но доступен экранным чтецам */

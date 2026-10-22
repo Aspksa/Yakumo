@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import re
 import threading
 import time
 import traceback
@@ -149,7 +150,8 @@ class ErrorCatcher(logging.Handler):
             where = self._where(record.exc_info[2]) if record.exc_info else ""
             kind = type(exc).__name__ if exc else ""
             message = record.getMessage()[:300]
-            key = "error:" + hashlib.sha1(f"{record.name}|{kind}|{where or message}".encode()).hexdigest()[:16]
+            place = re.sub(r":\d+ ", " ", where)  # без номера строки: после обновления код сдвигается, сбой тот же
+            key = "error:" + hashlib.sha1(f"{record.name}|{kind}|{place or message}".encode()).hexdigest()[:16]
             detail = (f"{kind}: {str(exc)[:300]}" if exc else "") + (f"\n{where}" if where else "")
             self.improvements.add({
                 "key": key, "source": "error", "module": module_of(record.name),
