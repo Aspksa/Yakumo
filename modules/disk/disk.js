@@ -20,7 +20,9 @@
       sortBy: "Сортировка", sorts: { name: "По имени", mtime: "По дате", size: "По размеру", kind: "По типу" },
       tiles: "Плитка", list: "Список", name: "Имя", modified: "Изменён", size: "Размер",
       emptyFolder: "Здесь пока пусто", emptyHint: "Перетащите сюда файлы или папки с компьютера или нажмите «Загрузить».",
-      emptyTrashText: "Корзина пуста", emptySharedText: "Вы ещё не делились файлами",
+      emptyTrashText: "Корзина пуста", emptyTrashHint: "Удалённое лежит здесь, пока вы не очистите корзину.",
+      nothingHint: "Кицунэ искала в именах, тексте документов и описаниях фото. Попробуйте другое слово.",
+      emptySharedText: "Вы ещё не делились файлами",
       emptySharedHint: "Выберите файл или папку и нажмите «Поделиться», чтобы открыть его по ссылке с телефона или другого компьютера.",
       dropHere: (f) => `Отпустите, чтобы загрузить в «${f}»`,
       usage: (u) => `Занято ${u}`, freeOf: (f, t) => `свободно ${f} из ${t}`, inTrash: (s) => `в корзине ${s}`,
@@ -92,7 +94,9 @@
       sortBy: "Sort", sorts: { name: "Name", mtime: "Date", size: "Size", kind: "Type" },
       tiles: "Tiles", list: "List", name: "Name", modified: "Modified", size: "Size",
       emptyFolder: "Nothing here yet", emptyHint: "Drop files or folders here, or press Upload.",
-      emptyTrashText: "Trash is empty", emptySharedText: "Nothing shared yet",
+      emptyTrashText: "Trash is empty", emptyTrashHint: "Deleted items stay here until you empty the trash.",
+      nothingHint: "The kitsune searched names, document text and photo descriptions. Try another word.",
+      emptySharedText: "Nothing shared yet",
       emptySharedHint: "Select a file or folder and press Share to open it by link from a phone or another computer.",
       dropHere: (f) => `Drop to upload to “${f}”`,
       usage: (u) => `Used ${u}`, freeOf: (f, t) => `${f} free of ${t}`, inTrash: (s) => `${s} in trash`,
@@ -211,7 +215,6 @@
     sym.innerHTML = body;
     sprite.append(sym);
   }
-  const kindIcon = (kind) => icon("i-dk-" + (kind === "folder" ? "folder" : ICONS["dk-" + kind] ? kind : "file"));
 
   // --- Кицунэ: векторная лисичка с файлом в зубах (анимации и вкладка «Порядок») ---
   const FOX = `<svg viewBox="0 0 100 64" aria-hidden="true">
@@ -278,6 +281,140 @@
       if (el) return el;
     }
     return root.querySelector('.dk-tablist [data-view="order"]');
+  }
+
+  // --- Векторные значки и картинки ---
+  // Файл — лист бумаги с загнутым углом, цветной меткой типа и рисунком; папка — двухслойная,
+  // с эмблемой для знакомых названий. Пустые экраны — маленькие сцены с кицунэ.
+
+  const ART = {
+    pdf: ["#e5544b", "#b9302b", "PDF"], doc: ["#4f86e8", "#2f5fc0", "DOC"], sheet: ["#3fae67", "#23824a", "XLS"],
+    slides: ["#ea7c43", "#c2541f", "PPT"], text: ["#8f8a80", "#625d55", "TXT"], image: ["#4aa7d8", "#2a7bb0", "IMG"],
+    video: ["#b45ad1", "#8434a8", "VID"], audio: ["#e39b2f", "#b8721a", "MP3"], archive: ["#b88a4f", "#8a6230", "ZIP"],
+    book: ["#c46a8e", "#9a4468", "BOOK"], app: ["#6f7c8f", "#4c5768", "EXE"], file: ["#8f8a80", "#625d55", ""],
+  };
+  const GLYPH = {
+    pdf: '<path d="M22 22h20M22 27h20M22 32h13" stroke-width="2.2"/>',
+    doc: '<path d="m21 21 3.2 13 3.8-9 3.8 9L35 21" stroke-width="2.4"/><path d="M38 24h5M38 29h5" stroke-width="2"/>',
+    sheet: '<rect x="20" y="19" width="24" height="16" rx="1.5" stroke-width="2"/><path d="M20 24.5h24M20 30h24M28 19v16M36 19v16" stroke-width="1.6"/>',
+    slides: '<rect x="20" y="19" width="24" height="16" rx="2" stroke-width="2"/><path d="M25 31v-5M30 31v-8M35 31v-3M40 31v-6" stroke-width="2.4"/>',
+    text: '<path d="M21 21h22M21 25.5h22M21 30h22M21 34.5h14" stroke-width="2"/>',
+    image: '<rect x="20" y="19" width="24" height="17" rx="2" stroke-width="2"/><circle cx="26.5" cy="24.5" r="2.2" stroke-width="1.8"/><path d="m21 35 7.5-7 5 4.5 3.5-3 6 5.5" stroke-width="2"/>',
+    video: '<rect x="19" y="19" width="26" height="17" rx="3" stroke-width="2"/><path d="m29 23.5 7 4-7 4z" fill="currentColor" stroke-width="1.6"/>',
+    audio: '<path d="M28 34V21.5l12-2.5v12.5" stroke-width="2.2"/><circle cx="25.5" cy="34" r="3" stroke-width="2"/><circle cx="37.5" cy="31.5" r="3" stroke-width="2"/>',
+    archive: '<path d="M32 17v3M32 22v3M32 27v3" stroke-width="2.6"/><rect x="28.5" y="31" width="7" height="6" rx="1.5" stroke-width="2"/>',
+    book: '<path d="M21 21h8a3 3 0 0 1 3 3v12a3 3 0 0 0-3-3h-8zM43 21h-8a3 3 0 0 0-3 3v12a3 3 0 0 1 3-3h8z" stroke-width="2"/>',
+    app: '<rect x="21" y="19" width="22" height="17" rx="3" stroke-width="2"/><path d="M21 24h22" stroke-width="2"/>',
+    file: '<path d="M22 24h20M22 29h14" stroke-width="2"/>',
+  };
+  // Эмблемы на папках со знакомыми названиями.
+  const EMBLEMS = [
+    [/^(документ|document|бумаг|договор)/, '<path d="M28 33h9l4 4v10H28z"/><path d="M31 41h7M31 44h5"/>'],
+    [/^(фото|photo|изображ|картин|picture|image|камера|camera)/, '<rect x="26" y="35" width="16" height="12" rx="2"/><circle cx="34" cy="41" r="3"/><path d="M30 35l1.5-2h5l1.5 2"/>'],
+    [/^(загрузк|download|входящ|inbox)/, '<path d="M34 32v11m-4.5-4.5L34 43l4.5-4.5M27 47h14"/>'],
+    [/^(финанс|деньг|чек|счет|счёт|бюджет|finance|money|bank|банк)/, '<circle cx="34" cy="40" r="7"/><path d="M31.5 41.5h4.5a1.8 1.8 0 0 0 0-3.5h-2.5a1.8 1.8 0 0 1 0-3.5h4M34 33.5v1M34 45.5v1"/>'],
+    [/^(музык|music|аудио|audio|песн)/, '<path d="M32 46V35l8-2v10"/><circle cx="30" cy="46" r="2.2"/><circle cx="38" cy="43" r="2.2"/>'],
+    [/^(видео|video|фильм|кино|movie)/, '<rect x="26" y="34" width="16" height="12" rx="2"/><path d="m32 37 4.5 3-4.5 3z"/>'],
+    [/^(работ|work|проект|project|офис)/, '<rect x="26" y="36" width="16" height="10" rx="2"/><path d="M31 36v-2.5h6V36M26 40.5h16"/>'],
+    [/^(учеб|учёб|study|школ|универ|курс)/, '<path d="m34 33 9 4-9 4-9-4z"/><path d="M29 39v4c3 2 7 2 10 0v-4"/>'],
+  ];
+
+  let artId = 0;
+  function fileArt(kind, name = "") {
+    const [c1, c2, label] = ART[kind] || ART.file;
+    const ext = (name.includes(".") ? name.split(".").pop() : "").toUpperCase();
+    const tag = ext && ext.length <= 4 ? ext : label;
+    const id = `dka${++artId}`;
+    const el = h("span", { class: "dk-art", "aria-hidden": "true" });
+    el.innerHTML = `<svg viewBox="0 0 64 64">
+      <defs><linearGradient id="${id}p" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fbf6ec"/><stop offset="1" stop-color="#e9dfcd"/></linearGradient>
+      <linearGradient id="${id}t" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></linearGradient></defs>
+      <path d="M15 4h24l14 14v40a3 3 0 0 1-3 3H15a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z" fill="url(#${id}p)"/>
+      <path d="M39 4v10a4 4 0 0 0 4 4h10z" fill="#d6c8af"/>
+      <path d="M12 52v6a3 3 0 0 0 3 3h35a3 3 0 0 0 3-3v-6z" fill="#000" opacity=".06"/>
+      <g fill="none" stroke="${c1}" stroke-linecap="round" stroke-linejoin="round" color="${c1}">${GLYPH[kind] || GLYPH.file}</g>
+      ${tag ? `<rect x="6" y="41" width="${Math.max(24, tag.length * 7 + 9)}" height="13" rx="3" fill="url(#${id}t)"/>
+      <text x="${6 + Math.max(24, tag.length * 7 + 9) / 2}" y="50.6" text-anchor="middle" font-size="8.6" font-weight="700"
+            font-family="Segoe UI, system-ui, sans-serif" fill="#fff" letter-spacing=".3">${tag}</text>` : ""}
+    </svg>`;
+    return el;
+  }
+
+  function folderArt(name = "") {
+    const low = name.toLowerCase();
+    const emblem = EMBLEMS.find(([re]) => re.test(low))?.[1] || "";
+    const id = `dka${++artId}`;
+    const el = h("span", { class: "dk-art dk-art-folder", "aria-hidden": "true" });
+    el.innerHTML = `<svg viewBox="0 0 64 64">
+      <defs><linearGradient id="${id}f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="rgb(var(--accent-hi-rgb))"/><stop offset="1" stop-color="rgb(var(--accent-rgb))"/></linearGradient></defs>
+      <path d="M6 15a4 4 0 0 1 4-4h14l5 5h25a4 4 0 0 1 4 4v30a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4z" fill="rgb(var(--accent-rgb))" opacity=".55"/>
+      <rect x="10" y="19" width="44" height="10" rx="2" fill="#fbf6ec" opacity=".85"/>
+      <path d="M4 26a4 4 0 0 1 4-4h48a4 4 0 0 1 4 4l-2 25a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4z" fill="url(#${id}f)"/>
+      <path d="M8 26.5h48" stroke="#fff" stroke-opacity=".35" stroke-width="1.2"/>
+      ${emblem ? `<g fill="none" stroke="#000" stroke-opacity=".38" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" transform="translate(-2 0)">${emblem}</g>` : ""}
+    </svg>`;
+    return el;
+  }
+
+  const itemArt = (item) => item.dir || item.kind === "folder" ? folderArt(item.name) : fileArt(item.kind, item.name);
+
+  // Сцены для пустых экранов.
+  const SCENE = {
+    folder: `<svg viewBox="0 0 240 150" aria-hidden="true">
+      <ellipse cx="120" cy="134" rx="86" ry="8" fill="rgb(var(--accent-rgb))" opacity=".08"/>
+      <path d="M58 52a6 6 0 0 1 6-6h30l9 9h73a6 6 0 0 1 6 6v58a6 6 0 0 1-6 6H64a6 6 0 0 1-6-6z" fill="rgb(var(--accent-rgb))" opacity=".35"/>
+      <rect x="66" y="60" width="108" height="16" rx="3" fill="#fbf6ec" opacity=".18"/>
+      <path d="M52 76a6 6 0 0 1 6-6h124a6 6 0 0 1 6 6l-5 47a6 6 0 0 1-6 6H63a6 6 0 0 1-6-6z" fill="rgb(var(--accent-rgb))" opacity=".9"/>
+      <path d="M120 116V86m-11 11 11-11 11 11" fill="none" stroke="#0d0b09" stroke-opacity=".55" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+      <g class="dk-scene-fox" transform="translate(168 96) scale(1.3)">
+        <path d="M-4 30c-14 2-22-8-16-18 4 6 10 8 16 6z" fill="#e88a3a"/><path d="M-20 12c1-5 6-8 10-6-4 2-7 4-10 6z" fill="#fff3df"/>
+        <ellipse cx="10" cy="24" rx="17" ry="10" fill="#f0a24c"/>
+        <path d="M18 12c3-7 11-9 16-5l-3 10c-4 3-10 3-13-5z" fill="#f4ac54"/>
+        <path d="M21 9l1-9 6 7zM28 7l5-7 1 9z" fill="#d8692a"/><path d="M23 6l.5-3.5 2.2 2.6zM29.6 4.6l2.2-2.8.4 3.6z" fill="#3b2415"/>
+        <path d="M24 13.5q2-1.6 4 0" fill="none" stroke="#2a1a0e" stroke-width="1.4" stroke-linecap="round"/>
+        <text x="38" y="2" font-size="9" fill="rgb(var(--accent-rgb))" font-family="Segoe UI, sans-serif" class="dk-zzz">z z</text>
+      </g>
+      <g fill="rgb(var(--accent-hi-rgb))" class="dk-twinkle"><path d="M40 40l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/><path d="M198 30l1.5 3.5 3.5 1.5-3.5 1.5-1.5 3.5-1.5-3.5-3.5-1.5 3.5-1.5z"/><circle cx="210" cy="70" r="2"/><circle cx="30" cy="90" r="1.6"/></g>
+    </svg>`,
+    trash: `<svg viewBox="0 0 240 150" aria-hidden="true">
+      <ellipse cx="120" cy="134" rx="70" ry="7" fill="rgb(var(--accent-rgb))" opacity=".08"/>
+      <path d="M86 52h68l-6 74a6 6 0 0 1-6 5H98a6 6 0 0 1-6-5z" fill="rgb(var(--accent-rgb))" opacity=".25"/>
+      <path d="M80 44a4 4 0 0 1 4-4h72a4 4 0 0 1 4 4v8H80z" fill="rgb(var(--accent-rgb))" opacity=".75"/>
+      <path d="M108 40v-6a3 3 0 0 1 3-3h18a3 3 0 0 1 3 3v6" fill="none" stroke="rgb(var(--accent-rgb))" stroke-opacity=".75" stroke-width="4"/>
+      <path d="M106 66v50M120 66v50M134 66v50" stroke="rgb(var(--accent-rgb))" stroke-opacity=".5" stroke-width="4" stroke-linecap="round"/>
+      <g fill="rgb(var(--accent-hi-rgb))" class="dk-twinkle"><path d="M170 46l2.5 6 6 2.5-6 2.5-2.5 6-2.5-6-6-2.5 6-2.5z"/><path d="M62 70l1.6 4 4 1.6-4 1.6-1.6 4-1.6-4-4-1.6 4-1.6z"/><circle cx="186" cy="88" r="2"/></g>
+    </svg>`,
+    shared: `<svg viewBox="0 0 240 150" aria-hidden="true">
+      <ellipse cx="120" cy="136" rx="96" ry="7" fill="rgb(var(--accent-rgb))" opacity=".08"/>
+      <rect x="30" y="44" width="92" height="62" rx="6" fill="none" stroke="rgb(var(--accent-rgb))" stroke-opacity=".8" stroke-width="4"/>
+      <path d="M20 112h112l-6 10H26z" fill="rgb(var(--accent-rgb))" opacity=".6"/>
+      <rect x="42" y="56" width="68" height="38" rx="3" fill="rgb(var(--accent-rgb))" opacity=".15"/>
+      <rect x="168" y="50" width="42" height="76" rx="8" fill="none" stroke="rgb(var(--accent-rgb))" stroke-opacity=".8" stroke-width="4"/>
+      <rect x="176" y="62" width="26" height="46" rx="2" fill="rgb(var(--accent-rgb))" opacity=".15"/>
+      <path d="M118 40c18-24 44-24 60 2" fill="none" stroke="rgb(var(--accent-hi-rgb))" stroke-width="3" stroke-dasharray="2 7" stroke-linecap="round" class="dk-dash"/>
+      <g transform="translate(140 16)" fill="none" stroke="rgb(var(--accent-hi-rgb))" stroke-width="3.5" stroke-linecap="round">
+        <path d="M6 10a5 5 0 0 0 7 0l4-4a5 5 0 0 0-7-7l-1 1"/><path d="M11 4a5 5 0 0 0-7 0L0 8a5 5 0 0 0 7 7l1-1"/></g>
+    </svg>`,
+    search: `<svg viewBox="0 0 240 150" aria-hidden="true">
+      <ellipse cx="120" cy="136" rx="70" ry="7" fill="rgb(var(--accent-rgb))" opacity=".08"/>
+      <g transform="translate(46 74)">
+        <path d="M2 30C-8 26-10 12-2 6c0 8 4 14 10 16z" fill="#e88a3a"/><path d="M-2 6c2-4 6-4 7-1-3 0-5 0-7 1z" fill="#fff3df"/>
+        <ellipse cx="18" cy="34" rx="15" ry="11" fill="#f0a24c"/>
+        <path d="M8 18c0-10 8-16 16-14l10 8c3 6-2 14-10 15-9 1-16-2-16-9z" fill="#f4ac54"/>
+        <path d="M9 10 8-3l9 8zM19 5l6-9 3 11z" fill="#d8692a"/><path d="M10.5 6.5l.4-5 4 3.6zM21 3l2.8-4 .8 5z" fill="#3b2415"/>
+        <path d="M22 22c4 1 9 0 12-3-1 5-7 8-12 6z" fill="#fff3df"/>
+        <circle cx="25" cy="14" r="2" fill="#2a1a0e"/><circle cx="35" cy="17" r="1.6" fill="#2a1a0e"/>
+      </g>
+      <circle cx="116" cy="82" r="30" fill="#0d0b09" fill-opacity=".35" stroke="rgb(var(--accent-rgb))" stroke-width="7"/>
+      <path d="M138 104l26 26" stroke="rgb(var(--accent-rgb))" stroke-width="11" stroke-linecap="round"/>
+      <path d="M100 70q8-8 18-6" fill="none" stroke="#fff" stroke-opacity=".35" stroke-width="4" stroke-linecap="round"/>
+      <g fill="rgb(var(--accent-hi-rgb))" class="dk-twinkle"><circle cx="64" cy="60" r="2"/><circle cx="176" cy="56" r="2.4"/><path d="M182 92l1.6 4 4 1.6-4 1.6-1.6 4-1.6-4-4-1.6 4-1.6z"/></g>
+    </svg>`,
+  };
+  function sceneArt(name) {
+    const el = h("span", { class: "dk-scene", "aria-hidden": "true" });
+    el.innerHTML = SCENE[name];
+    return el;
   }
 
   function foxCarry(placed, fromEl) {
@@ -609,9 +746,9 @@
     const thumb = h("span", { class: "dk-thumb", "data-kind": item.kind });
     if (item.kind === "image" && state.view === "files" && state.layout === "tiles") {
       thumb.append(h("img", { src: fileUrl(item.path), alt: "", loading: "lazy", decoding: "async", draggable: "false",
-                              onerror: (e) => e.target.replaceWith(kindIcon(item.kind)) }));
+                              onerror: (e) => e.target.replaceWith(itemArt(item)) }));
     } else {
-      thumb.append(kindIcon(item.kind));
+      thumb.append(itemArt(item));
     }
     const check = h("span", { class: "dk-check", role: "checkbox", "aria-checked": String(on), "aria-label": item.name,
                               onclick: (e) => { e.stopPropagation(); toggleSelect(key, index, items, e.shiftKey); } });
@@ -647,13 +784,11 @@
   }
 
   function emptyEl() {
-    let title = L.emptyFolder, hint = L.emptyHint, iconId = "dk-upload";
-    if (state.found) { title = L.nothingFound; hint = ""; iconId = "dk-search"; }
-    else if (state.view === "trash") { title = L.emptyTrashText; hint = ""; iconId = "dk-trash"; }
-    else if (state.view === "shared") { title = L.emptySharedText; hint = L.emptySharedHint; iconId = "dk-link"; }
-    const box = h("div", { class: "empty dk-empty" });
-    box.append(icon("i-" + iconId), h("strong", {}, title), hint ? h("span", {}, hint) : "");
-    return box;
+    let title = L.emptyFolder, hint = L.emptyHint, scene = "folder";
+    if (state.found) { title = L.nothingFound; hint = L.nothingHint; scene = "search"; }
+    else if (state.view === "trash") { title = L.emptyTrashText; hint = L.emptyTrashHint; scene = "trash"; }
+    else if (state.view === "shared") { title = L.emptySharedText; hint = L.emptySharedHint; scene = "shared"; }
+    return h("div", { class: "empty dk-empty" }, sceneArt(scene), h("strong", {}, title), hint ? h("span", {}, hint) : "");
   }
 
   function draw(keepFocus = false) {
@@ -834,7 +969,7 @@
       input: h("input", { class: "text-input", value: item.suggestion, "aria-label": L.newName, spellcheck: "false" }),
     }));
     body.replaceChildren(h("p", { class: "row-hint" }, L.namesHint), h("div", { class: "dk-names-list" }, rows.map((r) =>
-      h("label", { class: "dk-name-row" }, r.check, kindIcon(r.item.kind),
+      h("label", { class: "dk-name-row" }, r.check, fileArt(r.item.kind, r.item.name),
         h("span", { class: "dk-name-old", title: r.item.name }, r.item.name), r.input))));
     return done;
   }
@@ -944,7 +1079,7 @@
     if (!moves.length) return toast(L.nothingToSort);
     let ok = false;
     await modal(L.sortNow, [h("ul", { class: "dk-plan" }, moves.map((m) =>
-      h("li", {}, kindIcon(m.kind), h("span", {}, m.name), h("small", {}, `→ ${m.to}`))))], [
+      h("li", {}, fileArt(m.kind, m.name), h("span", {}, m.name), h("small", {}, `→ ${m.to}`))))], [
       { label: L.cancel },
       { label: L.sortPlan(moves.length), primary: true, run: () => { ok = true; } },
     ]);
@@ -1061,7 +1196,7 @@
       const dirs = sorted(res.items.filter((i) => i.dir && !moving.has(i.path)));
       list.replaceChildren(...dirs.map((d) => {
         const b = h("button", { type: "button", class: "dk-picker-item", onclick: () => show(d.path) }, d.name);
-        b.prepend(icon("i-dk-folder"));
+        b.prepend(folderArt(d.name));
         return b;
       }));
       if (!dirs.length) list.append(h("span", { class: "row-hint" }, L.emptyFolder));
@@ -1261,7 +1396,7 @@
     else if (item.kind === "text") body = h("pre", { class: "dk-text" }, "…");
     else {
       body = h("div", { class: "empty dk-nopreview" });
-      body.append(kindIcon(item.kind), h("strong", {}, item.name), h("span", {}, `${size(item.size)} · ${L.noPreview}`),
+      body.append(fileArt(item.kind, item.name), h("strong", {}, item.name), h("span", {}, `${size(item.size)} · ${L.noPreview}`),
         h("a", { class: "btn primary", href: fileUrl(item.path, true) }, L.download));
     }
     const nav = (d) => {
@@ -1318,7 +1453,7 @@
       const b = h("button", { type: "button", class: "dk-strip-item" + (i === index ? " on" : ""), title: it.name,
                               "aria-label": it.name, "aria-current": i === index ? "true" : null, onclick: () => jump(i) });
       b.append(it.kind === "image" ? h("img", { src: fileUrl(it.path), alt: "", loading: "lazy", draggable: "false" })
-        : kindIcon(it.kind));
+        : itemArt(it));
       strip.append(b);
     });
     requestAnimationFrame(() => strip.children[index]?.scrollIntoView({ inline: "center", block: "nearest" }));
@@ -1349,7 +1484,7 @@
           if (i >= 0) return jump(i);
           closeViewer();
           openPath(f.path);
-        } }, kindIcon(f.kind), h("span", {}, h("b", {}, f.name), h("small", {}, why(f.why)))));
+        } }, fileArt(f.kind, f.name), h("span", {}, h("b", {}, f.name), h("small", {}, why(f.why)))));
       }
       side.replaceChildren(...parts);
     }).catch((e) => side.replaceChildren(h("h3", {}, L.related), h("p", { class: "dk-error" }, e.message)));
