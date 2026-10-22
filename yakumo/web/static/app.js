@@ -106,6 +106,7 @@ function render() {
 async function refreshStatus() {
   try {
     const r = await fetch("/api/status", { cache: "no-store" });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
     status = await r.json();
     statusEl.className = "status ok";
     statusEl.querySelector(".status-text").textContent = "работает";
@@ -118,5 +119,6 @@ async function refreshStatus() {
 buildMenus();
 window.addEventListener("hashchange", render);
 render();
-refreshStatus().then(render);
-setInterval(refreshStatus, 10000);
+const refreshAndRender = () => refreshStatus().then(render);
+refreshAndRender();
+setInterval(refreshAndRender, 10000);
