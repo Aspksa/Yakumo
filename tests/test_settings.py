@@ -46,6 +46,19 @@ class SettingsApiTest(unittest.TestCase):
         saved = json.loads(self.config_path.read_text(encoding="utf-8"))
         self.assertEqual((saved["language"], saved["compact"]), ("en", True))
 
+    def test_avatar_settings(self):
+        got = json.loads(urllib.request.urlopen(self.base + "/api/settings").read())
+        self.assertEqual(got["values"]["avatar_size"], 232)
+        self.assertIn(232, got["options"]["avatar_size"])
+        res = self.post({"avatar_show": False, "avatar_size": 304, "avatar_motion": "sway",
+                         "avatar_glow": "pulse", "avatar_speed": "fast"})
+        self.assertEqual(res["values"]["avatar_motion"], "sway")
+        saved = json.loads(self.config_path.read_text(encoding="utf-8"))
+        self.assertEqual((saved["avatar_show"], saved["avatar_size"]), (False, 304))
+        for bad in ({"avatar_size": 233}, {"avatar_size": 1000}, {"avatar_motion": "spin"}, {"avatar_show": 1}):
+            with self.assertRaises(urllib.error.HTTPError):
+                self.post(bad)
+
     def test_restart_needed_for_tray(self):
         res = self.post({"tray": True})
         self.assertIn("tray", res["restart_needed"])

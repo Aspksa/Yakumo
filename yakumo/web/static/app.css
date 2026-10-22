@@ -128,6 +128,12 @@ div.row { cursor: default; }
                        box-shadow: var(--shadow); }
 .segmented button:focus-visible { outline: 2px solid var(--accent); }
 
+/* Ползунок */
+.slider { display: flex; align-items: center; gap: 12px; flex: none; }
+.slider input { width: 220px; accent-color: var(--accent); cursor: pointer; }
+.slider output { min-width: 64px; text-align: right; font-size: 13px; color: var(--muted);
+                 font-variant-numeric: tabular-nums; }
+
 /* Поля и кнопки */
 .group-hint { margin: 0 0 6px; }
 .row-hint.good { color: var(--ok); }
@@ -158,7 +164,8 @@ div.row { cursor: default; }
 
 /* Аватар */
 .avatar {
-  --size: 232px;
+  --size: var(--avatar-size, 232px);
+  --speed: 1;
   position: fixed; left: 0; top: 0; z-index: 30; width: var(--size); height: var(--size);
   padding: 0; border: 0; background: none; cursor: grab; touch-action: none; user-select: none;
   -webkit-tap-highlight-color: transparent; border-radius: 50%;
@@ -171,17 +178,41 @@ div.row { cursor: default; }
 }
 .avatar img {
   position: relative; width: 100%; height: 100%; display: block; pointer-events: none;
-  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, .55));
-  animation: float 6s ease-in-out infinite;
+  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, .55)); transform-origin: 50% 100%;
 }
+/* Пока настройки не загружены, аватар не показываем, чтобы он не прыгал в размере */
+.avatar:not(.ready) { visibility: hidden; }
+
+/* Движение: data-motion, скорость: data-speed */
+.avatar[data-speed="slow"] { --speed: 1.7; }
+.avatar[data-speed="fast"] { --speed: .55; }
+.avatar[data-motion="float"] img { animation: float calc(6s * var(--speed)) ease-in-out infinite; }
+.avatar[data-motion="sway"] img { animation: sway calc(5s * var(--speed)) ease-in-out infinite; }
+.avatar[data-motion="breathe"] img { animation: breathe calc(4s * var(--speed)) ease-in-out infinite; }
+.avatar[data-motion="bounce"] img { animation: bounce calc(2.4s * var(--speed)) ease-in-out infinite; }
+.avatar[data-motion="drift"] img { animation: drift calc(8s * var(--speed)) ease-in-out infinite; }
 @keyframes float { 50% { transform: translateY(-5px); } }
+@keyframes sway { 25% { transform: rotate(-2deg); } 75% { transform: rotate(2deg); } }
+@keyframes breathe { 50% { transform: scale(1.03); } }
+@keyframes bounce { 0%, 50%, 100% { transform: none; } 20% { transform: translateY(-12px); }
+                    35% { transform: translateY(0); } 42% { transform: translateY(-4px); } }
+@keyframes drift { 25% { transform: translate(-3px, -5px) rotate(-1.5deg); } 50% { transform: translateY(-7px); }
+                   75% { transform: translate(3px, -4px) rotate(1.5deg); } }
+
+/* Сияние: data-glow */
+.avatar[data-glow="off"]::before { display: none; }
+.avatar[data-glow="bright"]::before {
+  inset: 0; background: radial-gradient(closest-side, rgba(242, 208, 120, .55), rgba(220, 176, 79, .22) 60%, transparent);
+}
+.avatar[data-glow="pulse"]::before { animation: pulse calc(3s * var(--speed)) ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: .45; transform: scale(.94); } 50% { opacity: 1; transform: scale(1.1); } }
 .avatar:hover::before, .avatar.dragging::before, .avatar[aria-expanded="true"]::before {
   opacity: 1; transform: scale(1.08);
 }
 .avatar:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .avatar.dragging { cursor: grabbing; }
 .avatar.dragging img { animation-play-state: paused; }
-@media (prefers-reduced-motion: reduce) { .avatar img { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .avatar img, .avatar::before { animation: none !important; } }
 
 /* Чат */
 .chat {
@@ -246,12 +277,12 @@ body.compact .row { padding: 9px 0; }
 body.compact .icon-btn { height: 34px; width: 38px; }
 body.compact h1 { font-size: 19px; }
 body.compact .subtitle { margin-bottom: 14px; }
-body.compact .avatar { --size: 188px; }
+body.compact .avatar { --size: calc(var(--avatar-size, 232px) * .82); }
 
 /* Узкий экран: прячем подписи, левая полоса уже */
 @media (max-width: 720px) {
   :root { --rail: 52px; }
-  .avatar, body.compact .avatar { --size: 144px; }
+  .avatar, body.compact .avatar { --size: min(calc(var(--avatar-size, 232px) * .62), 45vw); }
 
   .brand span { display: none; }
   /* Текст состояния скрыт визуально, но доступен экранным чтецам */
@@ -265,6 +296,8 @@ body.compact .avatar { --size: 188px; }
   div.row { flex-wrap: wrap; }
   .text-input { width: auto; flex: 1; }
   .inline-form { width: 100%; }
+  .slider { width: 100%; }
+  .slider input { flex: 1; width: auto; }
   .segmented { max-width: 100%; overflow-x: auto; }
   .segmented button { padding: 6px 9px; }
   table.kv tr { display: block; padding: 8px 0; border-bottom: 1px solid var(--border); }
