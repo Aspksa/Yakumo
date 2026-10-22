@@ -1,0 +1,87 @@
+/* Вселенная Yakumo: мозг в центре, звёзды по галактикам жизни */
+.un-wrap { position: relative; height: clamp(420px, 68vh, 760px); border: 1px solid var(--border); border-radius: var(--radius);
+           background: radial-gradient(ellipse at 50% 50%, rgba(var(--accent-rgb), .12), transparent 55%), #05040a;
+           overflow: hidden; margin-bottom: 6px; }
+.un-svg { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; user-select: none; }
+.un-svg.grabbing { cursor: grabbing; }
+.un-sky circle { fill: #fff; opacity: .35; animation: br-twinkle 6s ease-in-out infinite; pointer-events: none; }
+.un-nebula { opacity: .13; filter: blur(28px); pointer-events: none; transition: opacity .4s; }
+.un-wrap[data-zoom="far"] .un-nebula { opacity: .3; }
+.un-galaxy { font-weight: 600; text-anchor: middle; letter-spacing: .04em; opacity: 0; transition: opacity .4s;
+             pointer-events: none; paint-order: stroke; stroke: #05040a; stroke-width: 4px; }
+.un-wrap[data-zoom="far"] .un-galaxy { opacity: .95; }
+.un-wrap[data-zoom="mid"] .un-galaxy { opacity: .45; }
+
+.un-threads path { fill: none; stroke-width: .8; opacity: .14; pointer-events: none; transition: opacity .4s, stroke-width .4s; }
+.un-threads path.live { opacity: .85; stroke-width: 1.6; filter: drop-shadow(0 0 3px currentColor); }
+.un-links line { stroke: rgba(255, 255, 255, .22); stroke-width: 1; stroke-dasharray: 3 4; pointer-events: none; }
+.un-wrap[data-zoom="far"] .un-links { opacity: .3; }
+
+.un-brain circle { fill: rgb(var(--accent-hi-rgb)); filter: drop-shadow(0 0 2px rgba(var(--accent-rgb), .9));
+                   animation: br-glow 4s ease-in-out infinite; pointer-events: none; }
+.un-brain line { stroke: rgba(var(--accent-rgb), .35); stroke-width: .7; pointer-events: none; }
+.un-brain line.pulse { stroke: rgb(var(--accent-hi-rgb)); stroke-dasharray: 4 60; animation: un-pulse 3s linear infinite; }
+@keyframes un-pulse { to { stroke-dashoffset: -64; } }
+
+.un-star { cursor: pointer; outline: none; }
+.un-star .hit { fill: transparent; }
+.un-star .halo { opacity: .45; filter: blur(6px); pointer-events: none; animation: br-glow 5s ease-in-out infinite; }
+.un-star .core { fill: #fff8ec; stroke: rgba(255, 255, 255, .8); stroke-width: 1; filter: drop-shadow(0 0 4px rgba(255, 255, 255, .6)); }
+.un-star.warm .core { fill: #f4ead8; }
+.un-star.cold .core { fill: #9a9aa8; stroke: rgba(255, 255, 255, .35); filter: none; }
+.un-star.cold .halo { opacity: .15; animation: none; }
+.un-star.hot .halo { opacity: .7; }
+.un-star text { fill: var(--text, #eee); font-size: 12px; text-anchor: middle; pointer-events: none;
+                paint-order: stroke; stroke: #05040a; stroke-width: 3px; }
+.un-star text.sub { fill: var(--muted); font-size: 10px; }
+.un-wrap[data-zoom="far"] .un-star text { opacity: 0; }
+.un-wrap[data-zoom="far"] .un-star .halo { opacity: .25; }
+.un-star:hover .core, .un-star:focus-visible .core, .un-star.on .core { fill: #fff; stroke: var(--accent); stroke-width: 2; }
+.un-star.on text { fill: var(--accent); font-weight: 600; }
+.un-star.born { animation: un-born 2.4s ease-out both; transform-box: fill-box; }
+@keyframes un-born { 0% { opacity: 0; } 40% { opacity: 1; } }
+.un-star.born .halo { animation: un-born-halo 2.4s ease-out; }
+@keyframes un-born-halo { 0% { opacity: 1; filter: blur(14px); } 100% { opacity: .7; } }
+.un-star.flash .halo { animation: un-flash 1s ease-out; }
+@keyframes un-flash { 0% { opacity: 1; filter: blur(2px); } 100% { opacity: .5; } }
+.un-spark { pointer-events: none; filter: drop-shadow(0 0 5px currentColor) drop-shadow(0 0 2px #fff); }
+
+/* Спутники звезды видны только вблизи */
+.un-sats { opacity: 0; pointer-events: none; transition: opacity .35s; }
+.un-wrap[data-zoom="near"] .un-sats { opacity: 1; pointer-events: auto; }
+.un-sats text { font-size: 10px; fill: var(--muted); paint-order: stroke; stroke: #05040a; stroke-width: 3px; }
+.un-fact circle { fill: rgba(255, 255, 255, .7); }
+.un-fact text { transform: translate(6px, 3px); }
+.un-doc { cursor: pointer; }
+.un-doc rect { fill: none; stroke: #9ec1ff; stroke-width: 1.2; }
+.un-doc text { fill: #9ec1ff; transform: translate(-8px, 3px); text-anchor: end; }
+.un-doc:hover text, .un-doc:focus-visible text { text-decoration: underline; }
+.un-promise circle { fill: #ffd27a; filter: drop-shadow(0 0 3px #ffb030); }
+.un-promise text { fill: #ffd27a; transform: translate(6px, -5px); }
+
+/* Подпись экскурсии и кнопки */
+.un-caption { position: absolute; left: 12px; bottom: 12px; max-width: min(360px, calc(100% - 24px)); padding: 10px 12px;
+              background: rgba(10, 8, 16, .82); border: 1px solid var(--border); border-radius: var(--radius);
+              backdrop-filter: blur(6px); font-size: 13px; animation: un-cap .5s ease-out; }
+@keyframes un-cap { from { opacity: 0; transform: translateY(8px); } }
+.un-caption p { margin: 4px 0 0; color: var(--muted); }
+.un-caption .un-cap-area { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); }
+.un-caption .un-cap-promise { color: #ffd27a; }
+.un-cap-actions { display: flex; gap: 6px; margin-top: 8px; }
+.un-ctl { position: absolute; top: 10px; right: 10px; display: flex; flex-direction: column; gap: 6px; }
+.un-btn { min-width: 34px; height: 34px; padding: 0 6px; border-radius: 8px; border: 1px solid var(--border);
+          background: rgba(10, 8, 16, .75); color: var(--text, #eee); font-size: 14px; cursor: pointer; }
+.un-btn:hover, .un-btn:focus-visible { border-color: var(--accent); }
+.un-btn.on { background: var(--accent); color: #000; border-color: var(--accent); }
+.un-wrap.touring .un-ctl .un-btn:not(:last-child) { opacity: .5; }
+
+@media (max-width: 640px) {
+  .un-wrap { height: 62vh; }
+  .un-btn { min-width: 40px; height: 40px; }
+  .un-caption { top: 10px; bottom: auto; right: 60px; }
+  .un-star text { font-size: 11px; }
+  .un-star text.sub { font-size: 9px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .un-sky circle, .un-brain circle, .un-brain line.pulse, .un-star .halo, .un-star.born { animation: none; }
+}
