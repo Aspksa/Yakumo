@@ -40,7 +40,9 @@
 
   <!-- Аватар: виден на всех страницах, перетаскивается, по нажатию открывает чат -->
   <button class="avatar" id="avatar" type="button" aria-controls="chat" aria-expanded="false">
-    <img src="avatar.webp" alt="" width="720" height="720" draggable="false">
+    <img src="avatar-600.webp" alt="" width="1254" height="1254" draggable="false" decoding="async"
+         srcset="avatar-400.webp 400w, avatar-600.webp 600w, avatar-900.webp 900w, avatar-1254.webp 1254w"
+         sizes="196px">
   </button>
 
   <section class="chat" id="chat" hidden>

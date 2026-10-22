@@ -134,18 +134,30 @@ div.row { cursor: default; }
 
 /* Аватар */
 .avatar {
-  --size: 176px;
+  --size: 196px;
   position: fixed; left: 0; top: 0; z-index: 30; width: var(--size); height: var(--size);
   padding: 0; border: 0; background: none; cursor: grab; touch-action: none; user-select: none;
   -webkit-tap-highlight-color: transparent; border-radius: 50%;
-  filter: drop-shadow(0 6px 16px rgba(220, 176, 79, .25));
-  transition: filter .2s, transform .2s;
 }
-.avatar img { width: 100%; height: 100%; display: block; pointer-events: none; }
-.avatar:hover { filter: drop-shadow(0 6px 18px rgba(217, 173, 75, .65)); transform: translateY(-2px); }
+/* Мягкое золотое сияние за фигурой */
+.avatar::before {
+  content: ""; position: absolute; inset: 8%; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(closest-side, rgba(236, 196, 106, .32), rgba(220, 176, 79, .12) 60%, transparent);
+  transition: opacity .3s, transform .3s; opacity: .8;
+}
+.avatar img {
+  position: relative; width: 100%; height: 100%; display: block; pointer-events: none;
+  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, .55));
+  animation: float 6s ease-in-out infinite;
+}
+@keyframes float { 50% { transform: translateY(-5px); } }
+.avatar:hover::before, .avatar.dragging::before, .avatar[aria-expanded="true"]::before {
+  opacity: 1; transform: scale(1.08);
+}
 .avatar:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.avatar.dragging { cursor: grabbing; transform: scale(1.05); transition: filter .2s; }
-.avatar[aria-expanded="true"] { filter: drop-shadow(0 0 14px rgba(217, 173, 75, .8)); }
+.avatar.dragging { cursor: grabbing; }
+.avatar.dragging img { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .avatar img { animation: none; } }
 
 /* Чат */
 .chat {
@@ -193,12 +205,12 @@ body.compact .row { padding: 9px 0; }
 body.compact .icon-btn { height: 34px; width: 38px; }
 body.compact h1 { font-size: 19px; }
 body.compact .subtitle { margin-bottom: 14px; }
-body.compact .avatar { --size: 144px; }
+body.compact .avatar { --size: 160px; }
 
 /* Узкий экран: прячем подписи, левая полоса уже */
 @media (max-width: 720px) {
   :root { --rail: 52px; }
-  .avatar, body.compact .avatar { --size: 116px; }
+  .avatar, body.compact .avatar { --size: 128px; }
 
   .brand span { display: none; }
   /* Текст состояния скрыт визуально, но доступен экранным чтецам */

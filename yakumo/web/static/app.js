@@ -71,6 +71,7 @@ const SETTINGS = { id: "settings", icon: "i-settings" };
 
 const content = document.getElementById("content");
 const avatarBtn = document.getElementById("avatar");
+const avatarImg = avatarBtn.querySelector("img");
 const chatBox = document.getElementById("chat");
 const chatLog = document.getElementById("chat-log");
 const chatForm = document.getElementById("chat-form");
@@ -301,6 +302,8 @@ function margins() { return { top: document.querySelector(".topbar").offsetHeigh
 
 function placeAvatar() {
   const { w, h } = viewport(), m = margins(), size = avatarBtn.offsetWidth;
+  // Подсказка браузеру, какой из размеров картинки брать: с учётом масштаба страницы.
+  avatarImg.sizes = Math.round(size * zoom()) + "px";
   const free = { x: Math.max(0, w - size - 2 * m.side), y: Math.max(0, h - size - m.top - m.side) };
   avatarBtn.style.left = m.side + avatarPos.x * free.x + "px";
   avatarBtn.style.top = m.top + avatarPos.y * free.y + "px";
