@@ -6,7 +6,7 @@ const TEXTS = {
   ru: {
     home: "Главная", files: "Файлы", modules: "Модули", log: "Журнал", settings: "Настройки",
     loading: "Загрузка…", running: "работает", offline: "нет связи", connecting: "подключение…",
-    works: "работает", address: "Адрес", data: "Данные", workspace: "Рабочая папка",
+    works: "работает", lastKnown: "— нет связи, показаны последние данные", address: "Адрес", data: "Данные", workspace: "Рабочая папка",
     modulesOf: (ok, all) => `${ok} из ${all}`, noModules: "нет модулей",
     filesSoon: "Здесь будет файловый менеджер рабочей папки.",
     modulesSoon: "Здесь будет список модулей и их страницы.",
@@ -31,7 +31,7 @@ const TEXTS = {
   en: {
     home: "Home", files: "Files", modules: "Modules", log: "Log", settings: "Settings",
     loading: "Loading…", running: "running", offline: "offline", connecting: "connecting…",
-    works: "is running", address: "Address", data: "Data", workspace: "Workspace",
+    works: "is running", lastKnown: "— offline, showing last known data", address: "Address", data: "Data", workspace: "Workspace",
     modulesOf: (ok, all) => `${ok} of ${all}`, noModules: "no modules",
     filesSoon: "A file manager for the workspace will be here.",
     modulesSoon: "The module list and module pages will be here.",
@@ -163,7 +163,8 @@ const PAGES = {
     const okModules = status.modules.filter((m) => !m.error).length;
     return [
       h("h1", {}, T.home),
-      h("p", { class: "subtitle" }, `${status.app} ${status.version} ${T.works}`),
+      h("p", { class: "subtitle" },
+        `${status.app} ${status.version} ` + (online === false ? T.lastKnown : T.works)),
       h("div", { class: "cards" },
         card(T.address, status.url),
         card(T.data, status.storage.root, status.storage.reason),
@@ -221,8 +222,9 @@ function render() {
 
 function showOnline() {
   statusEl.className = "status" + (online === true ? " ok" : online === false ? " bad" : "");
-  statusEl.querySelector(".status-text").textContent =
-    online === true ? T.running : online === false ? T.offline : T.connecting;
+  const text = online === true ? T.running : online === false ? T.offline : T.connecting;
+  statusEl.querySelector(".status-text").textContent = text;
+  statusEl.title = text;
 }
 
 async function getJSON(url) {
@@ -271,11 +273,14 @@ async function start() {
   await refreshStatus();
   render();
   // Главную обновляем по таймеру; формы настроек не трогаем, чтобы не сбить ввод.
-  setInterval(async () => {
+  // Следующий опрос только после завершения предыдущего, чтобы запросы не копились.
+  const poll = async () => {
     const hadStatus = status !== null;
     await refreshStatus();
     if (currentPage() === "home" || !hadStatus) render();
-  }, 10000);
+    setTimeout(poll, 10000);
+  };
+  setTimeout(poll, 10000);
 }
 
 window.addEventListener("hashchange", render);

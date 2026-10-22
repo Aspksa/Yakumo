@@ -142,7 +142,10 @@ body.compact .subtitle { margin-bottom: 14px; }
 /* Узкий экран: прячем подписи, левая полоса уже */
 @media (max-width: 720px) {
   :root { --rail: 52px; }
-  .brand span, .status-text { display: none; }
+  .brand span { display: none; }
+  /* Текст состояния скрыт визуально, но доступен экранным чтецам */
+  .status-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%);
+                 white-space: nowrap; }
   .brand { width: auto; }
   .topbar { gap: 8px; padding: 0 10px; }
   .topnav { justify-content: flex-start; gap: 2px; }
