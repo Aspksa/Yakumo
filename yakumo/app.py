@@ -118,6 +118,7 @@ def serve(args, storage: StorageChoice, paths: Paths, config: Config,
     access = AccessControl(paths.config / "access.json")
     ctx = Context(paths=paths, config=config, cloud=cloud)
     modules = load_all(ctx, [paths.app / "modules", paths.modules], config.disabled_modules)
+    ctx.module_errors = [m.name for m in modules if m.error]
     cloud.tools = ctx.chat_tools
     endpoint = choose_endpoint(args.host or config.host, args.port or config.port, args.lan or config.lan)
 
@@ -159,6 +160,22 @@ def serve(args, storage: StorageChoice, paths: Paths, config: Config,
         return 1
 
     lock.publish(endpoint.url)
+    stop_event = threading.Event()
+
+    def request_exit():
+        stop_event.set()
+        server.shutdown()
+
+    ctx.request_exit = request_exit
+    ctx.instance_info = lock.info_path
+    ctx.show_console = not use_tray and not sys.executable.lower().endswith("pythonw.exe")
+    ctx.restart_url = endpoint.url
+    ctx.open_browser_on_change = open_browser
+    ctx.restart_command = [sys.executable, "-X", "utf8", "-m", "yakumo", "--data-dir", str(paths.data),
+                           "--workspace", str(paths.workspace), "--host", endpoint.host, "--port", str(endpoint.port),
+                           "--no-browser"]
+    if args.no_tray:
+        ctx.restart_command.append("--no-tray")
     log.info("Веб-версия: %s", endpoint.url)
     if open_browser:
         threading.Timer(0.5, webbrowser.open, args=(endpoint.url,)).start()
@@ -169,7 +186,7 @@ def serve(args, storage: StorageChoice, paths: Paths, config: Config,
             web.start()
             folders = {"data": paths.data, "workspace": paths.workspace, "modules": paths.modules}
             try:
-                tray.run(endpoint.url, folders, on_exit=server.shutdown, language=config.language)
+                tray.run(endpoint.url, folders, on_exit=request_exit, language=config.language, stop_event=stop_event)
             except Exception:  # noqa: BLE001
                 log.exception("Значок в трее не запустился, работаю без него")
                 while web.is_alive():

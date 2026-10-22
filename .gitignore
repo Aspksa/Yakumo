@@ -5,3 +5,4 @@ YakumoData/
 python/
 dist/
 YakumoDisk/
+.yakumo-update.json

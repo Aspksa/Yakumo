@@ -6,6 +6,7 @@ import logging
 import os
 import subprocess
 import sys
+import threading
 import webbrowser
 from pathlib import Path
 from typing import Callable
@@ -56,7 +57,8 @@ LABELS = {
 }
 
 
-def run(url: str, folders: dict[str, Path], on_exit: Callable[[], None], language: str = "ru") -> None:
+def run(url: str, folders: dict[str, Path], on_exit: Callable[[], None], language: str = "ru",
+        stop_event: threading.Event | None = None) -> None:
     """Показать значок и ждать «Выход». Блокирует вызывающий поток.
 
     folders: ключ подписи из LABELS -> папка.
@@ -75,5 +77,10 @@ def run(url: str, folders: dict[str, Path], on_exit: Callable[[], None], languag
     items += [pystray.Menu.SEPARATOR, pystray.MenuItem(t["exit"], quit_app)]
 
     icon = pystray.Icon("yakumo", make_image(), f"{APP_NAME}: {url}", pystray.Menu(*items))
+    if stop_event is not None:
+        def watch_stop():
+            stop_event.wait()
+            icon.stop()
+        threading.Thread(target=watch_stop, name="tray-stop", daemon=True).start()
     log.info("Значок в трее запущен")
     icon.run()

@@ -61,6 +61,13 @@ class Context:
     web_files: dict[str, list[str]] = field(default_factory=dict)
     cloud: Any = None  # CloudService: модули могут обращаться к моделям Cloud.ru
     chat_tools: dict[str, Any] = field(default_factory=dict)
+    request_exit: Callable[[], None] | None = None  # завершение ядра для установщика
+    restart_command: list[str] = field(default_factory=list)
+    instance_info: Path | None = None
+    module_errors: list[str] = field(default_factory=list)
+    show_console: bool = False
+    restart_url: str = ""
+    open_browser_on_change: bool = False
 
     @property
     def log(self) -> logging.Logger:

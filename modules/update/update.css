@@ -1,0 +1,20 @@
+.up-main,.up-options,.up-restore,.up-token,.up-files{max-width:960px;padding:24px;margin-bottom:18px}
+.up-status{display:flex;align-items:center;gap:14px;margin-bottom:26px}
+.up-status strong,.up-status small,.up-versions strong,.up-versions small{display:block}
+.up-status small,.up-versions small{opacity:.65;margin-bottom:6px}
+.up-status strong{font-size:1.1rem;line-height:1.5}
+.up-indicator{width:11px;height:11px;border-radius:50%;background:var(--accent,#d9a441);flex-shrink:0}
+.up-indicator.bad{background:#e89085}.up-indicator.working{animation:up-pulse 1.4s infinite}
+.up-versions{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:20px}
+.up-versions strong{font-size:1.05rem;overflow-wrap:anywhere}.up-versions a{display:inline-block;margin-top:8px}
+.up-commit{line-height:1.6;overflow-wrap:anywhere}.up-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:22px}
+.up-counts{display:flex;gap:36px;margin:24px 0}.up-counts strong,.up-counts span{display:block}
+.up-counts strong{font-size:1.55rem}.up-counts span{opacity:.7;margin-top:4px}
+.up-options{display:grid;grid-template-columns:1fr 1fr;gap:20px}.up-options>.row-hint{grid-column:1/-1;margin:0}
+.up-option{display:flex;flex-direction:column;gap:10px}.up-option .select{width:100%}
+.up-token summary,.up-files summary{cursor:pointer;font-weight:600}.up-token .inline-form{margin-top:16px;max-width:100%}
+.up-token input{min-width:160px;flex:1}.up-error{padding:14px;border-radius:10px;color:#eea69c;background:#c5544215;line-height:1.6}
+.up-progress{display:flex;align-items:center;gap:12px;margin-top:16px;flex-wrap:wrap}.up-progress progress{flex:1;min-width:140px;accent-color:var(--accent,#d9a441)}
+.up-files ul{padding-left:20px;line-height:1.9;overflow-wrap:anywhere;font-size:.9rem}.up-restore h2{font-size:1.05rem;margin-top:0}
+@keyframes up-pulse{50%{opacity:.35}}@media(prefers-reduced-motion:reduce){.up-indicator.working{animation:none}}
+@media(max-width:620px){.up-main,.up-options,.up-restore,.up-token,.up-files{padding:18px}.up-versions,.up-options{grid-template-columns:1fr}.up-counts{gap:24px}.up-actions .btn{width:100%}}

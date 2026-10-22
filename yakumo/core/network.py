@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import socket
+import os
 from dataclasses import dataclass
 
 DEFAULT_PORT = 8765
@@ -54,6 +55,10 @@ def is_port_free(host: str, port: int) -> bool:
         # Без SO_REUSEADDR: на Windows он позволил бы «занять» чужой порт.
         if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
             s.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        elif os.name != "nt":
+            # Разрешить повторный запуск после собственных TIME_WAIT-соединений.
+            # Активный слушатель по-прежнему не даст занять его адрес.
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             s.bind((host, port))
         except OSError:  # занят или запрещён

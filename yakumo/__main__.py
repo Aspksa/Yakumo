@@ -1,3 +1,3 @@
-from yakumo.app import main
+from yakumo.bootstrap import main
 
 raise SystemExit(main())
