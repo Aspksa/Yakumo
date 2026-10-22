@@ -120,6 +120,8 @@ def serve(args, storage: StorageChoice, paths: Paths, config: Config,
     modules = load_all(ctx, [paths.app / "modules", paths.modules], config.disabled_modules)
     ctx.module_errors = [m.name for m in modules if m.error]
     cloud.tools = ctx.chat_tools
+    cloud.context_hooks = ctx.chat_contexts
+    cloud.listeners = ctx.chat_listeners
     endpoint = choose_endpoint(args.host or config.host, args.port or config.port, args.lan or config.lan)
 
     def status(_req=None) -> dict:

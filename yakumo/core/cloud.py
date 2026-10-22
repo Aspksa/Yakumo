@@ -80,6 +80,8 @@ class CloudService:
         self.secrets_path = secrets_path
         self.models: list[str] = []  # последний полученный каталог
         self.tools: dict[str, ChatTool] = {}  # инструменты модулей (ctx.chat_tool)
+        self.context_hooks: list[Callable] = []  # дополнения к подсказке (ctx.chat_context)
+        self.listeners: list[Callable] = []      # кому сообщать о завершённом ответе (ctx.on_chat)
 
     # --- Ключ ---
     # Ключ лежит отдельно от настроек и никогда не отдаётся в браузер целиком.
@@ -226,15 +228,26 @@ class CloudService:
         if not merged:
             raise ValueError("Нет сообщений пользователя")
         clean = merged
+        chat_id = body.get("chat_id")
+        if not isinstance(chat_id, str) or not re.fullmatch(r"[\w-]{1,64}", chat_id):
+            chat_id = ""
         lang = self.config.language if self.config.language in SYSTEM_PROMPT else "ru"
         prompt = SYSTEM_PROMPT[lang]
+        for hook in self.context_hooks:
+            try:
+                extra = hook(clean, chat_id)
+            except Exception:  # noqa: BLE001 — ошибка модуля не должна ломать чат
+                log.exception("Ошибка дополнения к подсказке чата")
+                continue
+            if extra:
+                prompt += "\n\n" + extra
         if self.tools:
             listing = "\n".join(f"- {t.name}: {t.description}" + (" [меняет файлы]" if t.change and lang == "ru"
                                  else " [changes files]" if t.change else "") for t in self.tools.values())
             prompt += TOOLS_PROMPT[lang].format(tools=listing)
-        return self._stream([{"role": "system", "content": prompt}, *clean])
+        return self._stream([{"role": "system", "content": prompt}, *clean], history=clean, chat_id=chat_id)
 
-    def _stream(self, messages: list[dict]) -> Iterator[bytes]:
+    def _stream(self, messages: list[dict], history: list[dict] | None = None, chat_id: str = "") -> Iterator[bytes]:
         """Ответ потоком; если модель зовёт инструменты — выполнить и продолжить с их результатами.
 
         События: {"delta": текст}, {"status": "Ищу…"}, {"card": {"type": "plan", ...}}, {"done": true}, {"error": ...}.
@@ -243,6 +256,7 @@ class CloudService:
             return (json.dumps(obj, ensure_ascii=False) + "\n").encode("utf-8")
 
         plan: list[dict] = []
+        answer = ""  # что увидел пользователь — для ctx.on_chat
         try:
             key = self.api_key()
             model = self.config.cloud_model
@@ -267,6 +281,7 @@ class CloudService:
                 if tail:
                     yield line({"delta": tail})
                 said = said or bool(_visible(text).strip())
+                answer += ("\n\n" if answer else "") + _visible(text).strip()
                 calls = _tool_calls(text) if self.tools else []
                 if not calls:
                     break
@@ -303,6 +318,12 @@ class CloudService:
         if plan:
             yield line({"card": {"type": "plan", "actions": plan}})
         yield line({"done": True})
+        if history is not None and answer.strip():
+            for listener in self.listeners:
+                try:
+                    listener(history, answer.strip(), chat_id)
+                except Exception:  # noqa: BLE001
+                    log.exception("Ошибка обработчика ответа чата")
 
     def apply(self, request) -> dict:
         """Выполнить подтверждённый пользователем план (инструменты, которые меняют данные)."""

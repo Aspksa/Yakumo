@@ -696,6 +696,10 @@ function store(key, value) {
 // Позиция в долях свободного места (0..1), чтобы аватар оставался на своём месте при смене размера окна.
 let avatarPos = stored("yakumo.avatar", { x: 1, y: 1 });
 let messages = stored("yakumo.chat", []);
+// Id беседы: по нему память Yakumo отличает один разговор от другого. Новый — после очистки чата.
+const newChatId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+let chatId = stored("yakumo.chatId", null) || newChatId();
+store("yakumo.chatId", chatId);
 
 // Страница масштабируется через zoom, поэтому размеры окна переводим в CSS-пиксели страницы.
 function zoom() { return (settings?.values.font_scale || 100) / 100; }
@@ -1016,7 +1020,7 @@ async function ask() {
   try {
     const r = await fetch("/api/chat", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: chatHistory() }), signal: controller.signal,
+      body: JSON.stringify({ messages: chatHistory(), chat_id: chatId }), signal: controller.signal,
     });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
     const reader = r.body.getReader();
@@ -1073,6 +1077,8 @@ chatForm.addEventListener("submit", (e) => {
 document.getElementById("chat-clear").addEventListener("click", () => {
   if (sending) sending.abort();
   messages = [];
+  chatId = newChatId();
+  store("yakumo.chatId", chatId);
   addMessage("bot", T.greeting, { local: true });
   chatInput.focus();
 });
