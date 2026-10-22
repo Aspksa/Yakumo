@@ -1,6 +1,6 @@
 "use strict";
 
-// Разделы. Один список строит оба меню: верхнее и левое.
+// Разделы верхнего меню. «Настройки» живут отдельно, в левой полосе.
 const SECTIONS = [
   { id: "home", label: "Главная", icon: "i-home" },
   { id: "files", label: "Файлы", icon: "i-files" },
@@ -38,13 +38,12 @@ function icon(id) {
 }
 
 function buildMenus() {
-  for (const nav of document.querySelectorAll("[data-menu]")) {
-    for (const s of SECTIONS) {
-      const a = h("a", { class: "icon-btn", href: "#/" + s.id, "data-route": s.id,
-                         "data-label": s.label, "aria-label": s.label });
-      a.append(icon(s.icon));
-      nav.append(a);
-    }
+  const nav = document.querySelector("[data-menu]");
+  for (const s of SECTIONS) {
+    const a = h("a", { class: "icon-btn", href: "#/" + s.id, "data-route": s.id,
+                       "data-label": s.label, "aria-label": s.label });
+    a.append(icon(s.icon));
+    nav.append(a);
   }
 }
 
