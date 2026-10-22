@@ -29,8 +29,9 @@ call :probe python3
 rem 4) Standard install folders
 for /d %%i in ("%LOCALAPPDATA%\Programs\Python\Python3*" "%ProgramFiles%\Python3*" "%ProgramFiles(x86)%\Python3*") do call :probe "%%~fi\python.exe"
 
+rem 5) Nothing works: offer to download embedded Python next to the program
+if not defined PY call :offer_python
 if not defined PY (
-    type "%~dp0launcher\no_python.txt"
     pause
     exit /b 1
 )
@@ -62,6 +63,22 @@ goto collect
 :launch
 start "" %PYW% -X utf8 -m yakumo%ARGS%
 endlocal & exit /b 0
+
+rem Asks whether to download embedded Python into python\ (launcher\get_python.ps1).
+:offer_python
+type "%~dp0launcher\no_python.txt"
+type "%~dp0launcher\offer_python.txt"
+choice /c 12 /n
+echo.
+if errorlevel 2 goto :eof
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0launcher\get_python.ps1" -Root "%~dp0."
+if errorlevel 1 (
+    type "%~dp0launcher\download_failed.txt"
+    goto :eof
+)
+call :probe "%~dp0python\python.exe"
+if not defined PY type "%~dp0launcher\download_failed.txt"
+goto :eof
 
 rem Runs the given command as Python; if it is 3.10+ and works, remembers
 rem the real python.exe (and pythonw.exe next to it) in PY and PYW.
