@@ -46,6 +46,36 @@
       noCloud: "Сначала подключите Cloud.ru в настройках (раздел Cloud.ru).",
       noVision: "В каталоге Cloud.ru не нашлась модель, которая видит картинки.",
       chatTip: "Ещё можно попросить Yakumo в чате: «найди договор аренды», «перескажи отчёт.pdf», «разложи файлы в папке Загрузки по папкам». Изменения она только предлагает, а выполняются они по кнопке «Выполнить».",
+      ocr: "Распознавать текст на сканах и чеках",
+      ocrHint: "PDF-сканы без текста и фото документов отправляются в Cloud.ru, текст хранится у вас на Диске. Суммы и даты из чеков и квитанций попадают в «Память» Yakumo.",
+      ocrDone: (n) => `Распознано сканов: ${n}`, more: "Ещё",
+      order: "Порядок", orderIntro: "Кицунэ смотрит, как вы раскладываете файлы, и предлагает правила. Включённые правила сами раскладывают новые файлы из корня Диска и из «Загрузок».",
+      noticed: "Кицунэ заметила привычку",
+      noticedText: (label, to, n) => `Вы ${n} ${plural(n, "раз", "раза", "раз")} положили ${label} в «${to}». Делать так всегда?`,
+      accept: "Да, сделать правилом", decline: "Не надо", rules: "Правила",
+      noRules: "Правил пока нет. Создайте своё или подождите: кицунэ сама предложит, когда заметит привычку.",
+      newRule: "Новое правило", editRule: "Изменить правило", ruleWords: "Если в имени или тексте есть слово",
+      ruleWordsHint: "через запятую: договор, чек", ruleKinds: "И это", anyKind: "Любой файл",
+      ruleTo: "Положить в папку", ruleToHint: "{год} и {месяц} подставятся сами: Финансы/{год}",
+      ruleTell: "Написать мне в чат", ruleTellHint: "например: напомни о сроке оплаты", ruleSaved: "Правило сохранено",
+      ruleHits: (n) => `сработало ${n} ${plural(n, "раз", "раза", "раз")}`, learned: "выведено кицунэ", fromChat: "из чата",
+      kindNames: { pdf: "PDF", doc: "Документ Word", image: "Фото", sheet: "Таблица", text: "Текст", video: "Видео",
+                   audio: "Музыка", slides: "Презентация", archive: "Архив", book: "Книга" },
+      sortNow: "Разложить по правилам", nothingToSort: "Во «Входящих» нечего раскладывать по правилам",
+      sortPlan: (n) => `Разложить: ${n}`, sorted: (n) => `Разложено: ${n}`, lessons: "Чему научилась кицунэ",
+      placed: (name, to) => `Кицунэ положила «${name}» в «${to}»`, placedMany: (n) => `Кицунэ разложила файлов: ${n}`,
+      names: "Понятные имена", nameOne: "Понятное имя", namesLooking: "Кицунэ придумывает имена…",
+      namesNone: "Здесь все имена понятные", namesApply: "Переименовать", renamed: (n) => `Переименовано: ${n}`,
+      namesHint: "Отметьте, что переименовать. Имя можно поправить: кицунэ запомнит ваш стиль.",
+      askFolderBtn: "Спросить о папке", askOwn: "Свой вопрос о папке", askSend: "Спросить",
+      folderQ: ["Что в этой папке главное?", "Какие здесь сроки и суммы?", "Что здесь устарело или повторяется?",
+                "Составь опись папки"],
+      askAbout: (link, q) => `Папка ${link}: ${q}`,
+      summary: "Конспект", summaryBusy: (n) => `Кицунэ читает «${n}» и пишет конспект…`, summaryDone: "Конспект готов",
+      related: "Связанное", relatedNone: "Связанных файлов пока нет", relatedFacts: "Кицунэ помнит",
+      whyWords: (w) => `общие слова: ${w}`, whyMemory: "через память", whyMeaning: "похоже по смыслу",
+      cinema: "Кинорежим", zoomIn: "Увеличить", zoomOut: "Уменьшить", zoomReset: "Вписать",
+      sniffing: "Кицунэ ищет…",
     },
     en: {
       title: "Drive", files: "Files", shared: "Shared", trash: "Trash",
@@ -88,6 +118,37 @@
       noCloud: "Connect Cloud.ru in Settings first.",
       noVision: "The Cloud.ru catalog has no model that can see images.",
       chatTip: "You can also ask Yakumo in the chat: “find the lease”, “summarise report.pdf”, “sort the Downloads folder”. She only proposes changes; they run when you press Run.",
+      ocr: "Recognise text on scans and receipts",
+      ocrHint: "PDF scans without text and photos of documents are sent to Cloud.ru; the text is stored on your Drive. Amounts and dates from receipts go to Yakumo's Memory.",
+      ocrDone: (n) => `Scans recognised: ${n}`, more: "More",
+      order: "Order", orderIntro: "The kitsune watches how you sort files and suggests rules. Enabled rules sort new files from the Drive root and Downloads by themselves.",
+      noticed: "The kitsune noticed a habit",
+      noticedText: (label, to, n) => `You put ${label} into “${to}” ${n} times. Always do that?`,
+      accept: "Yes, make it a rule", decline: "No thanks", rules: "Rules",
+      noRules: "No rules yet. Create one, or wait: the kitsune will suggest one when she notices a habit.",
+      newRule: "New rule", editRule: "Edit rule", ruleWords: "If the name or text contains a word",
+      ruleWordsHint: "comma-separated: contract, receipt", ruleKinds: "And it is", anyKind: "Any file",
+      ruleTo: "Put into folder", ruleToHint: "{year} and {month} are filled in: Finance/{year}",
+      ruleTell: "Tell me in the chat", ruleTellHint: "e.g. remind me of the due date", ruleSaved: "Rule saved",
+      ruleHits: (n) => `used ${n} times`, learned: "worked out by the kitsune", fromChat: "from the chat",
+      kindNames: { pdf: "PDF", doc: "Word document", image: "Photo", sheet: "Spreadsheet", text: "Text", video: "Video",
+                   audio: "Music", slides: "Presentation", archive: "Archive", book: "Book" },
+      sortNow: "Sort by rules", nothingToSort: "Nothing in the inbox matches a rule",
+      sortPlan: (n) => `Sort: ${n}`, sorted: (n) => `Sorted: ${n}`, lessons: "What the kitsune learned",
+      placed: (name, to) => `The kitsune put “${name}” into “${to}”`, placedMany: (n) => `The kitsune sorted ${n} files`,
+      names: "Clear names", nameOne: "Clear name", namesLooking: "The kitsune is thinking of names…",
+      namesNone: "All names here are clear", namesApply: "Rename", renamed: (n) => `Renamed: ${n}`,
+      namesHint: "Tick what to rename. You can edit a name: the kitsune will learn your style.",
+      askFolderBtn: "Ask about the folder", askOwn: "Your question about the folder", askSend: "Ask",
+      folderQ: ["What's important in this folder?", "What deadlines and amounts are here?",
+                "What is outdated or duplicated here?", "Make an inventory of the folder"],
+      askAbout: (link, q) => `Folder ${link}: ${q}`,
+      summary: "Summary", summaryBusy: (n) => `The kitsune is reading “${n}” and writing a summary…`,
+      summaryDone: "Summary ready",
+      related: "Related", relatedNone: "No related files yet", relatedFacts: "The kitsune remembers",
+      whyWords: (w) => `shared words: ${w}`, whyMemory: "through memory", whyMeaning: "similar meaning",
+      cinema: "Cinema mode", zoomIn: "Zoom in", zoomOut: "Zoom out", zoomReset: "Fit",
+      sniffing: "The kitsune is searching…",
     },
   };
   let L = TX.ru;
@@ -133,6 +194,14 @@
     "dk-x": '<path d="M6 6l12 12M18 6 6 18"/>', "dk-check": '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
     "dk-spark": '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>',
     "dk-more": '<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
+    "dk-fox": '<path d="M4 4.5 8.5 9h7L20 4.5l-1 8.5-7 7-7-7z"/><path d="M9.5 12.5h.01M14.5 12.5h.01M11 16.2l1 .8 1-.8"/>',
+    "dk-wand": '<path d="m4 20 11-11"/><path d="m13 7 2-2 4 4-2 2"/><path d="M18 2.5v3M16.5 4h3M6 4v2M5 5h2M20 14v2M19 15h2"/>',
+    "dk-related": '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="9" cy="18" r="2.5"/><path d="M8.4 6.6 15.6 7.4M7 8.4l1.5 7.2M16.4 10l-5.6 6"/>',
+    "dk-summary": '<path d="M6 3h8l5 5v13H6z"/><path d="M14 3v5h5M9 12h4M9 15h6M9 18h3"/><path d="m16.5 14.5.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6z"/>',
+    "dk-cinema": '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18M3 15h18M7 5v4M12 5v4M17 5v4M7 15v4M12 15v4M17 15v4"/>',
+    "dk-zoomin": '<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.4-4.4M11 8v6M8 11h6"/>',
+    "dk-zoomout": '<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.4-4.4M8 11h6"/>',
+    "dk-fit": '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
   };
   const sprite = document.querySelector("svg symbol").parentNode;
   for (const [id, body] of Object.entries(ICONS)) {
@@ -143,6 +212,79 @@
     sprite.append(sym);
   }
   const kindIcon = (kind) => icon("i-dk-" + (kind === "folder" ? "folder" : ICONS["dk-" + kind] ? kind : "file"));
+
+  // --- Кицунэ: векторная лисичка с файлом в зубах (анимации и вкладка «Порядок») ---
+  const FOX = `<svg viewBox="0 0 100 64" aria-hidden="true">
+    <defs>
+      <linearGradient id="dkfox-fur" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f8bd5c"/><stop offset="1" stop-color="#d8692a"/></linearGradient>
+      <linearGradient id="dkfox-tail" x1="1" y1="0" x2="0" y2="0"><stop offset="0" stop-color="#d8692a"/><stop offset=".72" stop-color="#f4a94c"/><stop offset=".8" stop-color="#fff3df"/></linearGradient>
+    </defs>
+    <g class="dk-fox-tails">
+      <path d="M34 38C22 40 8 36 3 24c8 5 18 3 27 7 3 1 5 4 4 7z" fill="url(#dkfox-tail)" opacity=".45"/>
+      <path d="M34 37C23 34 12 26 10 14c6 7 15 8 22 14 3 2 4 6 2 9z" fill="url(#dkfox-tail)" opacity=".7"/>
+      <path d="M34 38C22 37 9 31 5 20c7 6 17 6 25 11 3 2 5 4 4 7z" fill="url(#dkfox-tail)"/>
+    </g>
+    <g class="dk-fox-legs" fill="#b4531f">
+      <path class="dk-leg-a" d="M59 43l5 11h3.5l-4.5-12z"/><path class="dk-leg-b" d="M52 45l-2 11h3.5l3-11z"/>
+      <path class="dk-leg-b" d="M39 44l-8 9 3 2.5 9-10z"/><path class="dk-leg-a" d="M45 46v11h3.5l1-11z"/>
+    </g>
+    <path d="M31 38c0-9 13-13 25-12 10 1 15 6 13 12-2 6-11 10-24 10-8 0-14-3-14-10z" fill="url(#dkfox-fur)"/>
+    <path d="M46 47c6 0 13-1 18-4-3 5-11 7-18 4z" fill="#fff3df" opacity=".85"/>
+    <path d="M62 30c1-8 9-13 18-11l9 6c2 2 1 4-2 4l-6 2c-4 4-12 5-17 3z" fill="url(#dkfox-fur)"/>
+    <path d="M67 22l2-13 8 9zM74 18.5l5-12 2 13z" fill="#d8692a"/>
+    <path d="M69 19l1.2-6 3.5 4.2zM75.6 16.5l2.4-5.6 1 6.4z" fill="#3b2415"/>
+    <path d="M75 29c4 1 8 0 11 0-3 3-8 4-11 1z" fill="#fff3df"/>
+    <path d="M76.5 23.2q1.8-1.6 3.4 0" fill="none" stroke="#2a1a0e" stroke-width="1.3" stroke-linecap="round"/>
+    <circle cx="89" cy="25.6" r="1.4" fill="#2a1a0e"/>
+    <g class="dk-fox-file">
+      <path d="M85 25h9l3.5 3.5V40H85z" fill="#fffdf8" stroke="#cbb89a" stroke-width=".8"/>
+      <path d="M94 25v3.5h3.5" fill="none" stroke="#cbb89a" stroke-width=".8"/>
+      <path d="M87.5 31.5h7.5M87.5 34h7.5M87.5 36.5h5" stroke="rgb(var(--accent-rgb))" stroke-width="1.1"/>
+    </g>
+  </svg>`;
+  function foxArt(cls = "") {
+    const el = h("span", { class: "dk-fox-pic " + cls, "aria-hidden": "true" });
+    el.innerHTML = FOX;
+    return el;
+  }
+  const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+
+  // Кицунэ «приносит» файл: бежит дугой от кнопки или окна загрузки к папке, где он теперь лежит.
+  function flyFox(fromEl, toEl) {
+    if (!toEl) return;
+    const flash = () => { toEl.classList.remove("dk-arrived"); void toEl.offsetWidth; toEl.classList.add("dk-arrived"); };
+    const a = fromEl?.getBoundingClientRect(), b = toEl.getBoundingClientRect();
+    if (reducedMotion.matches || !a || !a.width || !toEl.animate) return flash();
+    const fox = foxArt("dk-fox-runner");
+    document.body.append(fox);
+    const x0 = a.left + a.width / 2 - 40, y0 = a.top + a.height / 2 - 26;
+    const x1 = b.left + b.width / 2 - 40, y1 = b.top + b.height / 2 - 30;
+    const flip = x1 < x0 ? -1 : 1;
+    const frames = [];
+    for (let i = 0; i <= 16; i++) {
+      const t = i / 16;
+      const hop = Math.abs(Math.sin(Math.PI * t * 5)) * 7;  // скачки на бегу
+      frames.push({ transform: `translate(${x0 + (x1 - x0) * t}px, ${y0 + (y1 - y0) * t - Math.sin(Math.PI * t) * 90 - hop}px) scaleX(${flip})`,
+                    opacity: i === 0 || i === 16 ? 0 : 1 });
+    }
+    fox.animate(frames, { duration: 1200, easing: "ease-in-out" }).onfinish = () => { fox.remove(); flash(); };
+  }
+
+  // Куда «бежать»: плитка папки в открытом списке (или её родителя), иначе вкладка «Порядок».
+  function targetEl(folder) {
+    const parts = folder.split("/");
+    for (let i = parts.length; i > 0; i--) {
+      const el = root.querySelector(`.dk-item[data-key="${CSS.escape(parts.slice(0, i).join("/"))}"]`);
+      if (el) return el;
+    }
+    return root.querySelector('.dk-tablist [data-view="order"]');
+  }
+
+  function foxCarry(placed, fromEl) {
+    if (!placed.length) return;
+    toast(placed.length === 1 ? L.placed(placed[0].name, placed[0].to) : L.placedMany(placed.length));
+    flyFox(fromEl, targetEl(placed[0].to));
+  }
 
   // --- Состояние ---
 
@@ -162,6 +304,8 @@
     sort: stored("sort", { key: "name", dir: 1 }),
     layout: stored("layout", "tiles"),
     info: null, loading: false, error: null,
+    order: null,                // правила, предложения и уроки кицунэ
+    fresh: false,               // результаты поиска только что пришли: подсветить
   };
   const root = h("div", { class: "disk" });
   let started = false;
@@ -182,6 +326,14 @@
     try { state.info = await get("info"); } catch { /* покажем без места */ }
     const bar = root.querySelector(".dk-usage");
     if (bar) bar.replaceWith(usageEl());
+    refreshOrder();
+  }
+
+  async function refreshOrder() {
+    try { state.order = await get("order"); } catch { return; }
+    if (state.view === "order") return draw();
+    const tab = root.querySelector('.dk-tablist [data-view="order"]');
+    if (tab) tab.replaceWith(orderTab());
   }
 
   async function load() {
@@ -197,6 +349,8 @@
           state.items = (await get("list", { path: "" })).items;
         }
         if (state.query) await runSearch();
+      } else if (state.view === "order") {
+        state.order = await get("order");
       } else if (state.view === "trash") {
         state.trash = await get("trash");
       } else {
@@ -214,7 +368,7 @@
 
   async function runSearch() {
     if (!state.query.trim()) { state.found = null; return; }
-    try { state.found = await get("search", { q: state.query }); } catch (e) { toast(e.message, true); }
+    try { state.found = await get("search", { q: state.query }); state.fresh = true; } catch (e) { toast(e.message, true); }
   }
 
   // --- Форматы ---
@@ -247,6 +401,7 @@
 
   const keyOf = (item) => item.id || item.token || item.path;
   function currentItems() {
+    if (state.view === "order") return [];
     if (state.view === "trash") return state.trash;
     if (state.view === "shared") return state.shares;
     return sorted(state.found ? state.found.items : state.items);
@@ -280,12 +435,7 @@
   }
 
   function tabs() {
-    const tab = (id, iconId) => {
-      const b = h("button", { type: "button", role: "tab", "aria-selected": String(state.view === id),
-                              class: state.view === id ? "on" : "", "aria-label": L[id], onclick: () => setView(id) });
-      b.append(icon("i-" + iconId), h("span", {}, L[id]));
-      return b;
-    };
+    const tab = (id, iconId) => tabEl(id, iconId);
     const search = h("input", {
       type: "search", class: "text-input dk-search-input", placeholder: L.search, "aria-label": L.search,
       value: state.query,
@@ -304,10 +454,19 @@
     box.prepend(icon("i-dk-search"));
     return h("div", { class: "dk-tabs" },
       h("div", { class: "dk-tablist", role: "tablist" },
-        tab("files", "dk-folder"), tab("shared", "dk-link"), tab("trash", "dk-trash")),
+        tab("files", "dk-folder"), orderTab(), tab("shared", "dk-link"), tab("trash", "dk-trash")),
       h("div", { class: "dk-searchrow" }, box, button("dk-spark", L.smart, smartDialog, { iconOnly: true })));
   }
   let searchTimer = 0;
+
+  function tabEl(id, iconId, badge = 0) {
+    const b = h("button", { type: "button", role: "tab", "aria-selected": String(state.view === id), "data-view": id,
+                            class: state.view === id ? "on" : "", "aria-label": L[id], onclick: () => setView(id) });
+    b.append(icon("i-" + iconId), h("span", {}, L[id]));
+    if (badge) b.append(h("b", { class: "dk-badge" }, String(badge)));
+    return b;
+  }
+  const orderTab = () => tabEl("order", "dk-fox", state.order?.proposals.length || 0);
 
   function crumbs() {
     const parts = state.path ? state.path.split("/") : [];
@@ -331,22 +490,37 @@
         state.trash.length ? button("dk-trash", L.emptyTrash, emptyTrash) : "");
     }
     if (state.view === "shared") return h("div", { class: "dk-bar" }, h("div", { class: "dk-bar-title" }, L.shared));
+    if (state.view === "order") {
+      return h("div", { class: "dk-bar" }, h("div", { class: "dk-bar-title" }, L.order),
+        h("div", { class: "dk-actions" }, button("dk-fox", L.sortNow, sortNow),
+          button("dk-spark", L.newRule, () => ruleDialog(), { primary: true })));
+    }
     const sortSel = h("select", { class: "select dk-sort", "aria-label": L.sortBy,
                                    onchange: (e) => setSort({ key: e.target.value, dir: state.sort.dir }) },
       Object.entries(L.sorts).map(([k, v]) => h("option", { value: k, selected: k === state.sort.key }, v)));
     const head = state.found
-      ? h("div", { class: "dk-bar-title" }, L.searchFound(state.found.items.length, state.found.more))
+      ? h("div", { class: "dk-bar-title dk-found-title" }, icon("i-dk-fox"),
+          L.searchFound(state.found.items.length, state.found.more))
       : crumbs();
+    const more = button("dk-more", L.more, (e) => {
+      e.stopPropagation();
+      openMenu(e.currentTarget, [
+        { icon: "dk-wand", label: L.names, run: () => namesDialog(state.path) },
+        { icon: "dk-fox", label: L.sortNow, run: sortNow },
+      ]);
+    }, { iconOnly: true });
     return h("div", { class: "dk-bar" }, head,
       h("div", { class: "dk-actions" },
         uploadButton(),
         button("dk-newfolder", L.newFolder, newFolder, { iconOnly: true }),
+        window.Yakumo.ask ? button("dk-ask", L.askFolderBtn, () => askFolderDialog(state.path), { iconOnly: true }) : "",
         sortSel,
         button(state.sort.dir > 0 ? "dk-up" : "dk-down", L.sortBy,
                () => setSort({ key: state.sort.key, dir: -state.sort.dir }), { iconOnly: true }),
         button(state.layout === "tiles" ? "dk-list" : "dk-tiles", state.layout === "tiles" ? L.list : L.tiles,
                () => { state.layout = state.layout === "tiles" ? "list" : "tiles"; store("layout", state.layout); draw(); },
-               { iconOnly: true })));
+               { iconOnly: true }),
+        more));
   }
 
   const fileInput = h("input", { type: "file", multiple: true, hidden: true,
@@ -389,7 +563,12 @@
     const sel = selectedItems();
     const bar = h("div", { class: "dk-bar dk-selbar", role: "toolbar", "aria-label": L.selected(sel.length) },
       h("span", { class: "dk-selcount" }, L.selected(sel.length)));
-    for (const a of actionsFor(sel)) bar.append(button(a.icon, a.label, a.run, { cls: a.danger ? "danger" : "" }));
+    const actions = actionsFor(sel), extra = actions.filter((a) => a.extra);
+    for (const a of actions) if (!a.extra) bar.append(button(a.icon, a.label, a.run, { cls: a.danger ? "danger" : "" }));
+    if (extra.length) {
+      bar.append(button("dk-more", L.more, (e) => { e.stopPropagation(); openMenu(e.currentTarget, extra); },
+                        { iconOnly: true }));
+    }
     bar.append(button("dk-x", L.clear, () => { state.selected.clear(); showSelection(); }, { iconOnly: true }));
     return bar;
   }
@@ -412,11 +591,14 @@
     return [
       ...(one && !one.dir ? [{ icon: "dk-file", label: L.open, run: () => open(one) }] : []),
       ...(askable(sel) ? [{ icon: "dk-ask", label: L.askYakumo, run: () => askYakumo(sel) }] : []),
+      ...(one && !one.dir ? [{ icon: "dk-related", label: L.related, run: () => { sideOn = true; open(one); }, extra: true }] : []),
+      ...(one && DOCS.has(one.kind) ? [{ icon: "dk-summary", label: L.summary, run: () => summarize(one), extra: true }] : []),
+      ...(one ? [{ icon: "dk-wand", label: one.dir ? L.names : L.nameOne, run: () => namesDialog(one.path), extra: true }] : []),
       { icon: "dk-download", label: L.download, run: () => download(sel) },
-      ...(one ? [{ icon: "dk-share", label: L.share, run: () => share(one) },
+      ...(one ? [{ icon: "dk-share", label: L.share, run: () => share(one), extra: true },
                  { icon: "dk-rename", label: L.rename, run: () => rename(one) }] : []),
       { icon: "dk-move", label: L.move, run: () => moveDialog(sel, false) },
-      { icon: "dk-copy", label: L.copy, run: () => moveDialog(sel, true) },
+      { icon: "dk-copy", label: L.copy, run: () => moveDialog(sel, true), extra: true },
       { icon: "dk-trash", label: L.del, run: () => remove(sel), danger: true },
     ];
   }
@@ -491,12 +673,17 @@
         h("span", {}, state.view === "trash" ? L.deletedAt : state.view === "shared" ? L.created : L.size)));
     }
     items.forEach((item, i) => list.append(itemEl(item, i, items)));
+    if (state.found && state.fresh && !reducedMotion.matches) {  // кицунэ «вынюхала» найденное: волна подсветки
+      list.classList.add("dk-sniff");
+      [...list.querySelectorAll(".dk-item")].slice(0, 30).forEach((el, i) => el.style.setProperty("--i", i));
+    }
+    state.fresh = false;
     const footer = items.length && !state.found ? h("div", { class: "dk-foot" }, L.items(items.length)) : "";
     root.replaceChildren(
       h("div", { class: "dk-head" }, h("h1", {}, L.title), usageEl()),
       tabs(), toolbar(),
       state.error ? h("p", { class: "dk-error" }, state.error) : "",
-      items.length ? list : (state.loading ? "" : emptyEl()),
+      state.view === "order" ? orderEl() : items.length ? list : (state.loading ? "" : emptyEl()),
       footer,
       h("div", { class: "dk-drop", "aria-hidden": "true" }, h("span", {}, L.dropHere(baseName(state.path)))));
     if (focused) {
@@ -609,6 +796,165 @@
   function askYakumo(sel) {
     if (sel.length === 2) return window.Yakumo.ask(L.askCompare(sel[0].path, sel[1].path));
     window.Yakumo.ask(sel[0].dir ? L.askFolder(sel[0].path) : L.askFile(sel[0].path));
+  }
+
+  // «Спросить о папке»: готовые вопросы и свой; отвечает Yakumo в чате (пересказ папки — folder_brief).
+  async function askFolderDialog(path) {
+    const link = `[${path ? baseName(path) : L.root}](disk:${path})`;
+    const input = h("input", { class: "text-input", placeholder: L.askOwn, "aria-label": L.askOwn, maxlength: "500" });
+    const chips = h("div", { class: "dk-chips" }, L.folderQ.map((q) => h("button", {
+      type: "button", class: "dk-chip", onclick: () => { input.value = q; input.form.requestSubmit(); } }, q)));
+    let question = "";
+    setTimeout(() => input.focus());
+    await modal(L.askFolderBtn + ": " + (path ? baseName(path) : L.root), [chips, input], [
+      { label: L.cancel },
+      { label: L.askSend, primary: true, run: () => { question = input.value.trim(); } },
+    ]);
+    if (question) window.Yakumo.ask(L.askAbout(link, question));
+  }
+
+  // --- Понятные имена ---
+
+  async function namesDialog(path) {
+    const body = h("div", { class: "dk-names" }, h("p", { class: "row-hint dk-busy" }, foxArt("dk-fox-mini"), L.namesLooking));
+    let rows = [];
+    const done = modal(L.names, [body], [
+      { label: L.cancel },
+      { label: L.namesApply, primary: true, run: () => {
+        const items = rows.filter((r) => r.check.checked && r.input.value.trim())
+          .map((r) => ({ path: r.item.path, name: r.input.value.trim(), suggested: r.item.suggestion }));
+        if (items.length) act(() => post("names", { items }), (res) => L.renamed(res.length));
+      } },
+    ]);
+    let res;
+    try { res = await get("names", { path }); } catch (e) { body.replaceChildren(h("p", { class: "dk-error" }, e.message)); return done; }
+    if (!res.items.length) { body.replaceChildren(h("p", { class: "row-hint" }, L.namesNone)); return done; }
+    rows = res.items.map((item) => ({
+      item, check: h("input", { type: "checkbox", checked: true, "aria-label": item.name }),
+      input: h("input", { class: "text-input", value: item.suggestion, "aria-label": L.newName, spellcheck: "false" }),
+    }));
+    body.replaceChildren(h("p", { class: "row-hint" }, L.namesHint), h("div", { class: "dk-names-list" }, rows.map((r) =>
+      h("label", { class: "dk-name-row" }, r.check, kindIcon(r.item.kind),
+        h("span", { class: "dk-name-old", title: r.item.name }, r.item.name), r.input))));
+    return done;
+  }
+
+  // --- Конспект ---
+
+  const DOCS = new Set(["pdf", "doc", "text", "sheet", "slides", "book"]);
+
+  async function summarize(item) {
+    const busy = toast(h("span", { class: "dk-busy" }, foxArt("dk-fox-mini"), L.summaryBusy(item.name)), false, 0);
+    try {
+      const res = await post("summary", { path: item.path });
+      busy.remove();
+      toast(L.summaryDone);
+      openPath(res.path);
+    } catch (e) {
+      busy.remove();
+      toast(e.message, true);
+    }
+  }
+
+  // --- Порядок: правила, предложения и уроки кицунэ ---
+
+  function orderEl() {
+    const o = state.order;
+    if (!o) return h("div", { class: "dk-order" });
+    const box = h("div", { class: "dk-order" },
+      h("div", { class: "dk-order-intro" }, foxArt(), h("p", {}, L.orderIntro)));
+    for (const p of o.proposals) box.append(proposalEl(p));
+    box.append(h("h2", {}, L.rules));
+    if (!o.rules.length) box.append(h("p", { class: "row-hint" }, L.noRules));
+    for (const r of o.rules) box.append(ruleEl(r));
+    if (o.lessons.length) {
+      box.append(h("h2", {}, L.lessons), h("ul", { class: "dk-lessons" }, o.lessons.map((x) =>
+        h("li", {}, h("span", {}, x.text), h("small", {}, date(x.at))))));
+    }
+    return box;
+  }
+
+  function proposalEl(p) {
+    const answer = async (accept) => {
+      try {
+        await post("order/answer", { id: p.id, accept });
+        if (accept) toast(L.ruleSaved);
+      } catch (e) { toast(e.message, true); }
+      refreshOrder();
+    };
+    return h("div", { class: "dk-proposal" }, foxArt(),
+      h("div", { class: "dk-proposal-text" }, h("strong", {}, L.noticed),
+        h("p", {}, L.noticedText(p.label, p.target, p.count)),
+        p.examples.length ? h("small", {}, p.examples.join(" · ")) : "",
+        h("div", { class: "dk-proposal-actions" },
+          h("button", { type: "button", class: "btn primary", onclick: () => answer(true) }, L.accept),
+          h("button", { type: "button", class: "btn", onclick: () => answer(false) }, L.decline))));
+  }
+
+  function ruleEl(r) {
+    const toggle = h("input", { type: "checkbox", role: "switch", checked: r.on, "aria-label": r.label,
+      onchange: async (e) => {
+        try { await post("order/rule", { ...r, on: e.target.checked }); } catch (err) { toast(err.message, true); }
+        refreshOrder();
+      } });
+    const meta = [r.source === "learned" ? L.learned : r.source === "chat" ? L.fromChat : "",
+                  r.hits ? L.ruleHits(r.hits) : "", r.tell ? `💬 ${r.tell}` : ""].filter(Boolean).join(" · ");
+    return h("div", { class: "dk-rule" + (r.on ? "" : " off") },
+      h("span", { class: "switch" }, toggle, h("span", { class: "knob" })),
+      h("div", { class: "dk-rule-text" }, h("strong", {}, r.label, h("span", { class: "dk-arrow" }, " → "), r.to),
+        meta ? h("small", {}, meta) : ""),
+      button("dk-rename", L.editRule, () => ruleDialog(r), { iconOnly: true }),
+      button("dk-trash", L.del, async () => {
+        try { await post("order/delete", { id: r.id }); } catch (e) { toast(e.message, true); }
+        refreshOrder();
+      }, { iconOnly: true, cls: "danger" }));
+  }
+
+  async function ruleDialog(rule = {}) {
+    const field = (label, input, hint) => h("label", { class: "dk-field" }, h("span", {}, label), input,
+                                             hint ? h("small", {}, hint) : "");
+    const words = h("input", { class: "text-input", value: (rule.words || []).join(", "), placeholder: L.ruleWordsHint });
+    const kind = h("select", { class: "select" }, ["", ...Object.keys(L.kindNames)].map((k) =>
+      h("option", { value: k, selected: (rule.kinds || [""])[0] === k }, k ? L.kindNames[k] : L.anyKind)));
+    const to = h("input", { class: "text-input", value: rule.to || "", placeholder: L.ruleToHint.split(": ").pop() });
+    const tell = h("input", { class: "text-input", value: rule.tell || "", placeholder: L.ruleTellHint });
+    let data = null;
+    setTimeout(() => words.focus());
+    await modal(rule.id ? L.editRule : L.newRule, [h("div", { class: "dk-form" },
+      field(L.ruleWords, words), field(L.ruleKinds, kind), field(L.ruleTo, to, L.ruleToHint), field(L.ruleTell, tell))], [
+      { label: L.cancel },
+      { label: L.save, primary: true, run: () => {
+        data = { ...rule, words: words.value, kinds: kind.value ? [kind.value] : [], to: to.value, tell: tell.value };
+      } },
+    ]);
+    if (!data) return;
+    try {
+      await post("order/rule", data);
+      toast(L.ruleSaved);
+    } catch (e) {
+      toast(e.message, true);
+      return ruleDialog({ ...data, words: data.words.split(",").map((w) => w.trim()) });
+    }
+    refreshOrder();
+  }
+
+  async function sortNow() {
+    let moves;
+    try { moves = (await get("order/plan")).moves; } catch (e) { return toast(e.message, true); }
+    if (!moves.length) return toast(L.nothingToSort);
+    let ok = false;
+    await modal(L.sortNow, [h("ul", { class: "dk-plan" }, moves.map((m) =>
+      h("li", {}, kindIcon(m.kind), h("span", {}, m.name), h("small", {}, `→ ${m.to}`))))], [
+      { label: L.cancel },
+      { label: L.sortPlan(moves.length), primary: true, run: () => { ok = true; } },
+    ]);
+    if (!ok) return;
+    let done = [];
+    try { done = await post("order/apply", { moves }); } catch (e) { toast(e.message, true); }
+    if (state.view !== "files") setView("files");
+    await load();
+    refreshInfo();
+    foxCarry(done, root.querySelector(".dk-bar .dk-actions"));
   }
 
   async function rename(item) {
@@ -799,6 +1145,7 @@
   // --- Загрузка ---
 
   const queue = [];
+  const placedNow = [];
   let uploading = null;
   const panel = h("div", { class: "dk-uploads", hidden: true, role: "status", "aria-live": "polite" });
   document.body.append(panel);
@@ -815,7 +1162,7 @@
     uploading = job || null;
     if (!job) {
       showPanel();
-      load();
+      load().then(() => foxCarry(placedNow.splice(0), panel.hidden ? root.querySelector(".dk-upload") : panel));
       refreshInfo();
       return;
     }
@@ -828,10 +1175,10 @@
     xhr.setRequestHeader("Content-Type", "application/octet-stream");
     xhr.upload.onprogress = (e) => { job.loaded = e.loaded; showPanel(); };
     xhr.onload = () => {
-      let err = null;
-      if (xhr.status !== 200) {
-        try { err = JSON.parse(xhr.responseText).error; } catch { err = `HTTP ${xhr.status}`; }
-      }
+      let err = null, res = null;
+      try { res = JSON.parse(xhr.responseText); } catch { /* ответ без JSON */ }
+      if (xhr.status !== 200) err = res?.error || `HTTP ${xhr.status}`;
+      else if (res?.placed) placedNow.push(res.placed);  // правило порядка сразу разложило файл
       finish(job, err);
     };
     xhr.onerror = () => finish(job, L.uploadErrors(1));
@@ -884,23 +1231,30 @@
   window.addEventListener("beforeunload", (e) => { if (uploading) e.preventDefault(); });
 
   // --- Просмотр ---
+  // Плавное листание с лентой миниатюр, увеличение колёсиком и перетаскиванием,
+  // тёмный кинорежим для видео и панель «Связанное» сбоку.
 
   const viewer = h("div", { class: "dk-viewer", hidden: true, role: "dialog", "aria-modal": "true" });
   document.body.append(viewer);
   let viewing = null;  // { list, index }
+  let zoom = { s: 1, x: 0, y: 0 };
+  let sideOn = stored("side", false);
+  let cinemaOn = stored("cinema", true);
+  let idleTimer = 0;
 
   function preview(item, list) {
     const index = Math.max(0, list.findIndex((i) => i.path === item.path));
     viewing = { list, index };
-    showViewer();
+    showViewer(0);
   }
 
-  async function showViewer() {
+  function showViewer(dir = 0) {
     const { list, index } = viewing;
     const item = list[index];
     const url = fileUrl(item.path);
+    zoom = { s: 1, x: 0, y: 0 };
     let body;
-    if (item.kind === "image") body = h("img", { src: url, alt: item.name });
+    if (item.kind === "image") body = h("img", { src: url, alt: item.name, class: "dk-zoomable", draggable: "false" });
     else if (item.kind === "video") body = h("video", { src: url, controls: true, autoplay: true, playsinline: true });
     else if (item.kind === "audio") body = h("audio", { src: url, controls: true, autoplay: true });
     else if (item.kind === "pdf") body = h("iframe", { src: url, title: item.name });
@@ -916,26 +1270,90 @@
       b.append(icon(d < 0 ? "i-dk-prev" : "i-dk-next"));
       return b;
     };
-    const tool = (id, label, onclick) => {
-      const b = h("button", { type: "button", class: "icon-btn", title: label, "aria-label": label, onclick });
+    const tool = (id, label, onclick, on) => {
+      const b = h("button", { type: "button", class: "icon-btn" + (on ? " on" : ""), title: label, "aria-label": label,
+                              "aria-pressed": on === undefined ? null : String(on), onclick });
       b.append(icon("i-" + id));
       return b;
     };
+    const files = state.view === "files";
+    const stage = h("div", { class: "dk-stage" + (dir ? ` dk-slide-${dir > 0 ? "next" : "prev"}` : "") }, body);
     viewer.replaceChildren(
       h("div", { class: "dk-viewer-top" },
         h("div", { class: "dk-viewer-title" }, h("strong", {}, item.name),
           h("small", {}, `${list.length > 1 ? `${index + 1} / ${list.length} · ` : ""}${size(item.size)}`)),
-        state.view === "files" && window.Yakumo.ask ? tool("dk-ask", L.askYakumo, () => { closeViewer(); askYakumo([item]); }) : "",
+        ...(item.kind === "image" ? [tool("dk-zoomout", L.zoomOut, () => zoomBy(1 / 1.5)),
+                                     tool("dk-zoomin", L.zoomIn, () => zoomBy(1.5)),
+                                     tool("dk-fit", L.zoomReset, () => zoomBy(0))] : []),
+        item.kind === "video" ? tool("dk-cinema", L.cinema, () => {
+          cinemaOn = !cinemaOn;
+          store("cinema", cinemaOn);
+          showViewer();
+        }, cinemaOn) : "",
+        files ? tool("dk-related", L.related, () => { sideOn = !sideOn; store("side", sideOn); showViewer(); }, sideOn) : "",
+        files && DOCS.has(item.kind) ? tool("dk-summary", L.summary, () => summarize(item)) : "",
+        files && window.Yakumo.ask ? tool("dk-ask", L.askYakumo, () => { closeViewer(); askYakumo([item]); }) : "",
         tool("dk-download", L.download, () => download([item])),
-        state.view === "files" ? tool("dk-share", L.share, () => share(item)) : "",
-        state.view === "files" ? tool("dk-trash", L.del, () => { closeViewer(); remove([item]); }) : "",
+        files ? tool("dk-share", L.share, () => share(item)) : "",
+        files ? tool("dk-trash", L.del, () => { closeViewer(); remove([item]); }) : "",
         tool("dk-x", L.close, closeViewer)),
-      h("div", { class: "dk-stage" }, body),
+      h("div", { class: "dk-viewer-main" }, stage, files && sideOn ? sideEl(item) : ""),
+      list.length > 1 ? stripEl(list, index) : "",
       ...(list.length > 1 ? [nav(-1), nav(1)] : []));
     viewer.hidden = false;
     viewer.dataset.kind = item.kind;
+    viewer.classList.toggle("cinema", item.kind === "video" && cinemaOn);
+    wake();
     viewer.querySelector(".dk-viewer-top .icon-btn:last-child").focus();
     if (item.kind === "text") showText(item, body);
+    for (const d of [-1, 1]) {  // соседние фото — заранее, чтобы листались без задержки
+      const next = list[(index + d + list.length) % list.length];
+      if (next.kind === "image") new Image().src = fileUrl(next.path);
+    }
+  }
+
+  function stripEl(list, index) {
+    const strip = h("div", { class: "dk-strip", "aria-label": L.title });
+    list.slice(0, 400).forEach((it, i) => {
+      const b = h("button", { type: "button", class: "dk-strip-item" + (i === index ? " on" : ""), title: it.name,
+                              "aria-label": it.name, "aria-current": i === index ? "true" : null, onclick: () => jump(i) });
+      b.append(it.kind === "image" ? h("img", { src: fileUrl(it.path), alt: "", loading: "lazy", draggable: "false" })
+        : kindIcon(it.kind));
+      strip.append(b);
+    });
+    requestAnimationFrame(() => strip.children[index]?.scrollIntoView({ inline: "center", block: "nearest" }));
+    return strip;
+  }
+
+  function why(text) {
+    if (text.startsWith("words:")) return L.whyWords(text.slice(6));
+    if (text.startsWith("memory:")) return `${L.whyMemory}: ${text.slice(7)}`;
+    return L.whyMeaning;
+  }
+
+  // «Связанное»: похожие по тексту и смыслу файлы и что кицунэ помнит о файле.
+  function sideEl(item) {
+    const side = h("aside", { class: "dk-side", "aria-label": L.related }, h("h3", {}, L.related),
+      h("p", { class: "row-hint dk-busy" }, foxArt("dk-fox-mini"), L.sniffing));
+    get("related", { path: item.path }).then((res) => {
+      if (viewing?.list[viewing.index]?.path !== item.path) return;
+      const parts = [h("h3", {}, L.related)];
+      if (res.facts.length) {
+        parts.push(h("div", { class: "dk-side-facts" }, h("strong", {}, L.relatedFacts),
+          ...res.facts.map((f) => h("p", {}, f))));
+      }
+      if (!res.files.length) parts.push(h("p", { class: "row-hint" }, L.relatedNone));
+      for (const f of res.files) {
+        parts.push(h("button", { type: "button", class: "dk-side-file", title: f.path, onclick: () => {
+          const i = viewing.list.findIndex((x) => x.path === f.path);
+          if (i >= 0) return jump(i);
+          closeViewer();
+          openPath(f.path);
+        } }, kindIcon(f.kind), h("span", {}, h("b", {}, f.name), h("small", {}, why(f.why)))));
+      }
+      side.replaceChildren(...parts);
+    }).catch((e) => side.replaceChildren(h("h3", {}, L.related), h("p", { class: "dk-error" }, e.message)));
+    return side;
   }
 
   async function showText(item, pre) {
@@ -958,22 +1376,82 @@
   function step(d) {
     if (!viewing) return;
     viewing.index = (viewing.index + d + viewing.list.length) % viewing.list.length;
-    showViewer();
+    showViewer(d);
+  }
+
+  function jump(i) {
+    if (!viewing || i === viewing.index) return;
+    const d = i > viewing.index ? 1 : -1;
+    viewing.index = i;
+    showViewer(d);
   }
 
   function closeViewer() {
     viewer.hidden = true;
     viewer.replaceChildren();  // остановить видео
+    viewer.classList.remove("cinema", "idle");
     viewing = null;
   }
 
-  let swipeX = null;
-  viewer.addEventListener("pointerdown", (e) => { swipeX = e.clientX; });
+  // Кинорежим: панели прячутся, пока мышь не двигается.
+  function wake() {
+    viewer.classList.remove("idle");
+    clearTimeout(idleTimer);
+    if (viewer.classList.contains("cinema")) idleTimer = setTimeout(() => viewer.classList.add("idle"), 2500);
+  }
+  viewer.addEventListener("pointermove", wake);
+
+  // Увеличение: колёсико — к точке под курсором, двойной щелчок — 2.5× и обратно, при увеличении — перетаскивание.
+  const zoomImg = () => viewer.querySelector(".dk-zoomable");
+  function applyZoom(img) {
+    img.style.transform = `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.s})`;
+    img.classList.toggle("zoomed", zoom.s > 1);
+  }
+  function zoomAt(img, factor, cx, cy) {
+    const r = img.getBoundingClientRect();  // с учётом текущего увеличения
+    const ox = cx - (r.left + r.width / 2) + zoom.x, oy = cy - (r.top + r.height / 2) + zoom.y;
+    const s = Math.min(8, Math.max(1, zoom.s * factor));
+    const k = s / zoom.s;
+    zoom = s === 1 ? { s: 1, x: 0, y: 0 } : { s, x: ox - (ox - zoom.x) * k, y: oy - (oy - zoom.y) * k };
+    applyZoom(img);
+  }
+  function zoomBy(factor) {
+    const img = zoomImg();
+    if (!img) return;
+    if (!factor) { zoom = { s: 1, x: 0, y: 0 }; return applyZoom(img); }
+    const r = img.getBoundingClientRect();
+    zoomAt(img, factor, r.left + r.width / 2, r.top + r.height / 2);
+  }
+  viewer.addEventListener("wheel", (e) => {
+    const img = zoomImg();
+    if (!img || !e.target.closest(".dk-stage")) return;
+    e.preventDefault();
+    zoomAt(img, e.deltaY < 0 ? 1.2 : 1 / 1.2, e.clientX, e.clientY);
+  }, { passive: false });
+  viewer.addEventListener("dblclick", (e) => {
+    const img = zoomImg();
+    if (!img || e.target !== img) return;
+    if (zoom.s > 1) zoomBy(0); else zoomAt(img, 2.5, e.clientX, e.clientY);
+  });
+
+  let drag = null;
+  viewer.addEventListener("pointerdown", (e) => {
+    drag = { x: e.clientX, y: e.clientY, zx: zoom.x, zy: zoom.y, pan: zoom.s > 1 && e.target === zoomImg() };
+    if (drag.pan) { e.target.setPointerCapture(e.pointerId); e.preventDefault(); }
+  });
+  viewer.addEventListener("pointermove", (e) => {
+    if (!drag?.pan) return;
+    zoom.x = drag.zx + e.clientX - drag.x;
+    zoom.y = drag.zy + e.clientY - drag.y;
+    applyZoom(zoomImg());
+  });
   viewer.addEventListener("pointerup", (e) => {
-    if (swipeX != null && viewing?.list[viewing.index].kind === "image" && Math.abs(e.clientX - swipeX) > 60) {
-      step(e.clientX < swipeX ? 1 : -1);
+    // Листание жестом — только у фото без увеличения.
+    if (drag && !drag.pan && zoom.s === 1 && viewing?.list[viewing.index].kind === "image"
+        && Math.abs(e.clientX - drag.x) > 60 && Math.abs(e.clientX - drag.x) > Math.abs(e.clientY - drag.y)) {
+      step(e.clientX < drag.x ? 1 : -1);
     }
-    swipeX = null;
+    drag = null;
   });
   viewer.addEventListener("click", (e) => { if (e.target.classList.contains("dk-stage")) closeViewer(); });
 
@@ -984,29 +1462,31 @@
     let info = null;
     async function show() {
       try { info = await get("smart"); } catch (e) { body.replaceChildren(e.message); return; }
-      const toggle = h("input", { type: "checkbox", role: "switch", checked: info.photos, disabled: !info.cloud,
+      const toggle = (key) => h("input", { type: "checkbox", role: "switch", checked: info[key], disabled: !info.cloud,
         onchange: async (e) => {
-          try { await post("smart", { photos: e.target.checked }); } catch (err) { toast(err.message, true); }
+          try { await post("smart", { [key]: e.target.checked }); } catch (err) { toast(err.message, true); }
           show();
         } });
+      const row = (key, title, hint) => h("label", { class: "row" },
+        h("span", { class: "row-text" }, h("span", { class: "row-title" }, title), h("span", { class: "row-hint" }, hint)),
+        h("span", { class: "switch" }, toggle(key), h("span", { class: "knob" })));
       let note = "";
       if (!info.cloud) note = h("p", { class: "dk-warn" }, L.noCloud);
       else if (!info.vision_model) note = h("p", { class: "dk-warn" }, L.noVision);
       else note = h("p", { class: "row-hint" }, L.visionModel(info.vision_model),
-        info.photos ? ` · ${L.photosDone(info.photos_done)}` : "");
+        info.photos ? ` · ${L.photosDone(info.photos_done)}` : "", info.ocr ? ` · ${L.ocrDone(info.ocr_done)}` : "");
       body.replaceChildren(
         h("p", {}, L.smartText(info.texts)),
         info.running && info.queue ? h("p", { class: "row-hint" }, L.smartBusy(info.done, info.queue)) : "",
-        h("label", { class: "row" },
-          h("span", { class: "row-text" }, h("span", { class: "row-title" }, L.photos),
-            h("span", { class: "row-hint" }, L.photosHint)),
-          h("span", { class: "switch" }, toggle, h("span", { class: "knob" }))),
+        row("photos", L.photos, L.photosHint),
+        row("ocr", L.ocr, L.ocrHint),
         note,
         info.photo_error ? h("p", { class: "dk-error" }, info.photo_error) : "",
+        info.ocr_error ? h("p", { class: "dk-error" }, info.ocr_error) : "",
         h("p", { class: "row-hint dk-tip" }, L.chatTip));
     }
     await show();
-    const timer = setInterval(() => { if (info?.running || info?.photos) show(); }, 3000);
+    const timer = setInterval(() => { if (info?.running || info?.photos || info?.ocr) show(); }, 3000);
     await modal(L.smart, [body], [{ label: L.close, primary: true }]);
     clearInterval(timer);
   }
@@ -1111,10 +1591,11 @@
 
   const toasts = h("div", { class: "dk-toasts", role: "status", "aria-live": "polite" });
   document.body.append(toasts);
-  function toast(text, bad = false) {
+  function toast(text, bad = false, ms = bad ? 6000 : 3000) {
     const t = h("div", { class: "dk-toast" + (bad ? " bad" : "") }, text);
     toasts.append(t);
-    setTimeout(() => t.remove(), bad ? 6000 : 3000);
+    if (ms) setTimeout(() => t.remove(), ms);
+    return t;
   }
 
   // --- Клавиши ---
@@ -1122,9 +1603,13 @@
   document.addEventListener("keydown", (e) => {
     if (menuEl && e.key === "Escape") return closeMenu();
     if (viewing) {
+      if (document.querySelector("dialog[open]")) return;
       if (e.key === "Escape") closeViewer();
       else if (e.key === "ArrowLeft") step(-1);
       else if (e.key === "ArrowRight") step(1);
+      else if (e.key === "+" || e.key === "=") zoomBy(1.5);
+      else if (e.key === "-") zoomBy(1 / 1.5);
+      else if (e.key === "0") zoomBy(0);
       return;
     }
     if (document.body.dataset.page !== "disk" || document.querySelector("dialog[open]")) return;

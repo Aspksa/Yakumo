@@ -14,7 +14,7 @@ import difflib
 import io
 import time
 
-from . import tables
+from . import insight, tables
 from .extract import extract
 from .store import Disk, DiskError
 
@@ -37,7 +37,7 @@ def _paths(args: dict) -> list[str]:
     return paths
 
 
-def register(ctx, disk: Disk, index, search) -> None:
+def register(ctx, disk: Disk, index, search, organizer=None, namer=None) -> None:
     ru = lambda: ctx.config.language != "en"  # noqa: E731
     q = lambda s: f"«{s}»" if ru() else f"“{s}”"  # noqa: E731
     name_of = lambda p: (p or "").replace("\\", "/").rstrip("/").split("/")[-1] or ("Диск" if ru() else "Drive")  # noqa: E731
@@ -129,6 +129,34 @@ def register(ctx, disk: Disk, index, search) -> None:
     def delete(args):
         return {"count": disk.delete(_paths(args))}
 
+    def rules(_args):
+        view = organizer.view()
+        return {"rules": [{"id": r["id"], "words": r["words"], "kinds": r["kinds"], "to": r["to"], "on": r["on"],
+                           "tell": r.get("tell"), "hits": r.get("hits", 0)} for r in view["rules"]],
+                "proposals": [{"words": p["words"], "kinds": p["kinds"], "to": p["to"], "seen": p["count"]}
+                              for p in view["proposals"]],
+                "lessons": [x["text"] for x in view["lessons"][:5]],
+                "note": "Правила срабатывают для новых файлов в корне Диска и в «Загрузках»/«Входящих»."}
+
+    def rule_save(args):
+        return organizer.save_rule({k: args.get(k) for k in ("words", "kinds", "to", "tell", "name")}, source="chat")
+
+    def names(args):
+        return namer.suggest(str(args.get("path", "")), args.get("all") is not True)
+
+    def related(args):
+        res = insight.related(disk, index, getattr(ctx, "memory", None), str(args.get("path", "")))
+        return {"files": [{"path": f["path"], "why": f["why"]} for f in res["files"]], "facts": res["facts"]}
+
+    def summary(args):
+        return insight.save_summary(disk, index, ctx.cloud, str(args.get("path", "")), ctx.config.language,
+                                    getattr(ctx, "memory", None))
+
+    def rule_title(a) -> str:
+        what = ", ".join(map(str, a.get("words") or [])) if isinstance(a.get("words"), list) else str(a.get("words") or "")
+        return (f"Правило: {what or a.get('kinds')} → {q(str(a.get('to', '')))}" if ru()
+                else f"Rule: {what or a.get('kinds')} → {q(str(a.get('to', '')))}")
+
     def many(args) -> str:
         try:
             paths = _paths(args)
@@ -170,6 +198,30 @@ def register(ctx, disk: Disk, index, search) -> None:
          lambda a: (f"Создать файл {q(name_of(a.get('path')))}" if ru() else f"Create file {q(name_of(a.get('path')))}")),
         ("disk_delete", 'удалить в корзину (можно восстановить). args: {"paths": ["путь", ...]}', delete, True,
          lambda a: (f"Удалить в корзину {many(a)}" if ru() else f"Move to trash {many(a)}")),
+    ]
+    if organizer:
+        tools += [
+            ("disk_rules", "правила порядка на Диске (куда кицунэ сама кладёт новые файлы), её предложения и уроки. "
+                           "args: {}", rules, False, lambda a: "Смотрю правила Диска" if ru() else "Checking Drive rules"),
+            ("disk_rule_save", 'новое правило порядка: новые файлы (в корне Диска и в «Загрузках»), где в имени или '
+                               'начале текста есть одно из слов (и/или нужного типа), сами переезжают в папку. '
+                               '{год} и {месяц} в папке подставляются. args: {"words": ["договор"], "kinds": ["pdf"] '
+                               '(image, video, audio, pdf, text, doc, sheet, slides, archive, book), '
+                               '"to": "Документы/{год}", "tell": "что написать в чат при срабатывании или пусто"}',
+             rule_save, True, rule_title),
+        ]
+    if namer:
+        tools.append(("disk_name_ideas", 'понятные имена для файлов с именами вроде IMG_4512 или Скан001 в папке '
+                                         '(или для одного файла). Переименовывай потом через disk_rename. '
+                                         'args: {"path": "папка или файл"}', names, False,
+                      lambda a: "Придумываю понятные имена" if ru() else "Thinking of clear names"))
+    tools += [
+        ("disk_related", 'файлы, связанные с этим: похожие по тексту и смыслу и связанные через память. '
+                         'args: {"path": "путь/к/файлу"}', related, False,
+         lambda a: (f"Ищу связанное с {q(name_of(a.get('path')))}" if ru() else f"Finding files related to {q(name_of(a.get('path')))}")),
+        ("disk_summary", 'сделать конспект длинного файла и сохранить его рядом («<имя> — конспект.md»). '
+                         'args: {"path": "путь/к/файлу"}', summary, True,
+         lambda a: (f"Конспект {q(name_of(a.get('path')))}" if ru() else f"Summary of {q(name_of(a.get('path')))}")),
     ]
     for name, description, run, change, title in tools:
         ctx.chat_tool(name, description, run, change=change, title=title)

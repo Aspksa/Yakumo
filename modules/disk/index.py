@@ -11,6 +11,7 @@ import base64
 import io
 import json
 import logging
+import math
 import os
 import re
 import sqlite3
@@ -19,7 +20,7 @@ import time
 from pathlib import Path
 from typing import Callable
 
-from .extract import can_extract, extract
+from .extract import can_extract, extract, pdf_images
 from .store import SERVICE, Disk, norm, query_words
 
 log = logging.getLogger("yakumo.modules.disk")
@@ -28,6 +29,18 @@ RESCAN = 300                 # секунд между полными прохо
 DEBOUNCE = 2.0               # подождать после изменения, чтобы собрать пачку изменений
 PHOTO_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
 PHOTO_RAW_LIMIT = 4 * 1024**2  # без Pillow фото отправляется как есть, если не больше этого
+
+OCR_PROMPT = {
+    "ru": ("Перепиши весь текст с этого изображения (скан документа, чек, квитанция) как есть: строки, суммы, даты, "
+           "номера. Без пояснений и без Markdown. Если текста нет, ответь одним словом: НЕТ"),
+    "en": ("Transcribe all text from this image (a scanned document, receipt, invoice) as is: lines, amounts, dates, "
+           "numbers. No comments, no Markdown. If there is no text, reply with one word: NONE"),
+}
+NO_TEXT = {"нет", "none", "нет.", "none.", "нет текста", "no text"}
+# Фото, похожие на документы: по имени, папке или по описанию — их стоит распознать.
+SCAN_HINT = re.compile(r"скан|scan|чек|receipt|квитанц|invoice|документ|document|договор|contract|паспорт|справк|"
+                       r"счет|счёт|bill|текст|text|страниц|page|бланк|form|таблиц|письм|letter", re.I)
+OCR_PAGES = 3
 
 PHOTO_PROMPT = {
     "ru": ("Опиши это изображение для поиска по личному архиву: что и кто изображено, где это, какое событие, "
@@ -52,10 +65,14 @@ class Index:
             self.db.execute("""CREATE TABLE IF NOT EXISTS files (
                 path TEXT PRIMARY KEY, mtime INTEGER, size INTEGER, text TEXT, norm TEXT,
                 photo TEXT, photo_norm TEXT, photo_error TEXT)""")
+            have = {r[1] for r in self.db.execute("PRAGMA table_info(files)")}
+            for col in ("ocr", "ocr_norm", "ocr_error"):  # база от прошлой версии: добавить колонки распознавания
+                if col not in have:
+                    self.db.execute(f"ALTER TABLE files ADD COLUMN {col} TEXT")
             self.db.commit()
         self.wake = threading.Event()
         self.stopping = False
-        self.state = {"running": False, "done": 0, "queue": 0, "photo_error": None}
+        self.state = {"running": False, "done": 0, "queue": 0, "photo_error": None, "ocr_error": None}
         self.thread: threading.Thread | None = None
 
     # --- Настройки умного поиска ---
@@ -65,12 +82,24 @@ class Index:
             data = json.loads(self.settings_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             data = {}
-        return {"photos": data.get("photos") is True}
+        return {"photos": data.get("photos") is True, "ocr": data.get("ocr") is True}
+
+    def _store(self, **changes) -> None:
+        tmp = self.settings_path.with_suffix(".tmp")
+        tmp.write_text(json.dumps({**self.settings(), **changes}), encoding="utf-8")
+        os.replace(tmp, self.settings_path)
+
+    def set_ocr(self, on: bool) -> None:
+        self._store(ocr=bool(on))
+        if on:
+            with self.lock:
+                self.db.execute("UPDATE files SET ocr_error = NULL WHERE ocr IS NULL")
+                self.db.commit()
+            self.state["ocr_error"] = None
+        self.poke()
 
     def set_photos(self, on: bool) -> None:
-        tmp = self.settings_path.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"photos": bool(on)}), encoding="utf-8")
-        os.replace(tmp, self.settings_path)
+        self._store(photos=bool(on))
         if on:
             with self.lock:  # дать фото с прошлыми ошибками ещё одну попытку
                 self.db.execute("UPDATE files SET photo_error = NULL WHERE photo IS NULL")
@@ -82,7 +111,8 @@ class Index:
         with self.lock:
             texts = self.db.execute("SELECT count(*) FROM files WHERE text != ''").fetchone()[0]
             photos = self.db.execute("SELECT count(*) FROM files WHERE photo IS NOT NULL").fetchone()[0]
-        return {**self.settings(), **self.state, "texts": texts, "photos_done": photos}
+            scans = self.db.execute("SELECT count(*) FROM files WHERE ocr IS NOT NULL AND ocr != ''").fetchone()[0]
+        return {**self.settings(), **self.state, "texts": texts, "photos_done": photos, "ocr_done": scans}
 
     # --- Фоновое обновление ---
 
@@ -104,6 +134,8 @@ class Index:
                 self.scan()
                 if self.settings()["photos"] and self.describe:
                     self.describe_photos()
+                if self.settings()["ocr"] and self.describe:
+                    self.recognize()
             except Exception:  # noqa: BLE001
                 log.exception("Индекс Диска не обновился")
             self.wake.wait(RESCAN)
@@ -152,7 +184,8 @@ class Index:
                 # Изменённое фото описываем заново, а описание переименованного сохраняется (см. moved).
                 self.db.execute("""INSERT INTO files (path, mtime, size, text, norm) VALUES (?, ?, ?, ?, ?)
                     ON CONFLICT(path) DO UPDATE SET mtime=excluded.mtime, size=excluded.size,
-                    text=excluded.text, norm=excluded.norm, photo=NULL, photo_norm=NULL, photo_error=NULL""",
+                    text=excluded.text, norm=excluded.norm, photo=NULL, photo_norm=NULL, photo_error=NULL,
+                    ocr=NULL, ocr_norm=NULL, ocr_error=NULL""",
                                 (rel, mtime, size, text, norm(text)))
                 self.db.commit()
             self.state["done"] += 1
@@ -192,16 +225,52 @@ class Index:
                 self.db.commit()
             self.state["photo_error"] = None
 
+    def recognize(self) -> None:
+        """Текст со сканов и чеков: PDF без текстового слоя и фото, похожие на документы."""
+        tried: set[str] = set()
+        while not self.stopping and self.settings()["ocr"]:
+            with self.lock:
+                rows = self.db.execute("""SELECT path, text, photo FROM files WHERE ocr IS NULL AND ocr_error IS NULL
+                    AND ((lower(path) LIKE '%.pdf' AND text = '') OR """ +
+                    " OR ".join("lower(path) LIKE ?" for _ in PHOTO_EXT) + ")", [f"%{e}" for e in PHOTO_EXT]).fetchall()
+            todo = [r for r in rows if r[0] not in tried and (r[0].lower().endswith(".pdf") or SCAN_HINT.search(r[0])
+                                                                or (r[2] and SCAN_HINT.search(r[2])))]
+            if not todo:
+                return
+            rel = todo[0][0]
+            tried.add(rel)
+            path = self.disk.root / rel
+            prompt = OCR_PROMPT.get(self.language(), OCR_PROMPT["ru"])
+            try:
+                images = pdf_images(path, OCR_PAGES) if rel.lower().endswith(".pdf") else [photo_bytes(path)]
+                if not images:
+                    raise PhotoSkip("в PDF нет картинок страниц")
+                pages = [self.describe(image, mime, prompt).strip() for image, mime in images]
+                text, error = "\n\n".join(p for p in pages if p.lower().strip(" .") not in NO_TEXT), None
+            except PhotoSkip as exc:
+                text, error = None, str(exc)
+            except Exception as exc:  # noqa: BLE001 — связь, ключ, модель: остановиться до следующего раза
+                self.state["ocr_error"] = str(exc)
+                log.warning("Скан не распознан: %s", exc)
+                return
+            with self.lock:
+                self.db.execute("UPDATE files SET ocr = ?, ocr_norm = ?, ocr_error = ? WHERE path = ?",
+                                (text, norm(text) if text else None, error, rel))
+                self.db.commit()
+            self.state["ocr_error"] = None
+
     # --- Поиск ---
 
     def search(self, query: str, limit: int = 200) -> list[dict]:
         words = query_words(query)
         if not words:
             return []
-        cond = " AND ".join("instr(norm || ' ' || ifnull(photo_norm, ''), ?) > 0" for _ in words)
+        cond = " AND ".join("instr(norm || ' ' || ifnull(ocr_norm, '') || ' ' || ifnull(photo_norm, ''), ?) > 0"
+                            for _ in words)
         with self.lock:
-            rows = self.db.execute(f"SELECT path, text, norm, photo, photo_norm FROM files WHERE {cond} LIMIT 2000",
-                                   words).fetchall()
+            rows = self.db.execute(f"""SELECT path, text || CASE WHEN ocr != '' THEN char(10) || ocr ELSE '' END,
+                norm || CASE WHEN ocr_norm != '' THEN char(10) || ocr_norm ELSE '' END, photo, photo_norm
+                FROM files WHERE {cond} LIMIT 2000""", words).fetchall()
         found = []
         for path, text, text_n, photo, photo_n in rows:
             in_text = all(w in text_n for w in words)
@@ -212,18 +281,41 @@ class Index:
         found.sort(key=lambda f: -f["score"])
         return found[:limit]
 
+    def similar(self, rel: str, limit: int = 8) -> list[dict]:
+        """Похожие документы: общие редкие слова текста и имени (без нейросети)."""
+        data = self.text_of(rel)
+        words = keywords(f"{Path(rel).stem.replace('_', ' ')} {data['text'][:20000]} {data['photo'] or ''}")
+        if not words:
+            return []
+        cond = " OR ".join("instr(norm || ' ' || ifnull(ocr_norm, '') || ' ' || ifnull(photo_norm, ''), ?) > 0"
+                           for _ in words)
+        with self.lock:
+            total = self.db.execute("SELECT count(*) FROM files").fetchone()[0] or 1
+            rows = self.db.execute(f"""SELECT path, norm || ' ' || ifnull(ocr_norm, '') || ' ' || ifnull(photo_norm, '')
+                FROM files WHERE path != ? AND ({cond}) LIMIT 3000""", [rel, *words]).fetchall()
+        df = {w: sum(1 for _p, t in rows if w in t) for w in words}
+        found = []
+        for path, text in rows:
+            shared = [w for w in words if w in text]
+            if len(shared) < 2:
+                continue
+            score = sum(math.log(1 + total / df[w]) for w in shared)
+            found.append({"path": path, "score": round(score, 2), "words": shared[:4]})
+        found.sort(key=lambda f: -f["score"])
+        return found[:limit]
+
     def documents(self) -> list[tuple[str, int, str]]:
         """Все разобранные документы: (путь, время изменения, текст) — для базы знаний «Памяти»."""
         with self.lock:
-            return self.db.execute("SELECT path, mtime, text FROM files WHERE text IS NOT NULL AND text != ''"
-                                   ).fetchall()
+            return self.db.execute("""SELECT path, mtime, CASE WHEN text != '' THEN text ELSE ocr END FROM files
+                WHERE text != '' OR ocr != ''""").fetchall()
 
     def text_of(self, rel: str) -> dict:
         """Текст и описание фото для чата (при необходимости разбирает файл сразу)."""
         with self.lock:
-            row = self.db.execute("SELECT text, photo FROM files WHERE path = ?", (rel,)).fetchone()
-        if row and (row[0] or row[1]):
-            return {"text": row[0] or "", "photo": row[1]}
+            row = self.db.execute("SELECT text, photo, ocr FROM files WHERE path = ?", (rel,)).fetchone()
+        if row and (row[0] or row[1] or row[2]):
+            return {"text": row[0] or row[2] or "", "photo": row[1]}
         path = self.disk.path(rel)
         return {"text": extract(path) if can_extract(path.name) else "", "photo": None}
 
@@ -263,6 +355,22 @@ def snippet(text: str, text_n: str, words: list[str], width: int = 90) -> str:
     end = min(len(text), start + width * 2)
     cut = " ".join(text[start:end].split())
     return ("…" if start else "") + cut + ("…" if end < len(text) else "")
+
+
+STOP = set("""это этот эта эти того тому что как для или при без над под про после перед между также только
+которые который которая которое если когда чтобы будет было были быть есть может можно нужно очень более менее всех
+всего всем она они оно его её ему ней них нам вам вас нас мне меня себя свой своя свои ваш ваша наш наша один одна
+года году году дата дней день число номер сумма руб рублей this that with from have will were been they their there
+which about into your than then them these those page страница""".split())
+
+
+def keywords(text: str, limit: int = 12) -> list[str]:
+    """Самые частые содержательные слова (основы) документа."""
+    counts: dict[str, int] = {}
+    for w in query_words(text):
+        if len(w) >= 4 and not w.isdigit() and w not in STOP:
+            counts[w] = counts.get(w, 0) + 1
+    return [w for w, _n in sorted(counts.items(), key=lambda kv: -kv[1])[:limit]]
 
 
 def _like_prefix(path: str) -> str:

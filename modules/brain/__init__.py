@@ -111,9 +111,10 @@ def _day(t: int) -> str:
 class MemoryAPI:
     """Память для других модулей: ctx.memory.remember(...), ctx.memory.recall(...)."""
 
-    def __init__(self, memory: Memory, recall, module: str = ""):
+    def __init__(self, memory: Memory, recall, module: str = "", knowledge=None):
         self._memory = memory
         self._recall = recall
+        self._knowledge = knowledge
 
     @property
     def enabled(self) -> bool:
@@ -142,6 +143,16 @@ class MemoryAPI:
     def say(self, text: str) -> dict:
         """Yakumo сама напишет это в чат при следующем открытии."""
         return self._memory.say(text)
+
+    def lesson(self, text: str) -> dict | None:
+        """Урок, который Yakumo вывела сама в другом модуле (например, Диск понял, куда класть чеки)."""
+        return self._memory.lesson(text, "module") if self._memory.enabled else None
+
+    def similar(self, query: str, limit: int = 8) -> list[dict]:
+        """Кусочки документов Диска по смыслу: [{"path", "text", "score"}]."""
+        if not self._memory.enabled or self._knowledge is None:
+            return []
+        return self._knowledge.search(query, limit)
 
     def authored(self, path: str, text: str) -> dict | None:
         """Yakumo написала файл на Диске: если пользователь его поправит, она поучится на правках."""
@@ -209,7 +220,7 @@ def setup(ctx):
                     found[names[kind]].append(item)
         return {k: v[:limit] for k, v in found.items()}
 
-    ctx.memory = MemoryAPI(memory, recall)
+    ctx.memory = MemoryAPI(memory, recall, knowledge=knowledge)
 
     # --- Подсказка чата ---
 
