@@ -496,6 +496,44 @@ class BrainTest(BrainBase):
         self.assertIn("tip_amount", item["fix"])
         self.assertIn("**Где поправить:**", self.post("/api/brain/improvements/copy", {})["text"])
 
+    def test_universe_galaxies_and_star_docs(self):
+        mem = self.memory()
+        mem.add("Сестра Аня любит кошек", about=[{"name": "Аня", "type": "person", "relation": "сестра"}])
+        mem.add("Коллега Олег ведёт отчёты", about=[{"name": "Олег", "type": "person", "relation": "коллега"}])
+        mem.add("Летом ездили в Казань", about=[{"name": "Казань", "type": "place"}])
+        mem.add("Лиза дружит с Аней", about=["Лиза", "Аня"])
+        universe = self.tick("Universe")
+        universe.classify()
+        state = self.get("/api/brain")
+        areas = {e["name"]: e["area"] for e in state["entities"]}
+        self.assertEqual(areas, {"Аня": "family", "Олег": "work", "Казань": "places", "Лиза": "other"})
+        self.assertIn("hobby", state["areas"])
+        # Когда вы не работаете, Yakumo уточняет галактики — один раз на звезду.
+        liza = next(e for e in state["entities"] if e["name"] == "Лиза")
+        FakeCloud.completions = [json.dumps({"areas": {liza["id"]: "friends"}})]
+        self.assertEqual(universe.refine(), 1)
+        self.assertIn("Лиза", [r for r in FakeCloud.requests if not r.get("stream")][-1]["messages"][0]["content"])
+        self.assertEqual(universe.refine(), 0)  # всех уже спросили — без новых запросов
+        by_name = {e["name"]: e for e in self.get("/api/brain")["entities"]}
+        self.assertEqual((by_name["Лиза"]["area"], by_name["Лиза"]["area_by"]), ("friends", "yakumo"))
+        # Перенесли звезду руками — Yakumo её больше не трогает.
+        oleg = by_name["Олег"]
+        state = self.post("/api/brain/item", {"type": "entity", "id": oleg["id"], "area": "hobby"})
+        moved = next(e for e in state["entities"] if e["id"] == oleg["id"])
+        self.assertEqual((moved["area"], moved["area_by"]), ("hobby", "user"))
+        with self.assertRaises(urllib.error.HTTPError):
+            self.post("/api/brain/item", {"type": "entity", "id": oleg["id"], "area": "space"})
+        # Документы, где встречается имя звезды, прилипают к ней.
+        knowledge = self.tick("Knowledge")
+        knowledge.items = [{"path": "Семья/письмо.txt", "text": "Привет, Аня! Как дела?", "v": None},
+                           {"path": "Отчёты/май.txt", "text": "Олег сдал отчёт. Олег молодец.", "v": None},
+                           {"path": "Прочее.txt", "text": "Ананас и банан", "v": None}]
+        universe.docs()
+        docs = self.get("/api/brain")["entity_docs"]
+        self.assertEqual(docs[by_name["Аня"]["id"]], ["Семья/письмо.txt"])
+        self.assertEqual(docs[oleg["id"]], ["Отчёты/май.txt"])
+        self.assertEqual(len(docs), 2)
+
     # --- Контекст компьютера ---
 
     def test_activity_only_with_consent(self):

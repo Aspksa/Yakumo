@@ -28,6 +28,7 @@ from .docs import Docs
 from .grow import Growth
 from .improve import ErrorCatcher, Improvements
 from .selfcode import Code
+from .universe import AREAS, Universe
 from .knowledge import Knowledge
 from .learn import Learner
 from .mind import Mind
@@ -224,7 +225,12 @@ def setup(ctx):
     mind.every("edits", "rest", 10 * 60, growing(growth.edits))
     mind.every("foresee", "rest", 30 * 60, growing(growth.foresee))
     mind.every("census", "any", 60 * 60, lambda: growth.census(len(knowledge.items)))
+    universe = Universe(memory, mind, knowledge, lang)
+    universe.classify()
     mind.every("code", "rest", 10 * 60, code.sync)
+    mind.every("galaxies", "any", 60, universe.classify)
+    mind.every("galaxies_refine", "rest", 15 * 60, universe.refine)
+    mind.every("star_docs", "rest", 10 * 60, universe.docs)
     mind.every("improve", "any", 5 * 60, improve.scan)
     mind.every("improve_refine", "rest", 10 * 60, improve.refine)
     mind.every("ideas", "rest", 30 * 60, growing(improve.ideas))
@@ -609,7 +615,8 @@ def setup(ctx):
                 "facts": memory.facts(), "talks": memory.talks(), "entities": memory.entities(),
                 "promises": sorted(m["promises"], key=lambda p: (p.get("done", False), p.get("due") or "9999")),
                 "events": sorted(m["events"], key=lambda e: e["date"][5:] if e.get("yearly") else e["date"]),
-                "skills": m["skills"], "upcoming": memory.upcoming(7), "versions": memory.versions(), "code": {**code.status(), "map": code.map},
+                "skills": m["skills"], "upcoming": memory.upcoming(7), "versions": memory.versions(), "areas": list(AREAS),
+                "entity_docs": m["meta"].get("entity_docs") or {}, "code": {**code.status(), "map": code.map},
                 "improvements": memory.improvements(),
                 "mind": mind.status(), "knowledge": knowledge.status(),
                 "lessons": sorted(m["lessons"], key=lambda x: -x.get("seen", 1)),
@@ -649,6 +656,11 @@ def setup(ctx):
             memory.skill(d.get("name"), d.get("steps"), str(d.get("when") or ""))
         elif kind == "entity":
             memory.edit_entity(str(d.get("id")), d.get("name"), d.get("entity_type"), d.get("relation"))
+            if d.get("area") is not None:
+                try:
+                    universe.set_area(str(d.get("id")), d.get("area"))
+                except ValueError as exc:
+                    raise BrainError(str(exc)) from exc
         else:
             raise BrainError("Неизвестный тип записи")
         return state()
@@ -799,7 +811,7 @@ def setup(ctx):
     }
     for path, handler in routes.items():
         ctx.route(path, handler)
-    ctx.web("brain.css", "brain.js")
+    ctx.web("brain.css", "universe.css", "universe.js", "brain.js")
     ctx.status(lambda: {"facts": len(memory.data["facts"]), "talks": len(memory.data["talks"]),
                         "enabled": memory.enabled, "mode": mind.mode()})
     ctx.log.info("Память: %s фактов, %s бесед", len(memory.data["facts"]), len(memory.data["talks"]))

@@ -82,6 +82,12 @@
       groupMe: "Обо мне", groupHer: "Сама Yakumo",
       dNeurons: "нейронов", dFacts: "фактов", dPeople: "людей и мест", dBudget: "запросов сегодня", dToday: (n) => `+${n} сегодня`,
       dNoLimit: "без лимита",
+      uni: { title: "Вселенная Yakumo", zoomIn: "Приблизить", zoomOut: "Отдалить", reset: "Вернуть как было", d3: "Объёмный вид (3D)",
+             tour: "Экскурсия: Yakumo облетит ваш мир", next: "Дальше", stopTour: "Остановить",
+             hint: "Колесо или кнопки приближают: издали видны галактики, ближе звёзды, совсем близко — факты, документы и обещания. Звёзды можно перетаскивать, в 3D мир вращается мышью.",
+             areas: { family: "Семья", friends: "Друзья", work: "Работа", home: "Дом и питомцы", places: "Места", health: "Здоровье",
+                      hobby: "Увлечения", other: "Другое" } },
+      area: "Галактика",
       zoomIn: "Приблизить", zoomOut: "Отдалить", zoomReset: "Вернуть как было", mapHint: "Звёзды можно перетаскивать, колесо мыши или кнопки приближают, фон двигается мышью.",
       improve: "Улучшения", improveLead: "Что стоит доработать в самой Yakumo. Пункты появляются сами: из её неудач, ошибок программы и её собственных идей. Каждый оформлен как задача; скопируйте и отдайте Claude.",
       impStatuses: { new: "Новые", given: "Отданы", done: "Сделаны", rejected: "Отклонены" },
@@ -177,6 +183,12 @@
       groupMe: "About me", groupHer: "Yakumo herself",
       dNeurons: "neurons", dFacts: "facts", dPeople: "people & places", dBudget: "requests today", dToday: (n) => `+${n} today`,
       dNoLimit: "no limit",
+      uni: { title: "Yakumo's universe", zoomIn: "Zoom in", zoomOut: "Zoom out", reset: "Reset view", d3: "3D view",
+             tour: "Tour: Yakumo flies through your world", next: "Next", stopTour: "Stop",
+             hint: "Zoom with the wheel or buttons: from afar you see galaxies, closer the stars, up close their facts, documents and promises. Drag the stars; in 3D drag to rotate.",
+             areas: { family: "Family", friends: "Friends", work: "Work", home: "Home & pets", places: "Places", health: "Health",
+                      hobby: "Hobbies", other: "Other" } },
+      area: "Galaxy",
       zoomIn: "Zoom in", zoomOut: "Zoom out", zoomReset: "Reset view", mapHint: "Drag the stars, zoom with the mouse wheel or buttons, drag the background to move.",
       improve: "Improvements", improveLead: "What is worth improving in Yakumo herself. Items appear on their own: from her failures, program errors and her own ideas. Each is written as a task; copy it and give it to Claude.",
       impStatuses: { new: "New", given: "Given", done: "Done", rejected: "Rejected" },
@@ -265,6 +277,19 @@
     svg.append(path);
     return svg;
   }
+
+  // universe.js грузится отдельно и может прийти позже — тогда карту перерисовываем.
+  document.addEventListener("yakumo-universe", () => { if (state.data && state.tab === "map" && document.body.dataset.page === "brain") draw(); });
+
+  // Живое небо: о ком говорят в чате — к той звезде летит искра (или полетит, когда откроют карту).
+  const mentioned = new WeakSet();
+  window.Yakumo.addMessageAction?.((m, { question }) => {
+    if (!mentioned.has(m) && Date.now() - new Date(m.at || 0).getTime() < 300000) {  // только свежие ответы
+      mentioned.add(m);
+      window.YakumoUniverse?.mention(`${question || ""} ${m.text || ""}`);
+    }
+    return null;
+  });
 
   window.Yakumo.addMessageAction?.((m, { question, chatId, save }) => {
     if (!question) return null;
@@ -638,9 +663,26 @@
     }
   }
 
+  // Вселенная: мозг в центре, звёзды по галактикам жизни (universe.js). Пока скрипт не загрузился — старое созвездие.
   function mapView() {
     const ents = (state.data.entities || []).filter((e) => e.facts > 0 && matches(`${e.name} ${e.relation || ""}`));
     if (!ents.length) return empty(state.data.entities?.length ? L.nothing : L.emptyMap, L.emptyMapHint);
+    if (!window.YakumoUniverse) return constellationView(ents);
+    const host = h("div", { class: "un-host" });
+    const panel = h("div", {}, nodePanel());
+    const d = state.data;
+    window.YakumoUniverse.mount(host, {
+      facts: d.facts, entities: ents, areas: d.areas || [], promises: d.promises || [], docs: d.entity_docs || {},
+      brain: growthNumbers().last, texts: L.uni,
+    }, {
+      selected: state.node,
+      onPick: (id) => { state.node = id; panel.replaceChildren(nodePanel()); },
+      openDoc: (p) => window.open(`/api/disk/file?path=${encodeURIComponent(p)}`, "_blank"),
+    });
+    return [host, panel];
+  }
+
+  function constellationView(ents) {
     // Рисуем в размер страницы, чтобы на телефоне подписи не становились мелкими.
     const w = Math.max(320, Math.min(820, root.clientWidth || 820)), hgt = Math.max(380, Math.min(620, 220 + ents.length * 18));
     const me = { id: "me", name: L.you, fixed: true, x: w / 2, y: hgt / 2, r: 22 };
@@ -814,11 +856,13 @@
     const rel = h("input", { class: "text-input", value: e.relation || "", maxlength: 40, placeholder: L.relation,
                              "aria-label": L.relation });
     const type = select(state.data.entity_types.map((t) => [t, L.types[t]]), e.type);
+    const area = select((state.data.areas || []).map((a) => [a, L.uni.areas[a]]), e.area || "other", L.area);
     return h("section", { class: "card br-node-panel" },
       h("form", { class: "br-add", onsubmit: (ev) => {
         ev.preventDefault();
-        send("item", { type: "entity", id: e.id, name: name.value, relation: rel.value, entity_type: type.value });
-      } }, name, rel, type, h("button", { class: "btn primary", type: "submit" }, L.save),
+        send("item", { type: "entity", id: e.id, name: name.value, relation: rel.value, entity_type: type.value,
+                       ...(area.value !== (e.area || "other") ? { area: area.value } : {}) });
+      } }, name, rel, type, area, h("button", { class: "btn primary", type: "submit" }, L.save),
         h("button", { class: "btn br-danger", type: "button",
                       onclick: () => { state.node = null; send("item/delete", { type: "entity", ids: [e.id] }); } }, L.del)),
       h("div", { class: "row-hint" }, L.factsAbout(facts.length)),
