@@ -566,6 +566,11 @@ window.Yakumo = {
   lang: () => settings?.values.language || "ru",
   status: () => status,
   rerender: () => render(),
+  // Yakumo пишет первой (утреннее сообщение, напоминание): реплика в чат и золотая точка на аватаре.
+  say(text) {
+    addMessage("bot", text, { from_memory: true });
+    if (chatBox.hidden) avatarBtn.classList.add("news");
+  },
   addPage({ id, icon: svg, title, render: draw }) {
     if (PAGES[id]) return;
     const sym = document.createElementNS("http://www.w3.org/2000/svg", "symbol");
@@ -808,6 +813,7 @@ function setChatOpen(open) {
   avatarBtn.setAttribute("aria-expanded", String(open));
   if (settings) showEffects();
   if (!open) return;
+  avatarBtn.classList.remove("news");
   if (!messages.length) addMessage("bot", T.greeting, { local: true });
   placeChat();
   chatInput.focus();

@@ -193,6 +193,8 @@ def setup(ctx):
     index = Index(disk, describe if cloud else None, lambda: ctx.config.language)
     disk.on_change.append(index.poke)
     disk.on_move.append(index.moved)
+    # Память Yakumo помнит файлы: при переносе ссылки в ней идут следом (модуль «Мозг» мог загрузиться позже).
+    disk.on_move.append(lambda old, new: ctx.memory and ctx.memory.moved(old, new))
     index.start()
     ctx.on_stop(index.stop)
 

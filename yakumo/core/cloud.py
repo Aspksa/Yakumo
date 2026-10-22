@@ -50,6 +50,8 @@ MAX_TOOL_ROUNDS = 6         # сколько раз подряд модель м
 MAX_TOOL_RESULT = 15000     # символов результата одного инструмента
 TOOL_TAG = "<tool>"
 # Модели, которые понимают картинки (для описания фото на Диске).
+# Модели для смыслового поиска (эмбеддинги).
+EMBEDDING = re.compile(r"embed|(^|[/_-])(bge|gte|e5)([/_-]|$)", re.I)
 VISION = re.compile(r"(^|[/_-])(vl|vision|visual|omni|llava|pixtral|internvl|minicpm-v)|gemma-?3", re.I)
 
 
@@ -147,6 +149,22 @@ class CloudService:
         models = self.models or self.fetch_models(self.api_key())
         found = [m for m in models if VISION.search(m)]
         return next((m for m in found if "qwen" in m.lower()), found[0] if found else None)
+
+    def embedding_model(self) -> str | None:
+        """Модель эмбеддингов из каталога или None."""
+        models = self.models or self.fetch_models(self.api_key())
+        found = [m for m in models if EMBEDDING.search(m) and "rerank" not in m.lower()]
+        return next((m for m in found if "bge-m3" in m.lower()), found[0] if found else None)
+
+    def embed(self, texts: list[str], model: str, timeout: float = 30) -> list[list[float]]:
+        """Векторы смысла для текстов (порядок как у texts). Ошибки — CloudError."""
+        with self._request("/embeddings", self.api_key(), {"model": model, "input": texts}, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        items = data.get("data") if isinstance(data, dict) else None
+        if not isinstance(items, list) or len(items) != len(texts):
+            raise CloudError(_message(data.get("error", "empty") if isinstance(data, dict) else data))
+        items = sorted(items, key=lambda i: i.get("index", 0))
+        return [i["embedding"] for i in items]
 
     def complete(self, messages: list[dict], model: str | None = None, max_tokens: int = 600,
                  timeout: float = TIMEOUT) -> str:

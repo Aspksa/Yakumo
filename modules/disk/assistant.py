@@ -33,9 +33,18 @@ def register(ctx, disk: Disk, index, search) -> None:
     name_of = lambda p: (p or "").replace("\\", "/").rstrip("/").split("/")[-1] or ("Диск" if ru() else "Drive")  # noqa: E731
 
     def find(args):
-        found = search(str(args.get("query", "")), limit=25)
-        return [{"path": i["path"], "folder": i["dir"], "size": i["size"], "modified": _when(i["mtime"]),
-                 "found_in": i.get("match", "name"), "snippet": i.get("snippet")} for i in found["items"]]
+        query = str(args.get("query", ""))
+        found = search(query, limit=25)
+        items = [{"path": i["path"], "folder": i["dir"], "size": i["size"], "modified": _when(i["mtime"]),
+                  "found_in": i.get("match", "name"), "snippet": i.get("snippet")} for i in found["items"]]
+        # Память подсказывает, о каком файле речь: «мой договор» — это аренда в Москве, лежит там-то.
+        memory = getattr(ctx, "memory", None)
+        if memory:
+            remembered = [{"fact": f["text"], "files": f["files"]} for f in memory.recall(query, 8)["facts"]
+                          if f.get("files")]
+            if remembered:
+                return {"files": items, "from_memory": remembered}
+        return items
 
     def listing(args):
         res = disk.list(args.get("path") or "")
