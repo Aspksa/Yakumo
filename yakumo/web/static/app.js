@@ -16,20 +16,20 @@ const TEXTS = {
     avatarSize: "Размер", px: "точек", avatarMotion: "Движение", avatarGlow: "Сияние", avatarSpeed: "Скорость анимации",
     avatarEffects: "Эффекты", avatarEffectsHint: "Можно выбрать несколько сразу.", fxPower: "Сила эффектов",
     effects: { sparkles: "Золотые искры", foxfire: "Кицунэ-би", petals: "Лепестки сакуры", dust: "Золотая пыльца",
-               fireflies: "Светлячки", leaves: "Листья гинкго", snow: "Снег", rays: "Лучи света",
-               circle: "Магический круг", shine: "Блик", aura: "Золотая аура", butterflies: "Бабочки",
-               lanterns: "Фонарики", mist: "Золотой туман", meteors: "Падающие звёзды", hearts: "Сердечки",
-               moon: "Луна", runes: "Иероглифы" },
+               fireflies: "Светлячки", leaves: "Листья гинкго", aura: "Золотая аура", butterflies: "Бабочки",
+               mist: "Золотой туман", meteors: "Падающие звёзды", runes: "Иероглифы" },
     powers: { low: "Слабо", normal: "Обычно", high: "Сильно" },
     avatarImage: "Образ", avatarImageHint: "Эффекты, сияние и движения работают с любым образом.",
     images: { classic: "Классика", welcome: "Объятия", tender: "Нежность", prayer: "Молитва", shy: "Смущение",
               invite: "Приглашение", bow: "Поклон", respect: "Почтение", sleep: "Сон" },
-    look: "Оформление", accent: "Цвет", background: "Фон", cardRadius: "Скругление карточек",
+    look: "Оформление", accent: "Цвет", cardRadius: "Скругление", cardRadiusHint: "Углы карточек и кнопок.",
     cardAlpha: "Прозрачность карточек",
-    accents: { gold: "Золото", silver: "Серебро", rose: "Розовый", jade: "Нефрит", azure: "Лазурь", violet: "Фиалка",
-               crimson: "Алый" },
-    backgrounds: { black: "Чёрный", gradient: "Градиент", image: "Картинка", blur: "Размытие" },
-    radii: { small: "Малое", normal: "Обычное", large: "Большое" },
+    scale: "Масштаб", scaleHint: "Размер текста и элементов всего приложения.",
+    accents: { honey: "Мёд", gold: "Золото", amber: "Янтарь", bronze: "Бронза", peach: "Персик", coral: "Коралл",
+               crimson: "Алый", rose: "Розовый", sakura: "Сакура", plum: "Слива", violet: "Фиалка",
+               lavender: "Лаванда", indigo: "Индиго", azure: "Лазурь", sky: "Небо", teal: "Бирюза", jade: "Нефрит",
+               mint: "Мята", lime: "Лайм", silver: "Серебро", pearl: "Жемчуг" },
+    radii: { none: "Нет", small: "Малое", normal: "Обычное", large: "Большое", round: "Круглое" },
     alphas: { solid: "Нет", glass: "Стекло", clear: "Сильная" },
     powerSave: "Экономия", powerSaveHint: "Анимации и эффекты останавливаются, когда окно Yakumo не активно.",
     avatarLock: "Закрепить на месте", avatarLockHint: "Аватар нельзя перетащить; по нажатию чат открывается как обычно.",
@@ -45,7 +45,7 @@ const TEXTS = {
     autostartHint: "Yakumo стартует без окна консоли и без браузера.",
     autostartMissing: "Работает только в Windows.",
     language: "Язык", languageHint: "Язык веб-версии и меню в трее.",
-    fontSize: "Размер шрифта", compact: "Компактный режим",
+    compact: "Компактный режим",
     compactHint: "Меньше отступов, больше помещается на экран.",
     restart: "Нужен перезапуск Yakumo, чтобы изменение вступило в силу.",
     saved: "Сохранено", saveError: "Не сохранилось",
@@ -88,20 +88,20 @@ const TEXTS = {
     avatarSize: "Size", px: "px", avatarMotion: "Motion", avatarGlow: "Glow", avatarSpeed: "Animation speed",
     avatarEffects: "Effects", avatarEffectsHint: "Pick as many as you like.", fxPower: "Effect strength",
     effects: { sparkles: "Golden sparks", foxfire: "Kitsune-bi", petals: "Sakura petals", dust: "Golden dust",
-               fireflies: "Fireflies", leaves: "Ginkgo leaves", snow: "Snow", rays: "Light rays",
-               circle: "Magic circle", shine: "Shine", aura: "Golden aura", butterflies: "Butterflies",
-               lanterns: "Lanterns", mist: "Golden mist", meteors: "Shooting stars", hearts: "Hearts",
-               moon: "Moon", runes: "Kanji" },
+               fireflies: "Fireflies", leaves: "Ginkgo leaves", aura: "Golden aura", butterflies: "Butterflies",
+               mist: "Golden mist", meteors: "Shooting stars", runes: "Kanji" },
     powers: { low: "Low", normal: "Normal", high: "High" },
     avatarImage: "Look", avatarImageHint: "Effects, glow and motion work with every look.",
     images: { classic: "Classic", welcome: "Embrace", tender: "Tender", prayer: "Prayer", shy: "Shy",
               invite: "Invitation", bow: "Bow", respect: "Respect", sleep: "Sleep" },
-    look: "Look and feel", accent: "Colour", background: "Background", cardRadius: "Card corners",
+    look: "Look and feel", accent: "Colour", cardRadius: "Corners", cardRadiusHint: "Corners of cards and buttons.",
     cardAlpha: "Card transparency",
-    accents: { gold: "Gold", silver: "Silver", rose: "Rose", jade: "Jade", azure: "Azure", violet: "Violet",
-               crimson: "Crimson" },
-    backgrounds: { black: "Black", gradient: "Gradient", image: "Picture", blur: "Blur" },
-    radii: { small: "Small", normal: "Normal", large: "Large" },
+    scale: "Scale", scaleHint: "Size of text and elements across the app.",
+    accents: { honey: "Honey", gold: "Gold", amber: "Amber", bronze: "Bronze", peach: "Peach", coral: "Coral",
+               crimson: "Crimson", rose: "Rose", sakura: "Sakura", plum: "Plum", violet: "Violet",
+               lavender: "Lavender", indigo: "Indigo", azure: "Azure", sky: "Sky", teal: "Teal", jade: "Jade",
+               mint: "Mint", lime: "Lime", silver: "Silver", pearl: "Pearl" },
+    radii: { none: "None", small: "Small", normal: "Normal", large: "Large", round: "Round" },
     alphas: { solid: "None", glass: "Glass", clear: "Strong" },
     powerSave: "Power saving", powerSaveHint: "Animations and effects stop while the Yakumo window is inactive.",
     avatarLock: "Lock in place", avatarLockHint: "The avatar can't be dragged; clicking still opens the chat.",
@@ -117,7 +117,7 @@ const TEXTS = {
     autostartHint: "Yakumo starts without a console window or browser.",
     autostartMissing: "Windows only.",
     language: "Language", languageHint: "Language of the web version and tray menu.",
-    fontSize: "Font size", compact: "Compact mode",
+    compact: "Compact mode",
     compactHint: "Less spacing, more fits on screen.",
     restart: "Restart Yakumo for this change to take effect.",
     saved: "Saved", saveError: "Not saved",
@@ -232,10 +232,7 @@ function applyLook() {
   document.documentElement.style.setProperty("--scale", v.font_scale / 100);
   document.body.classList.toggle("compact", v.compact);
   Object.assign(document.documentElement.dataset,
-    { accent: v.accent, bg: v.background, radius: v.card_radius, cards: v.card_alpha });
-  // Фон «Картинка» и «Размытие» берут выбранный образ; для размытия хватает маленькой копии.
-  document.documentElement.style.setProperty("--bg-image",
-    `url(${avatarSrc(v.avatar_image, v.background === "blur" ? 400 : 1254)})`);
+    { accent: v.accent, radius: v.card_radius, cards: v.card_alpha });
   applyAvatarLook(v);
   buildMenu();
   placeAvatar();
@@ -259,7 +256,6 @@ let avatarHover = false;
 function showEffects() {
   const v = settings.values;
   const on = v.avatar_fx_mode === "always" || avatarHover || !chatBox.hidden ? v.avatar_effects : [];
-  avatarBtn.classList.toggle("fx-shine", on.includes("shine"));
   avatarBtn.classList.toggle("fx-aura", on.includes("aura"));
   AvatarFx.set(on, v.avatar_fx_power);
 }
@@ -283,8 +279,6 @@ function showAvatarImage(id) {
   avatarBtn.dataset.image = id;
   avatarImg.srcset = AVATAR_WIDTHS.map((w) => `${avatarSrc(id, w)} ${w}w`).join(", ");
   avatarImg.src = avatarSrc(id, 600);
-  // По форме фигуры обрезается блик (эффект «Блик»).
-  avatarBtn.style.setProperty("--av-mask", `url(${avatarSrc(id, 400)})`);
   avatarBlink.hidden = !BLINKS.has(id);
   if (BLINKS.has(id)) avatarBlink.src = `avatars/${id}-blink.webp`;
 }
@@ -490,13 +484,12 @@ const PAGES = {
       h("section", { class: "card group" },
         h("h2", {}, T.appearance),
         choice("language", T.language, T.languageHint, (v) => ({ ru: "Русский", en: "English" })[v]),
-        choice("font_scale", T.fontSize, null, (v) => `${v}%`),
         toggle("compact", T.compact, T.compactHint)),
       h("section", { class: "card group" },
         h("h2", {}, T.look),
         accentPicker(),
-        choice("background", T.background, null, (v) => T.backgrounds[v]),
-        choice("card_radius", T.cardRadius, null, (v) => T.radii[v]),
+        choice("font_scale", T.scale, T.scaleHint, (v) => `${v}%`),
+        choice("card_radius", T.cardRadius, T.cardRadiusHint, (v) => T.radii[v]),
         choice("card_alpha", T.cardAlpha, null, (v) => T.alphas[v]),
         toggle("power_save", T.powerSave, T.powerSaveHint)),
       avatarSection(),

@@ -18,11 +18,10 @@ class Config:
     tray: bool = True                # значок в трее, если установлены pystray и Pillow
     disabled_modules: list[str] = field(default_factory=list)  # модули, которые не загружать
     language: str = "ru"             # язык интерфейса: ru или en
-    font_scale: int = 100            # размер шрифта веб-версии, %
+    font_scale: int = 100            # масштаб текста и элементов веб-версии, %
     compact: bool = False            # компактный режим веб-версии
     accent: str = "gold"             # акцентный цвет
-    background: str = "black"        # фон страниц
-    card_radius: str = "normal"      # скругление карточек
+    card_radius: str = "normal"      # скругление углов карточек и кнопок
     card_alpha: str = "solid"        # прозрачность карточек
     power_save: bool = False         # останавливать анимации, когда окно не активно
     avatar_show: bool = True         # аватар на страницах веб-версии
@@ -43,11 +42,10 @@ class Config:
         "open_browser": (True, False),
         "tray": (True, False),
         "language": ("ru", "en"),
-        "font_scale": (90, 100, 115, 130),
+        "font_scale": (80, 90, 100, 110, 115, 125, 130, 150),
         "compact": (True, False),
-        "accent": ("gold", "silver", "rose", "jade", "azure", "violet", "crimson"),
-        "background": ("black", "gradient", "image", "blur"),
-        "card_radius": ("small", "normal", "large"),
+        "accent": ("honey", "gold", "amber", "bronze", "peach", "coral", "crimson", "rose", "sakura", "plum", "violet", "lavender", "indigo", "azure", "sky", "teal", "jade", "mint", "lime", "silver", "pearl"),
+        "card_radius": ("none", "small", "normal", "large", "round"),
         "card_alpha": ("solid", "glass", "clear"),
         "power_save": (True, False),
         "avatar_show": (True, False),
@@ -62,9 +60,8 @@ class Config:
     }
     # Настройки-списки: можно выбрать несколько значений сразу (или ни одного).
     MULTI: ClassVar[dict[str, tuple]] = {
-        "avatar_effects": ("sparkles", "foxfire", "petals", "dust", "fireflies", "leaves", "snow",
-                           "rays", "circle", "shine", "aura", "butterflies", "lanterns", "mist",
-                           "meteors", "hearts", "moon", "runes"),
+        "avatar_effects": ("sparkles", "foxfire", "petals", "dust", "fireflies", "leaves", "aura",
+                           "butterflies", "mist", "meteors", "runes"),
     }
 
     @classmethod
@@ -96,6 +93,10 @@ class Config:
         known = {f.name for f in fields(cls)}
         # Значение, которого больше нет среди допустимых (например, убранный вариант), сбрасываем.
         editable = cls.EDITABLE.keys() | cls.MULTI.keys()
+        for key, allowed in cls.MULTI.items():
+            # Из списка убираем только исчезнувшие варианты, остальной выбор сохраняется.
+            if isinstance(raw.get(key), list):
+                raw[key] = list(dict.fromkeys(v for v in raw[key] if isinstance(v, str) and v in allowed))
         return cls(**{k: v for k, v in raw.items() if k in known and (k not in editable or cls.valid(k, v))})
 
     def save(self, path: Path) -> None:

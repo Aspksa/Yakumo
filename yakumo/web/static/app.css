@@ -17,7 +17,9 @@
   --bad: #e5675a;
   --top: 56px;
   --rail: 64px;
-  --radius: 10px;
+  --radius: 10px;       /* карточки и окна */
+  --btn-radius: 8px;    /* кнопки и поля */
+  --chip-radius: 999px; /* кнопки-метки */
   --card-bg: var(--surface);
   --shadow: 0 1px 3px rgba(0, 0, 0, .4);
   font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
@@ -29,40 +31,39 @@ html, body { margin: 0; height: 100%; }
 html { zoom: var(--scale, 1); }  /* размер шрифта из настроек */
 body { background: var(--bg); }
 
+[data-accent="honey"] { --accent-rgb: 217, 164, 65; --accent-hi-rgb: 232, 188, 104; }
 [data-accent="gold"] { --accent-rgb: 220, 176, 79; --accent-hi-rgb: 236, 196, 106; }
-[data-accent="silver"] { --accent-rgb: 188, 197, 210; --accent-hi-rgb: 222, 228, 238; }
+[data-accent="amber"] { --accent-rgb: 236, 150, 44; --accent-hi-rgb: 246, 180, 96; }
+[data-accent="bronze"] { --accent-rgb: 190, 132, 86; --accent-hi-rgb: 214, 164, 124; }
+[data-accent="peach"] { --accent-rgb: 240, 166, 128; --accent-hi-rgb: 248, 194, 166; }
+[data-accent="coral"] { --accent-rgb: 238, 120, 104; --accent-hi-rgb: 246, 158, 144; }
+[data-accent="crimson"] { --accent-rgb: 226, 86, 92; --accent-hi-rgb: 240, 136, 134; }
 [data-accent="rose"] { --accent-rgb: 232, 140, 170; --accent-hi-rgb: 245, 178, 200; }
-[data-accent="jade"] { --accent-rgb: 104, 196, 150; --accent-hi-rgb: 150, 222, 184; }
-[data-accent="azure"] { --accent-rgb: 104, 168, 236; --accent-hi-rgb: 152, 198, 246; }
+[data-accent="sakura"] { --accent-rgb: 244, 176, 200; --accent-hi-rgb: 250, 206, 222; }
+[data-accent="plum"] { --accent-rgb: 196, 112, 176; --accent-hi-rgb: 220, 156, 206; }
 [data-accent="violet"] { --accent-rgb: 170, 140, 232; --accent-hi-rgb: 200, 180, 244; }
-[data-accent="crimson"] { --accent-rgb: 226, 96, 92; --accent-hi-rgb: 240, 144, 134; }
+[data-accent="lavender"] { --accent-rgb: 190, 176, 240; --accent-hi-rgb: 214, 204, 248; }
+[data-accent="indigo"] { --accent-rgb: 124, 132, 236; --accent-hi-rgb: 164, 170, 246; }
+[data-accent="azure"] { --accent-rgb: 104, 168, 236; --accent-hi-rgb: 152, 198, 246; }
+[data-accent="sky"] { --accent-rgb: 112, 200, 236; --accent-hi-rgb: 160, 222, 246; }
+[data-accent="teal"] { --accent-rgb: 64, 190, 184; --accent-hi-rgb: 120, 214, 208; }
+[data-accent="jade"] { --accent-rgb: 104, 196, 150; --accent-hi-rgb: 150, 222, 184; }
+[data-accent="mint"] { --accent-rgb: 140, 222, 180; --accent-hi-rgb: 184, 236, 208; }
+[data-accent="lime"] { --accent-rgb: 176, 208, 92; --accent-hi-rgb: 204, 226, 140; }
+[data-accent="silver"] { --accent-rgb: 188, 197, 210; --accent-hi-rgb: 222, 228, 238; }
+[data-accent="pearl"] { --accent-rgb: 236, 228, 214; --accent-hi-rgb: 248, 244, 236; }
 
 /* Скругление и прозрачность карточек */
-html[data-radius="small"] { --radius: 4px; }
-html[data-radius="large"] { --radius: 18px; }
+html[data-radius="none"] { --radius: 0px; --btn-radius: 0px; --chip-radius: 0px; }
+html[data-radius="small"] { --radius: 4px; --btn-radius: 3px; --chip-radius: 4px; }
+html[data-radius="large"] { --radius: 18px; --btn-radius: 12px; }
+html[data-radius="round"] { --radius: 26px; --btn-radius: 999px; }
 html[data-cards="glass"] { --card-bg: rgba(23, 19, 15, .72); }
 html[data-cards="clear"] { --card-bg: rgba(23, 19, 15, .42); }
 html:not([data-cards="solid"]) .card, html:not([data-cards="solid"]) .empty {
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
 }
 
-/* Фон: градиент, картинка образа или она же размытая. Слой под всем, панели полупрозрачные. */
-html[data-bg="gradient"] body {
-  background: radial-gradient(ellipse 70% 60% at 85% 0%, rgba(var(--accent-rgb), .24), transparent 70%),
-              radial-gradient(ellipse 60% 50% at 0% 100%, rgba(var(--accent-rgb), .13), transparent 70%), var(--bg)
-              fixed;
-}
-html[data-bg="image"] body::before, html[data-bg="blur"] body::before {
-  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
-  background: var(--bg-image) right 4% bottom / auto 96% no-repeat; opacity: .16;
-}
-html[data-bg="blur"] body::before {
-  background-position: center; background-size: cover; opacity: .38; filter: blur(48px) saturate(1.2);
-  transform: scale(1.15);
-}
-html:not([data-bg="black"]) .topbar, html:not([data-bg="black"]) .rail {
-  background: rgba(13, 11, 9, .55); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
-}
 a { color: inherit; text-decoration: none; }
 
 svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7;
@@ -86,7 +87,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 /* Кнопки-значки */
 .icon-btn {
   position: relative; display: grid; place-items: center;
-  width: 44px; height: 40px; border-radius: 8px; color: var(--muted);
+  width: 44px; height: 40px; border-radius: var(--btn-radius); color: var(--muted);
   transition: background .15s, color .15s;
 }
 .icon-btn:hover { background: var(--hover); color: var(--text); }
@@ -159,9 +160,9 @@ div.row { cursor: default; }
 
 /* Выбор из нескольких */
 .segmented { display: inline-flex; flex: none; padding: 3px; gap: 2px; background: var(--bg);
-             border: 1px solid var(--border); border-radius: 9px; }
+             border: 1px solid var(--border); border-radius: calc(var(--btn-radius) + 3px); }
 .segmented button { font: inherit; font-size: 13px; border: 0; background: transparent; color: var(--muted);
-                    padding: 6px 12px; border-radius: 6px; cursor: pointer; }
+                    padding: 6px 12px; border-radius: var(--btn-radius); cursor: pointer; }
 .segmented button:hover { color: var(--text); }
 .segmented button.on { background: var(--surface); color: var(--accent); font-weight: 600;
                        box-shadow: var(--shadow); }
@@ -169,14 +170,14 @@ div.row { cursor: default; }
 
 /* Выбор нескольких: кнопки-метки */
 .chips { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; max-width: 560px; }
-.chips button { font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 999px; cursor: pointer;
+.chips button { font: inherit; font-size: 13px; padding: 6px 12px; border-radius: var(--chip-radius); cursor: pointer;
                 color: var(--muted); background: var(--bg); border: 1px solid var(--border); }
 .chips button:hover { color: var(--text); border-color: var(--gold); }
 .chips button[aria-pressed="true"] { color: var(--bg); background: var(--accent); border-color: var(--accent); font-weight: 600; }
 .chips button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* Выбор цвета: кружки-образцы */
-.swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+.swatches { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; max-width: 250px; }
 .swatches button { width: 28px; height: 28px; border-radius: 50%; cursor: pointer; padding: 0;
                    border: 2px solid var(--bg); background: rgb(var(--accent-rgb));
                    box-shadow: 0 0 0 1px var(--border); transition: transform .15s, box-shadow .15s; }
@@ -188,7 +189,7 @@ div.row { cursor: default; }
 .row.row-wide { flex-direction: column; align-items: stretch; gap: 12px; }
 .looks { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; }
 .looks button { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 6px 9px;
-                font: inherit; font-size: 13px; color: var(--muted); cursor: pointer; border-radius: 12px;
+                font: inherit; font-size: 13px; color: var(--muted); cursor: pointer; border-radius: var(--radius);
                 background: radial-gradient(circle at 50% 40%, rgba(var(--accent-rgb), .10), transparent 70%), var(--bg);
                 border: 1px solid var(--border); transition: border-color .15s, transform .15s, color .15s; }
 .looks img { width: 88px; height: 88px; object-fit: contain; pointer-events: none;
@@ -212,14 +213,14 @@ div.row { cursor: default; }
 .inline-form { display: flex; flex-wrap: wrap; gap: 8px; flex: none; max-width: 100%; }
 .text-input, .select {
   font: inherit; font-size: 14px; color: var(--text); background: var(--bg);
-  border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; outline: none; min-width: 0;
+  border: 1px solid var(--border); border-radius: var(--btn-radius); padding: 7px 10px; outline: none; min-width: 0;
 }
 .text-input { width: 240px; }
 .select { max-width: 320px; cursor: pointer; }
 .select:disabled { cursor: default; opacity: .6; }
 .text-input:focus, .select:focus-visible { border-color: var(--gold); }
 .btn {
-  font: inherit; font-size: 13px; padding: 7px 14px; border-radius: 8px; cursor: pointer; flex: none;
+  font: inherit; font-size: 13px; padding: 7px 14px; border-radius: var(--btn-radius); cursor: pointer; flex: none;
   color: var(--text); background: var(--hover); border: 1px solid var(--border);
 }
 .btn:hover { border-color: var(--gold); }
@@ -319,15 +320,7 @@ div.row { cursor: default; }
   100% { transform: translateY(0) scale(1, 1); }
 }
 
-/* Эффекты, сделанные стилями: блик по фигуре и золотая аура */
-.avatar.fx-shine .av-pose::after {
-  content: ""; position: absolute; inset: 0; pointer-events: none;
-  background: linear-gradient(110deg, transparent 38%, rgba(255, 246, 220, .55) 49%, transparent 60%) no-repeat;
-  background-size: 260% 100%;
-  -webkit-mask: var(--av-mask) center / 100% 100% no-repeat; mask: var(--av-mask) center / 100% 100% no-repeat;
-  animation: shine calc(7s * var(--speed)) ease-in-out infinite;
-}
-@keyframes shine { 0% { background-position: 130% 0; } 55%, 100% { background-position: -30% 0; } }
+/* Эффект «Золотая аура» сделан стилями */
 .avatar.fx-aura .av-img { animation: aura calc(3.6s * var(--speed)) ease-in-out infinite; }
 @keyframes aura {
   0%, 100% { filter: drop-shadow(0 8px 14px rgba(0, 0, 0, .55)) drop-shadow(0 0 4px rgba(255, 206, 110, .45)); }
@@ -362,7 +355,7 @@ body[data-page="settings"] .content { position: relative; z-index: 31; }
 .chat {
   position: fixed; z-index: 32; width: 420px; height: 600px; min-width: 300px; min-height: 320px;
   display: flex; flex-direction: column; overflow: hidden;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: calc(var(--radius) + 6px);
   box-shadow: 0 18px 48px rgba(0, 0, 0, .65), 0 0 0 1px rgba(var(--accent-rgb), .08);
 }
 .chat[hidden] { display: none; }
@@ -440,13 +433,13 @@ body[data-page="settings"] .content { position: relative; z-index: 31; }
 
 .chat-hints { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 14px 10px; background: var(--bg); }
 .chat-hints:empty { display: none; }
-.chat-hints button { font: inherit; font-size: 12.5px; padding: 6px 11px; border-radius: 999px; cursor: pointer;
+.chat-hints button { font: inherit; font-size: 12.5px; padding: 6px 11px; border-radius: var(--chip-radius); cursor: pointer;
                      color: var(--text); background: var(--surface); border: 1px solid var(--border); }
 .chat-hints button:hover { border-color: var(--gold); color: var(--gold); }
 
 .chat-form { padding: 10px 12px 8px; border-top: 1px solid var(--border); flex: none; background: var(--surface); }
 .chat-field { display: flex; align-items: flex-end; gap: 6px; padding: 5px 5px 5px 12px; background: var(--bg);
-              border: 1px solid var(--border); border-radius: 14px; transition: border-color .15s, box-shadow .15s; }
+              border: 1px solid var(--border); border-radius: calc(var(--radius) + 4px); transition: border-color .15s, box-shadow .15s; }
 .chat-field:focus-within { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .12); }
 .chat-field textarea { flex: 1; resize: none; font: inherit; font-size: 14.5px; line-height: 1.45; color: var(--text);
                        background: none; border: 0; padding: 6px 0; max-height: 40vh; outline: none; }
@@ -454,7 +447,7 @@ body[data-page="settings"] .content { position: relative; z-index: 31; }
              color: var(--muted); }
 .chat-foot .over { color: var(--bad); }
 .chat-send { display: grid; place-items: center; width: 38px; height: 38px; flex: none; border: 0;
-             border-radius: 10px; background: var(--accent); color: var(--bg); cursor: pointer; }
+             border-radius: calc(var(--btn-radius) + 2px); background: var(--accent); color: var(--bg); cursor: pointer; }
 .chat-send:hover { background: rgb(var(--accent-hi-rgb)); }
 .chat-send.stop { background: var(--hover); color: var(--gold); border: 1px solid var(--gold); }
 .chat-send:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

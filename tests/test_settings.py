@@ -60,14 +60,17 @@ class SettingsApiTest(unittest.TestCase):
         self.config_path.write_text('{"avatar_motion": "bounce", "avatar_size": 304}', encoding="utf-8")
         old = Config.load(self.config_path)
         self.assertEqual((old.avatar_motion, old.avatar_size), ("float", 304))
-        res = self.post({"avatar_effects": ["foxfire", "petals", "moon", "runes"], "avatar_fx_power": "high", "avatar_size": 2000})
-        self.assertEqual(res["values"]["avatar_effects"], ["foxfire", "petals", "moon", "runes"])
+        res = self.post({"avatar_effects": ["foxfire", "petals", "mist", "runes"], "avatar_fx_power": "high", "avatar_size": 2000})
+        self.assertEqual(res["values"]["avatar_effects"], ["foxfire", "petals", "mist", "runes"])
+        # Убранные эффекты в старом файле настроек выпадают из списка, остальные остаются.
+        self.config_path.write_text('{"avatar_effects": ["snow", "petals", "moon"]}', encoding="utf-8")
+        self.assertEqual(Config.load(self.config_path).avatar_effects, ["petals"])
         self.assertEqual(self.post({"avatar_effects": []})["values"]["avatar_effects"], [])
-        res = self.post({"avatar_lock": True, "avatar_fx_mode": "hover", "power_save": True, "accent": "rose",
-                         "background": "blur", "card_radius": "large", "card_alpha": "glass"})
-        self.assertEqual((res["values"]["accent"], res["values"]["background"], res["values"]["avatar_fx_mode"]),
-                         ("rose", "blur", "hover"))
-        for bad in ({"avatar_size": 233}, {"avatar_size": 2008}, {"avatar_motion": "sway"}, {"avatar_image": "../x"}, {"accent": "red"}, {"background": "url(x)"}, {"avatar_show": 1},
+        res = self.post({"avatar_lock": True, "avatar_fx_mode": "hover", "power_save": True, "accent": "honey",
+                         "card_radius": "round", "card_alpha": "glass", "font_scale": 150})
+        self.assertEqual((res["values"]["accent"], res["values"]["card_radius"], res["values"]["avatar_fx_mode"]),
+                         ("honey", "round", "hover"))
+        for bad in ({"avatar_size": 233}, {"avatar_size": 2008}, {"avatar_motion": "sway"}, {"avatar_image": "../x"}, {"accent": "red"}, {"avatar_effects": ["snow"]}, {"avatar_show": 1},
                     {"avatar_effects": "petals"}, {"avatar_effects": ["petals", "petals"]}, {"avatar_effects": ["boom"]}):
             with self.assertRaises(urllib.error.HTTPError):
                 self.post(bad)
