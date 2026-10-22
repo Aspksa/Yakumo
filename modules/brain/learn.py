@@ -1,5 +1,8 @@
 """Как Yakumo учится: после разговора модель выписывает факты, людей и места, обещания,
-даты, настроение и обновляет конспект беседы.
+даты, настроение, желания («чему мне стоит научиться») и обновляет конспект беседы.
+
+Ещё Yakumo замечает повторяющиеся цепочки инструментов: если одна и та же
+последовательность встретилась CHAIN_REPEATS раза, она предлагает сохранить её как навык.
 
 Работает в фоне и не задерживает ответы: беседа разбирается, когда в ней
 наступила пауза (DELAY секунд без новых реплик). Тот же поток раз в минуту
@@ -25,6 +28,8 @@ TICK = 60             # раз во столько секунд — прочие
 LAST_MESSAGES = 12    # сколько последних реплик показывать модели
 MESSAGE_CHARS = 1500  # одна реплика
 KNOWN_FACTS = 80      # сколько уже известных фактов показывать, чтобы не было повторов
+CHAIN_REPEATS = 3     # после стольких повторов цепочки инструментов — предложить навык
+MAX_SAMPLES = 30      # примеров «вопрос — ответ» для ночного экзамена и улучшения стиля
 WEEKDAYS = {"ru": ("понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"),
             "en": ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")}
 
@@ -55,6 +60,8 @@ PROMPT = {
  "dates": [{{"text": "день рождения сестры Ани", "date": "YYYY-MM-DD", "yearly": true}}],
  "mood": -2..2 или null,
  "mood_note": "пара слов, почему (или пусто)",
+ "wish": "чему Yakumo стоит научиться, раз сейчас не смогла помочь (или null)",
+ "lesson": "правило для Yakumo, если пользователь её поправил или был недоволен ответом (или null)",
  "title": "короткое название беседы, 2-6 слов",
  "summary": "конспект всей беседы в 1-4 предложениях: о чём говорили, что решили, что осталось сделать"}}
 
@@ -71,6 +78,8 @@ promises — явные обещания: «сделаю отчёт к пятн�
 Относительные даты («в пятницу», «завтра») переводи в YYYY-MM-DD от сегодняшней.
 dates — даты, которые стоит помнить: дни рождения (yearly=true), встречи, экзамены, поездки.
 mood — настроение пользователя в этой беседе: -2 очень плохо, 0 обычно, 2 отлично; null, если непонятно.
+wish — только если Yakumo явно не смогла что-то сделать или не знала («не умею», «нет доступа»): кратко, что уметь.
+lesson — короткое правило на будущее от лица Yakumo («Отвечать короче, без списков»), только если была поправка.
 Если нового нет, верни пустые списки.""",
     "en": """You are the memory of the Yakumo assistant. Read the conversation excerpt and update the memory.
 Today is {today} ({weekday}).
@@ -98,6 +107,8 @@ Reply ONLY with a JSON object, no comments:
  "dates": [{{"text": "sister Ann's birthday", "date": "YYYY-MM-DD", "yearly": true}}],
  "mood": -2..2 or null,
  "mood_note": "a few words why (or empty)",
+ "wish": "what Yakumo should learn because she couldn't help just now (or null)",
+ "lesson": "a rule for Yakumo if the user corrected her or disliked the answer (or null)",
  "title": "short conversation title, 2-6 words",
  "summary": "summary of the whole conversation in 1-4 sentences: topics, decisions, what is left to do"}}
 
@@ -114,6 +125,8 @@ promises — explicit promises: "I'll finish the report by Friday" (who=user) or
 Convert relative dates ("on Friday", "tomorrow") to YYYY-MM-DD from today.
 dates — dates worth remembering: birthdays (yearly=true), meetings, exams, trips.
 mood — the user's mood in this conversation: -2 very bad, 0 normal, 2 great; null if unclear.
+wish — only if Yakumo clearly couldn't do or didn't know something ("I can't", "no access"): briefly, what to learn.
+lesson — a short rule for the future in Yakumo's voice ("Answer shorter, no lists"), only after a correction.
 If nothing is new, return empty lists.""",
 }
 
@@ -150,7 +163,7 @@ class Learner:
         self.language = language                  # () -> "ru" | "en"
         self.pending: dict[str, tuple] = {}       # беседа -> (реплики, когда пришла последняя)
         self.ticks: list = []                     # прочие фоновые дела, раз в TICK секунд
-        self.last_chat = 0.0                      # когда пользователь последний раз писал
+        self.last_chat = time.time()              # когда пользователь последний раз писал (запуск — как реплика)
         self.wake = threading.Event()
         self.stopping = False
         self.busy = False
@@ -159,14 +172,39 @@ class Learner:
 
     # --- Очередь ---
 
-    def heard(self, history: list[dict], answer: str, chat_id: str) -> None:
+    def heard(self, history: list[dict], answer: str, chat_id: str, tools=()) -> None:
         """Ответ в чате готов: запомнить беседу, разобрать её чуть позже."""
         self.last_chat = time.time()
         if not self.memory.auto or not any(m["role"] == "user" for m in history):
             return
         tid = talk_id(history, chat_id)
         self.pending[tid] = ([*history, {"role": "assistant", "content": answer}], time.time())
+        question = next(m["content"] for m in reversed(history) if m["role"] == "user")
+        self.memory.add_item("samples", {"question": question[:MESSAGE_CHARS], "answer": answer[:MESSAGE_CHARS]},
+                             MAX_SAMPLES)
+        self.notice_chain(question, tools)
         self.wake.set()
+
+    def notice_chain(self, question: str, tools) -> None:
+        """Одна и та же цепочка инструментов в который раз — предложить сохранить её как навык."""
+        steps = [(name, args) for name, args in tools or () if name != "?" and not name.startswith("memory_skill")]
+        if len(steps) < 2:
+            return
+        names = [name for name, _args in steps]
+        signature = " → ".join(names)
+        if self.memory.chain(signature, names, question) != CHAIN_REPEATS:
+            return
+        if any(s.get("signature") == signature for s in self.memory.data["suggestions"]):
+            return
+        ru = self.language() != "en"
+        detail = [f"{name} {json.dumps(args, ensure_ascii=False)[:80]}" for name, args in steps]
+        self.memory.add_item("suggestions", {"signature": signature, "name": question[:60], "steps": detail,
+                                             "status": "new"})
+        self.memory.say(
+            f"Я заметила, что уже {CHAIN_REPEATS} раза делаю одно и то же: {signature}. Сохранить это как навык? "
+            "Загляни в «Память» → «Рост»." if ru else
+            f"I've noticed I've done the same thing {CHAIN_REPEATS} times: {signature}. Save it as a skill? "
+            "See Memory → Growth.", "suggestion")
 
     def start(self) -> None:
         self.thread = threading.Thread(target=self._run, name="brain", daemon=True)
@@ -257,6 +295,10 @@ class Learner:
         mood = data.get("mood") if type(data.get("mood")) is int and -2 <= data["mood"] <= 2 else None
         if mood is not None and self.memory.on("mood"):
             self.memory.note_mood(mood, data.get("mood_note") or "")
+        if isinstance(data.get("wish"), str) and data["wish"].strip():
+            self.memory.wish(data["wish"])
+        if isinstance(data.get("lesson"), str) and data["lesson"].strip():
+            self.memory.lesson(data["lesson"], "chat")
         title, summary = data.get("title"), data.get("summary")
         if isinstance(summary, str) and summary.strip():
             self.memory.save_talk(tid, title if isinstance(title, str) and title.strip() else summary[:60],

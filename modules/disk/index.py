@@ -212,6 +212,12 @@ class Index:
         found.sort(key=lambda f: -f["score"])
         return found[:limit]
 
+    def documents(self) -> list[tuple[str, int, str]]:
+        """Все разобранные документы: (путь, время изменения, текст) — для базы знаний «Памяти»."""
+        with self.lock:
+            return self.db.execute("SELECT path, mtime, text FROM files WHERE text IS NOT NULL AND text != ''"
+                                   ).fetchall()
+
     def text_of(self, rel: str) -> dict:
         """Текст и описание фото для чата (при необходимости разбирает файл сразу)."""
         with self.lock:

@@ -32,6 +32,15 @@ def _pack(vector: list[float]) -> tuple[str, array]:
     return base64.b64encode(arr.tobytes()).decode("ascii"), arr
 
 
+def dot(a, b) -> float:
+    return sum(x * y for x, y in zip(a, b))
+
+
+def pack(vector: list[float]) -> array:
+    """Нормированный вектор (близость тогда — просто скалярное произведение)."""
+    return _pack(vector)[1]
+
+
 def _unpack(text: str) -> array:
     arr = array("f")
     arr.frombytes(base64.b64decode(text))
@@ -83,6 +92,8 @@ class Semantic:
                 out["t:" + t["id"]] = f"{t.get('title', '')}. {t.get('summary', '')}"
             for s in m["skills"]:
                 out["s:" + s["id"]] = f"{s['name']}. {s.get('when', '')}"
+            for n in m["notes"]:
+                out["n:" + n["id"]] = f"{n['topic']}. {n['summary'][:500]}"
         return out
 
     def ready(self) -> bool:
@@ -121,25 +132,34 @@ class Semantic:
                 log.warning("Память: смысловой поиск недоступен: %s", self.error)
                 return 0
 
-    def search(self, query: str, limit: int = 10) -> list[tuple[str, float]]:
-        """Ближайшие по смыслу записи: [(ключ, близость)], самые близкие первыми."""
+    def query_vector(self, query: str) -> array | None:
+        """Вектор запроса (с кэшем): им же пользуется база знаний Диска."""
         query = " ".join(query.split())[:1000]
-        if not query or not self.vectors or not self.model or not self.ready():
-            return []
+        if not query or not self.model or not self.ready():
+            return None
         vec = self.cache.get(query)
         if vec is None:
             try:
                 vec = _pack(self.cloud.embed([query], self.model, timeout=QUERY_TIMEOUT)[0])[1]
             except Exception as exc:  # noqa: BLE001
                 self.failed_at, self.error = time.time(), str(exc) or type(exc).__name__
-                return []
+                return None
             if len(self.cache) > 64:
                 self.cache.clear()
             self.cache[query] = vec
+        return vec
+
+    def search(self, query: str, limit: int = 10) -> list[tuple[str, float]]:
+        """Ближайшие по смыслу записи: [(ключ, близость)], самые близкие первыми."""
+        if not self.vectors:
+            return []
+        vec = self.query_vector(query)
+        if vec is None:
+            return []
         scored = []
         for key, (_h, v) in list(self.vectors.items()):
             if len(v) == len(vec):
-                score = sum(a * b for a, b in zip(vec, v))
+                score = dot(vec, v)
                 if score >= MIN_SCORE:
                     scored.append((key, score))
         return sorted(scored, key=lambda x: -x[1])[:limit]

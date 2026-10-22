@@ -49,6 +49,8 @@ TOOLS_PROMPT = {
 MAX_TOOL_ROUNDS = 6         # сколько раз подряд модель может обратиться к инструментам
 MAX_TOOL_RESULT = 15000     # символов результата одного инструмента
 TOOL_TAG = "<tool>"
+THINK_TAG = "<think>"     # размышления модели перед ответом: пользователю не показываются
+THINKING = {"ru": "Думаю…", "en": "Thinking…"}
 # Модели, которые понимают картинки (для описания фото на Диске).
 # Модели для смыслового поиска (эмбеддинги).
 EMBEDDING = re.compile(r"embed|(^|[/_-])(bge|gte|e5)([/_-]|$)", re.I)
@@ -281,13 +283,18 @@ class CloudService:
             if key and not model:
                 model = self.config.cloud_model = self.default_model(self.fetch_models(key))
             said = False
+            used: list[tuple[str, dict]] = []  # какие инструменты звались — для ctx.on_chat
             for _ in range(MAX_TOOL_ROUNDS + 1):
                 payload = {"model": model, "messages": messages, "stream": True,
                            "temperature": 0.7, "max_tokens": 2500}
                 text, shown = "", 0
                 with self._request("/chat/completions", key, payload, timeout=TIMEOUT) as resp:
+                    thinking = False
                     for delta in _deltas(resp):
                         text += delta
+                        if not thinking and _thinking(text):
+                            thinking = True
+                            yield line({"status": THINKING.get(self.config.language, THINKING["ru"])})
                         shown_text = _visible(text, partial=True)
                         if len(shown_text) > shown:
                             out = shown_text[shown:]
@@ -301,6 +308,7 @@ class CloudService:
                 said = said or bool(_visible(text).strip())
                 answer += ("\n\n" if answer else "") + _visible(text).strip()
                 calls = _tool_calls(text) if self.tools else []
+                used += calls
                 if not calls:
                     break
                 results, asked = [], False
@@ -339,7 +347,7 @@ class CloudService:
         if history is not None and answer.strip():
             for listener in self.listeners:
                 try:
-                    listener(history, answer.strip(), chat_id)
+                    listener(history, answer.strip(), chat_id, used)
                 except Exception:  # noqa: BLE001
                     log.exception("Ошибка обработчика ответа чата")
 
@@ -391,18 +399,26 @@ def _deltas(resp) -> Iterator[str]:
                 yield delta
 
 
-def _visible(text: str, partial: bool = False) -> str:
-    """Текст для пользователя без вызовов инструментов.
+def _thinking(text: str) -> bool:
+    """Модель начала размышлять (<think> открыт и ещё не закрыт)."""
+    start = text.rfind(THINK_TAG)
+    return start >= 0 and text.find("</think>", start) < 0
 
-    partial: ответ ещё идёт — придержать незакрытый вызов и хвост, похожий на его начало («<to»).
+
+def _visible(text: str, partial: bool = False) -> str:
+    """Текст для пользователя без вызовов инструментов и размышлений.
+
+    partial: ответ ещё идёт — придержать незакрытый вызов или размышление и хвост, похожий на их начало («<to»).
     """
-    out = re.sub(r"<tool>.*?</tool>[ \t]*\n?", "", text, flags=re.S)
-    cut = out.find(TOOL_TAG)
-    if cut >= 0:
-        out = out[:cut]
+    out = re.sub(r"<think>.*?</think>\s*", "", text, flags=re.S)
+    out = re.sub(r"<tool>.*?</tool>[ \t]*\n?", "", out, flags=re.S)
+    for tag in (THINK_TAG, TOOL_TAG):
+        cut = out.find(tag)
+        if cut >= 0:
+            out = out[:cut]
     if partial:
-        for k in range(min(len(TOOL_TAG) - 1, len(out)), 0, -1):
-            if out.endswith(TOOL_TAG[:k]):
+        for k in range(min(len(THINK_TAG) - 1, len(out)), 0, -1):
+            if any(tag.startswith(out[-k:]) for tag in (TOOL_TAG, THINK_TAG)):
                 return out[:-k]
     return out
 

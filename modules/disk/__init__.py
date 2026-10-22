@@ -12,6 +12,7 @@ import os
 import re
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.parse import parse_qs, quote, urlsplit
 
 from yakumo.core.network import lan_address
@@ -289,4 +290,9 @@ def setup(ctx):
         ctx.route(path, readable_errors(handler))
     ctx.web("disk.css", "disk.js")
     assistant.register(ctx, disk, index, smart_search)
+    # Другие модули (например, «Память» для базы знаний) читают документы Диска через ctx.services["disk"].
+    services = getattr(ctx, "services", None)
+    if isinstance(services, dict):
+        services["disk"] = SimpleNamespace(documents=index.documents, search=smart_search,
+                                           text=lambda rel: index.text_of(rel)["text"])
     ctx.status(lambda: {"root": str(disk.root)})
