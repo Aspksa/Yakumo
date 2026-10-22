@@ -17,13 +17,15 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 from yakumo.core.network import lan_address
 
-from . import assistant
+from . import assistant, insight
 from .extract import extract
 from .index import Index, data_url
+from .names import Namer
+from .organizer import Organizer
 from .store import CHUNK, Disk, DiskError, mime_of
 
 NAME = "Диск"
-VERSION = "1.1"
+VERSION = "1.2"
 
 # Такие файлы браузер мог бы выполнить как страницу Yakumo: показываем как текст или в песочнице.
 AS_TEXT = {".html", ".htm", ".xhtml", ".mht", ".mhtml", ".shtml"}
@@ -199,6 +201,10 @@ def setup(ctx):
     disk.on_move.append(lambda old, new: ctx.memory and ctx.memory.moved(old, new))
     index.start()
     ctx.on_stop(index.stop)
+    language = lambda: getattr(ctx.config, "language", "ru")  # noqa: E731
+    memory = lambda: getattr(ctx, "memory", None)  # noqa: E731 — «Мозг» мог загрузиться позже
+    organizer = Organizer(disk, lambda rel: index.text_of(rel)["text"], memory, language)
+    namer = Namer(disk, index, cloud, language)
 
     def smart_search(q: str, limit: int = 300) -> dict:
         """Имена файлов, текст внутри документов и описания фото — одним списком."""
@@ -226,9 +232,12 @@ def setup(ctx):
 
     def smart_save(req):
         data = req.read_json()
-        if not isinstance(data, dict) or type(data.get("photos")) is not bool:
-            raise DiskError("Ожидается photos: true/false")
-        index.set_photos(data["photos"])
+        if not isinstance(data, dict) or not any(type(data.get(k)) is bool for k in ("photos", "ocr")):
+            raise DiskError("Ожидается photos или ocr: true/false")
+        if type(data.get("photos")) is bool:
+            index.set_photos(data["photos"])
+        if type(data.get("ocr")) is bool:
+            index.set_ocr(data["ocr"])
         return smart(req)
 
     def body(request) -> dict:
@@ -256,7 +265,12 @@ def setup(ctx):
 
     def upload(req):
         length = int(req.headers.get("Content-Length") or -1)
-        return disk.upload(query(req).get("path", ""), req.rfile, length)
+        entry = disk.upload(query(req).get("path", ""), req.rfile, length)
+        try:  # новый файл во «Входящих»: правила порядка раскладывают его сразу
+            placed = organizer.place(entry["path"])
+        except (OSError, DiskError):
+            placed = None
+        return {**disk.entry(disk.path(placed["path"])), "placed": placed} if placed else entry
 
     def shared(req):
         q = query(req)
@@ -286,11 +300,25 @@ def setup(ctx):
         "POST /api/disk/purge": lambda r: {"count": disk.purge((d := body(r)).get("ids"), d.get("all") is True)},
         "POST /api/disk/share": lambda r: disk.share(body(r).get("path")),
         "POST /api/disk/unshare": lambda r: disk.unshare(body(r).get("token")) or {"ok": True},
+        # Живой порядок: правила, предложения кицунэ и её уроки.
+        "/api/disk/order": lambda _req: organizer.view(),
+        "/api/disk/order/plan": lambda _req: {"moves": organizer.plan()},
+        "POST /api/disk/order/rule": lambda r: organizer.save_rule(body(r)),
+        "POST /api/disk/order/delete": lambda r: {"ok": organizer.delete_rule(str(body(r).get("id", "")))},
+        "POST /api/disk/order/answer": lambda r: {"rule": organizer.answer(str((d := body(r)).get("id", "")),
+                                                                            d.get("accept") is True)},
+        "POST /api/disk/order/apply": lambda r: organizer.apply(body(r).get("moves")),
+        # Понятные имена, похожие файлы, конспект.
+        "/api/disk/names": lambda r: namer.suggest(query(r).get("path", ""), query(r).get("all") != "1"),
+        "POST /api/disk/names": lambda r: namer.apply(body(r).get("items")),
+        "/api/disk/related": lambda r: insight.related(disk, index, memory(), query(r).get("path", "")),
+        "POST /api/disk/summary": lambda r: insight.save_summary(disk, index, cloud, str(body(r).get("path", "")),
+                                                                 language(), memory()),
     }
     for path, handler in routes.items():
         ctx.route(path, readable_errors(handler))
     ctx.web("disk.css", "disk.js")
-    assistant.register(ctx, disk, index, smart_search)
+    assistant.register(ctx, disk, index, smart_search, organizer, namer)
 
     def current_text(rel: str):
         """(время изменения, текст) файла прямо сейчас, без индекса; None — файла нет."""

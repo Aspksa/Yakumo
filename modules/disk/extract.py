@@ -141,6 +141,48 @@ def pdf_text(path: Path) -> str:
     return "\n".join(out)
 
 
+def pdf_images(path: Path, limit: int = 3) -> list[tuple[bytes, str]]:
+    """Картинки страниц скана (JPEG как есть, несжатые серые и цветные — в PNG), чтобы распознать текст."""
+    if path.stat().st_size > MAX_FILE:
+        return []
+    pdf = SimplePdf(path.read_bytes())
+    out = []
+    for body in pdf.objects.values():
+        if not re.search(rb"/Subtype\s*/Image\b", body):
+            continue
+        width, height = re.search(rb"/Width\s+(\d+)", body), re.search(rb"/Height\s+(\d+)", body)
+        if not width or not height or int(width[1]) < 300 or int(height[1]) < 300:
+            continue  # значки и логотипы
+        m = re.search(rb"stream\r?\n", body)
+        if not m:
+            continue
+        head, raw = body[:m.start()], body[m.end():]
+        raw = raw[:raw.rfind(b"endstream")] if b"endstream" in raw else raw
+        if b"/DCTDecode" in head:
+            out.append((raw.rstrip(b"\r\n"), "image/jpeg"))
+        elif b"/FlateDecode" in head and re.search(rb"/BitsPerComponent\s+8", head):
+            channels = 3 if b"/DeviceRGB" in head else 1 if b"/DeviceGray" in head else 0
+            pixels = pdf.stream(body)
+            w, h = int(width[1]), int(height[1])
+            if channels and pixels and len(pixels) >= w * h * channels:
+                out.append((png(pixels, w, h, channels), "image/png"))
+        if len(out) >= limit:
+            break
+    return out
+
+
+def png(pixels: bytes, width: int, height: int, channels: int) -> bytes:
+    import struct
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+    row = width * channels
+    raw = b"".join(b"\x00" + pixels[y * row:(y + 1) * row] for y in range(height))
+    color = 2 if channels == 3 else 0
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, color, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(raw, 6)) + chunk(b"IEND", b""))
+
+
 class SimplePdf:
     """Упрощённое чтение текста PDF: объекты, сжатые потоки, шрифты с таблицей ToUnicode."""
 
