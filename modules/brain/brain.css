@@ -69,3 +69,71 @@
   .br-search { flex-basis: 100%; }
 }
 .brain .group > .row:first-child { border-top: 0; }
+
+/* Статус: поиск по смыслу, сон */
+.br-status { display: flex; align-items: center; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap;
+             border-top: 1px solid var(--border); padding-top: 10px; margin-top: 10px; }
+.br-tablist { flex-wrap: wrap; }
+
+/* Связи, файлы и источник факта */
+.br-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.br-chip { font: inherit; font-size: 12px; padding: 1px 8px; border-radius: var(--chip-radius); border: 1px solid var(--border);
+           background: var(--accent-soft); color: var(--accent); cursor: pointer; text-decoration: none; }
+.br-chip:hover { border-color: var(--accent); }
+.br-chip.file { background: none; color: var(--text); }
+.br-link { font: inherit; border: 0; padding: 0; background: none; color: inherit; cursor: pointer; text-align: left; }
+.br-link:hover { color: var(--text); text-decoration: underline; }
+.br-link:focus-visible { outline: 2px solid var(--accent); }
+.br-quote { margin-top: 6px; padding: 6px 10px; border-left: 2px solid var(--accent); background: var(--hover);
+            border-radius: 0 6px 6px 0; font-size: 13px; color: var(--muted); }
+.br-quote b { color: var(--accent); font-weight: 600; }
+
+/* Карта памяти */
+.br-map-wrap { border: 1px solid var(--border); border-radius: var(--radius); background:
+               radial-gradient(circle at 50% 50%, rgba(var(--accent-rgb), .08), transparent 60%), var(--card-bg);
+               overflow: hidden; margin-bottom: 14px; }
+.br-map { display: block; width: 100%; height: auto; }
+.br-map line { stroke: rgba(var(--accent-rgb), .35); stroke-width: 1.2; }
+.br-map line.side { stroke-dasharray: 3 4; stroke: rgba(var(--accent-rgb), .22); }
+.br-node { cursor: pointer; outline: none; }
+.br-node circle { fill: var(--bg); stroke: var(--accent); stroke-width: 1.5; transition: fill .15s; }
+.br-node.t-me circle { fill: var(--accent); cursor: default; }
+.br-node.t-me text { fill: var(--accent); font-weight: 600; }
+.br-node.t-person circle, .br-node.t-pet circle { fill: rgba(var(--accent-rgb), .35); }
+.br-node.t-place circle { stroke-dasharray: 3 2; }
+.br-node.t-project circle, .br-node.t-org circle { fill: rgba(var(--accent-rgb), .12); stroke-width: 2.5; }
+.br-node:hover circle, .br-node:focus-visible circle, .br-node.on circle { fill: rgb(var(--accent-hi-rgb)); }
+.br-node text { fill: var(--text); font-size: 13px; text-anchor: middle; paint-order: stroke; stroke: var(--bg);
+                stroke-width: 3px; }
+.br-node text.sub { fill: var(--muted); font-size: 11px; }
+.br-node-panel { padding: 12px; margin-bottom: 14px; }
+.br-node-panel .br-add { margin-bottom: 8px; }
+.br-node-panel .br-list { margin-top: 8px; }
+
+/* Настроение */
+.br-mood { margin-bottom: 14px; }
+.br-mood h2, .br-soon h2 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 0 0 8px; }
+.br-mood-bars { display: flex; align-items: flex-end; gap: 3px; height: 64px; }
+.br-mood-bars i { flex: 1; max-width: 18px; border-radius: 3px 3px 0 0; background: rgba(var(--accent-rgb), .5); }
+.br-mood-bars i.high { background: var(--accent); }
+.br-mood-bars i.low { background: rgba(var(--accent-rgb), .2); }
+
+/* Обещания, даты, навыки */
+.br-soon { padding: 12px 16px; margin-bottom: 14px; }
+.br-soon-row { font-size: 14px; padding: 2px 0; }
+.br-soon-row b { color: var(--accent); }
+.br-soon-row.bad b { color: var(--bad); }
+.br-promise input[type="checkbox"], .br-check input { accent-color: var(--accent); width: 17px; height: 17px; flex: none; }
+.br-promise.done .br-fact-text { text-decoration: line-through; color: var(--muted); }
+.br-overdue { color: var(--bad); }
+.br-date { flex: 0 0 150px !important; color-scheme: dark; }
+.br-check { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); }
+.br-skill-name { font-size: 15px; font-weight: 600; }
+.br-steps { margin: 8px 0 0; padding-left: 22px; font-size: 14px; line-height: 1.5; }
+
+/* Yakumo написала первой, а чат закрыт: золотая точка на аватаре */
+.avatar.news::after { content: ""; position: absolute; top: 12%; right: 18%; width: 14px; height: 14px; border-radius: 50%;
+                      background: var(--accent); box-shadow: 0 0 0 3px var(--bg), 0 0 14px rgba(var(--accent-rgb), .9);
+                      animation: br-news 1.6s ease-in-out infinite; }
+@keyframes br-news { 50% { transform: scale(1.25); } }
+@media (prefers-reduced-motion: reduce) { .avatar.news::after { animation: none; } }

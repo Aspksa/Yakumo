@@ -14,6 +14,7 @@
         ctx.chat_tool("имя", "что делает", run)  # инструмент для чата с Yakumo
         ctx.chat_context(lambda history, chat_id: "текст в подсказку")
         ctx.on_chat(lambda history, answer, chat_id: ...)  # после ответа в чате
+        if ctx.memory: ctx.memory.remember("факт", about=["Аня"])  # память Yakumo
 
 Ошибка в одном модуле не мешает запуску остальных и ядра.
 """
@@ -63,6 +64,7 @@ class Context:
     web_files: dict[str, list[str]] = field(default_factory=dict)
     cloud: Any = None  # CloudService: модули могут обращаться к моделям Cloud.ru
     chat_tools: dict[str, Any] = field(default_factory=dict)
+    memory: Any = None  # память Yakumo (модуль brain): remember, recall, facts, moved, say
     chat_contexts: list[Callable] = field(default_factory=list)
     chat_listeners: list[Callable] = field(default_factory=list)
     request_exit: Callable[[], None] | None = None  # завершение ядра для установщика
