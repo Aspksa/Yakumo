@@ -24,6 +24,10 @@ class Paths:
     def config_file(self) -> Path:
         return self.config / "yakumo.json"
 
+    @property
+    def secrets_file(self) -> Path:
+        return self.config / "secrets.json"  # ключи доступа, отдельно от настроек
+
     def ensure(self) -> "Paths":
         for path in (self.data, self.config, self.logs, self.cache, self.temp, self.workspace, self.modules):
             path.mkdir(parents=True, exist_ok=True)

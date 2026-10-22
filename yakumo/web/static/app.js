@@ -24,9 +24,23 @@ const TEXTS = {
     restart: "Нужен перезапуск Yakumo, чтобы изменение вступило в силу.",
     saved: "Сохранено", saveError: "Не сохранилось",
     avatar: "Yakumo: открыть чат", chatClose: "Закрыть чат", chatPlaceholder: "Напишите сообщение…",
-    send: "Отправить", chatSub: "чат пока без собеседника",
+    send: "Отправить", stop: "Остановить", clearChat: "Очистить чат", noCloud: "Cloud.ru не подключён",
     greeting: "Привет! Я Yakumo. Меня можно перетащить куда угодно, а по нажатию открывается этот чат.",
-    stubReply: "Я пока только учусь отвечать. Скоро здесь появится настоящий собеседник.",
+    openSettings: "Открыть настройки", stopped: "(остановлено)",
+    cloudHint: "Через Cloud.ru Foundation Models со мной можно говорить в чате. Ключ выдаётся в личном кабинете Cloud.ru.",
+    apiKey: "API-ключ", keySaved: (hint) => `Ключ сохранён (${hint}).`, keyNone: "Ключ ещё не сохранён.",
+    keyPlaceholder: "Вставьте ключ Cloud.ru", saveKey: "Сохранить", deleteKey: "Удалить",
+    connection: "Проверка связи", testConn: "Проверить", testing: "Проверяю…",
+    connOk: (n) => `Связь есть, доступно моделей: ${n}.`, connUnknown: "Ещё не проверялась.",
+    model: "Модель", modelHint: "Список моделей появляется после проверки связи.",
+    errors: {
+      no_key: "Сначала сохраните API-ключ Cloud.ru в настройках.",
+      bad_key: "Cloud.ru не принял ключ. Проверьте его в настройках.",
+      network: "Нет связи с Cloud.ru. Проверьте интернет.",
+      rate_limit: "Слишком много запросов. Подождите немного и повторите.",
+      bad_model: "Эта модель недоступна. Выберите другую в настройках.",
+      no_models: "Для этого ключа нет доступных моделей.",
+    },
     pathNames: { app: "Программа", data: "Данные", config: "Настройки", logs: "Журналы", cache: "Кэш",
                  temp: "Временные", workspace: "Рабочая папка", modules: "Модули", web: "Веб-страницы" },
   },
@@ -51,9 +65,23 @@ const TEXTS = {
     restart: "Restart Yakumo for this change to take effect.",
     saved: "Saved", saveError: "Not saved",
     avatar: "Yakumo: open chat", chatClose: "Close chat", chatPlaceholder: "Type a message…",
-    send: "Send", chatSub: "chat has no one to talk to yet",
+    send: "Send", stop: "Stop", clearChat: "Clear chat", noCloud: "Cloud.ru is not connected",
     greeting: "Hi! I'm Yakumo. Drag me anywhere; click me to open this chat.",
-    stubReply: "I'm still learning to reply. A real conversation partner is coming soon.",
+    openSettings: "Open settings", stopped: "(stopped)",
+    cloudHint: "Chat with me through Cloud.ru Foundation Models. Get a key in your Cloud.ru console.",
+    apiKey: "API key", keySaved: (hint) => `Key saved (${hint}).`, keyNone: "No key saved yet.",
+    keyPlaceholder: "Paste your Cloud.ru key", saveKey: "Save", deleteKey: "Delete",
+    connection: "Connection check", testConn: "Check", testing: "Checking…",
+    connOk: (n) => `Connected, ${n} models available.`, connUnknown: "Not checked yet.",
+    model: "Model", modelHint: "The model list appears after a connection check.",
+    errors: {
+      no_key: "Save your Cloud.ru API key in Settings first.",
+      bad_key: "Cloud.ru rejected the key. Check it in Settings.",
+      network: "Can't reach Cloud.ru. Check your internet connection.",
+      rate_limit: "Too many requests. Wait a moment and try again.",
+      bad_model: "This model is unavailable. Pick another one in Settings.",
+      no_models: "No models are available for this key.",
+    },
     pathNames: { app: "Program", data: "Data", config: "Settings", logs: "Logs", cache: "Cache",
                  temp: "Temp", workspace: "Workspace", modules: "Modules", web: "Web pages" },
   },
@@ -79,6 +107,8 @@ const chatInput = document.getElementById("chat-input");
 const statusEl = document.getElementById("status");
 let status = null;
 let settings = null;
+let cloud = null;      // состояние подключения Cloud.ru (без ключа)
+let cloudMsg = null;   // итог последней проверки связи: { text, ok }
 let online = null;
 
 function h(tag, attrs = {}, ...children) {
@@ -115,9 +145,11 @@ function buildMenu() {
   avatarBtn.setAttribute("aria-label", T.avatar);
   chatBox.setAttribute("aria-label", T.avatar);
   document.getElementById("chat-close").setAttribute("aria-label", T.chatClose);
-  document.getElementById("chat-sub").textContent = T.chatSub;
+  document.getElementById("chat-clear").setAttribute("aria-label", T.clearChat);
+  document.getElementById("chat-clear").title = T.clearChat;
+  showChatSub();
   chatInput.placeholder = T.chatPlaceholder;
-  chatForm.querySelector(".chat-send").setAttribute("aria-label", T.send);
+  setSending(sending);
 }
 
 // --- Внешний вид из настроек ---
@@ -165,6 +197,75 @@ function choice(key, title, hint, labels) {
     group);
 }
 
+function cloudSection() {
+  const box = h("section", { class: "card group", id: "cloud" }, h("h2", {}, "Cloud.ru"),
+    h("p", { class: "row-hint group-hint" }, T.cloudHint));
+  if (!cloud) return box;
+  const input = h("input", { type: "password", class: "text-input", placeholder: T.keyPlaceholder,
+                             autocomplete: "off", spellcheck: "false", "aria-label": T.apiKey });
+  const keyForm = h("form", { class: "inline-form", onsubmit: (e) => {
+    e.preventDefault();
+    if (input.value.trim()) saveCloud({ api_key: input.value.trim() }, true);
+  } }, input, h("button", { class: "btn primary", type: "submit" }, T.saveKey),
+    cloud.has_key ? h("button", { class: "btn", type: "button",
+                                 onclick: () => { cloudMsg = null; saveCloud({ api_key: "" }); } }, T.deleteKey) : "");
+  const models = cloud.models.length ? cloud.models : (cloud.model ? [cloud.model] : []);
+  const select = h("select", { class: "select", "aria-label": T.model, disabled: !models.length,
+                               onchange: (e) => saveCloud({ model: e.target.value }) },
+    models.map((m) => h("option", { value: m, selected: m === cloud.model }, m)));
+  const msg = cloudMsg || { text: T.connUnknown };
+  box.append(
+    h("div", { class: "row" },
+      h("span", { class: "row-text" }, h("span", { class: "row-title" }, T.apiKey),
+        h("span", { class: "row-hint" }, cloud.has_key ? T.keySaved(cloud.key_hint) : T.keyNone)),
+      keyForm),
+    h("div", { class: "row" },
+      h("span", { class: "row-text" }, h("span", { class: "row-title" }, T.connection),
+        h("span", { class: "row-hint " + (msg.ok === true ? "good" : msg.ok === false ? "bad" : ""), id: "cloud-msg" },
+          msg.text)),
+      h("button", { class: "btn", type: "button", disabled: !cloud.has_key, onclick: () => testCloud() }, T.testConn)),
+    h("div", { class: "row" },
+      h("span", { class: "row-text" }, h("span", { class: "row-title" }, T.model),
+        h("span", { class: "row-hint" }, T.modelHint)),
+      select));
+  return box;
+}
+
+async function postJSON(url, data) {
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
+                               body: JSON.stringify(data) });
+  const res = await r.json();
+  if (!r.ok) throw new Error(res.error || `HTTP ${r.status}`);
+  return res;
+}
+
+function errorText(code) { return T.errors[code] || code; }
+
+async function saveCloud(changes, thenTest = false) {
+  try {
+    cloud = await postJSON("/api/cloud", changes);
+    if (thenTest) return testCloud();
+  } catch (e) {
+    cloudMsg = { text: `${T.saveError}: ${e.message}`, ok: false };
+  }
+  showChatSub();
+  if (currentPage() === "settings") render();
+}
+
+async function testCloud() {
+  const el = document.getElementById("cloud-msg");
+  if (el) { el.textContent = T.testing; el.className = "row-hint"; }
+  try {
+    const res = await postJSON("/api/cloud/test", {});
+    cloud = res;
+    cloudMsg = res.ok ? { text: T.connOk(res.models.length), ok: true } : { text: errorText(res.error), ok: false };
+  } catch (e) {
+    cloudMsg = { text: e.message, ok: false };
+  }
+  showChatSub();
+  if (currentPage() === "settings") render();
+}
+
 function restartNote(key) {
   return settings.restart_needed.includes(key) ? h("span", { class: "row-warn" }, T.restart) : "";
 }
@@ -193,6 +294,7 @@ const PAGES = {
         choice("language", T.language, T.languageHint, (v) => ({ ru: "Русский", en: "English" })[v]),
         choice("font_scale", T.fontSize, null, (v) => `${v}%`),
         toggle("compact", T.compact, T.compactHint)),
+      cloudSection(),
       h("section", { class: "card group" },
         h("h2", {}, T.paths),
         h("table", { class: "kv" }, paths.map(([k, v]) => h("tr", {}, h("td", {}, T.pathNames[k] || k), h("td", {}, v))))),
@@ -268,6 +370,10 @@ async function start() {
     settings = await getJSON("/api/settings");
     applyLook();
   } catch { /* без настроек работаем со значениями по умолчанию */ }
+  try {
+    cloud = await getJSON("/api/cloud");
+    showChatSub();
+  } catch { /* чат покажет ошибку при отправке */ }
   await refreshStatus();
   render();
   // Главную обновляем по таймеру; формы настроек не трогаем, чтобы не сбить ввод.
@@ -334,35 +440,168 @@ function setChatOpen(open) {
   chatBox.hidden = !open;
   avatarBtn.setAttribute("aria-expanded", String(open));
   if (!open) return;
-  if (!messages.length) addMessage("bot", T.greeting);
+  if (!messages.length) addMessage("bot", T.greeting, { local: true });
   placeChat();
   chatInput.focus();
 }
 
+function showChatSub() {
+  const model = cloud?.has_key && cloud.model ? cloud.model.split("/").pop() : null;
+  document.getElementById("chat-sub").textContent = model || T.noCloud;
+}
+
+// Короткий безопасный Markdown: сначала экранируем всё, потом размечаем.
+function escapeHTML(text) {
+  return text.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+
+function inlineMd(text) {
+  return text
+    .replace(/`([^`\n]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,!?:;]|$)/g, "$1<em>$2</em>")
+    .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+}
+
+function markdown(text) {
+  const out = [];
+  const parts = escapeHTML(text).split(/```/);
+  parts.forEach((part, i) => {
+    if (i % 2) {  // блок кода; первая строка может быть названием языка
+      out.push(`<pre><code>${part.replace(/^[\w+-]*\n/, "")}</code></pre>`);
+      return;
+    }
+    let list = null;
+    for (const raw of part.split("\n")) {
+      const item = raw.match(/^\s*(?:[-*•]|(\d+)[.)])\s+(.*)$/);
+      if (item) {
+        const tag = item[1] ? "ol" : "ul";
+        if (list !== tag) { if (list) out.push(`</${list}>`); out.push(`<${tag}>`); list = tag; }
+        out.push(`<li>${inlineMd(item[2])}</li>`);
+        continue;
+      }
+      if (list) { out.push(`</${list}>`); list = null; }
+      const head = raw.match(/^#{1,6}\s+(.*)$/);
+      if (head) out.push(`<p><strong>${inlineMd(head[1])}</strong></p>`);
+      else if (raw.trim()) out.push(`<p>${inlineMd(raw)}</p>`);
+    }
+    if (list) out.push(`</${list}>`);
+  });
+  return out.join("");
+}
+
+function messageEl(m) {
+  const el = h("div", { class: `msg ${m.from}${m.error ? " error" : ""}` });
+  if (m.from === "bot" && !m.error) el.innerHTML = markdown(m.text) || "<span class=\"typing\"><i></i><i></i><i></i></span>";
+  else el.textContent = m.error ? errorText(m.error) : m.text;
+  if (m.error === "no_key" || m.error === "bad_key" || m.error === "bad_model") {
+    el.append(h("button", { class: "btn small", type: "button",
+                            onclick: () => { location.hash = "#/settings"; } }, T.openSettings));
+  }
+  return el;
+}
+
 function showMessages() {
-  chatLog.replaceChildren(...messages.map((m) => h("div", { class: "msg " + m.from }, m.text)));
+  chatLog.replaceChildren(...messages.map(messageEl));
   chatLog.scrollTop = chatLog.scrollHeight;
 }
 
-function addMessage(from, text) {
-  messages = [...messages, { from, text }].slice(-200);
-  store("yakumo.chat", messages);
+function saveMessages() {
+  messages = messages.slice(-200);
+  store("yakumo.chat", messages.filter((m) => !m.pending));
+}
+
+function addMessage(from, text, extra = {}) {
+  const m = { from, text, ...extra };
+  messages = [...messages, m];
+  saveMessages();
+  showMessages();
+  return m;
+}
+
+// Что отправить модели: настоящие реплики, без приветствия и ошибок.
+function history() {
+  const list = messages.filter((m) => !m.error && !m.local && !m.pending && m.text)
+    .map((m) => ({ role: m.from === "me" ? "user" : "assistant", content: m.text }));
+  const first = list.findIndex((m) => m.role === "user");  // разговор начинается с пользователя
+  return first < 0 ? [] : list.slice(first);
+}
+
+let sending = null;  // AbortController текущего ответа
+
+function setSending(controller) {
+  sending = controller;
+  const btn = chatForm.querySelector(".chat-send");
+  btn.classList.toggle("stop", !!controller);
+  btn.setAttribute("aria-label", controller ? T.stop : T.send);
+  btn.querySelector("use").setAttribute("href", controller ? "#i-stop" : "#i-send");
+}
+
+async function ask() {
+  const controller = new AbortController();
+  setSending(controller);
+  const answer = addMessage("bot", "", { pending: true });
+  const update = () => {
+    const last = chatLog.lastElementChild;
+    if (last) last.replaceWith(messageEl(answer));
+    const nearBottom = chatLog.scrollHeight - chatLog.scrollTop - chatLog.clientHeight < 80;
+    if (nearBottom) chatLog.scrollTop = chatLog.scrollHeight;
+  };
+  try {
+    const r = await fetch("/api/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: history() }), signal: controller.signal,
+    });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
+    const reader = r.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const ev = JSON.parse(line);
+        if (ev.delta) { answer.text += ev.delta; update(); }
+        if (ev.error) { if (answer.text) answer.text += "\n\n"; answer.error = ev.error; }
+      }
+    }
+    if (!answer.text && !answer.error) answer.error = "network";
+  } catch (e) {
+    if (e.name === "AbortError") answer.text += (answer.text ? " " : "") + T.stopped;
+    else answer.error = e.message === "Failed to fetch" ? "network" : e.message;
+  }
+  // Ошибку после части ответа показываем отдельной репликой, а начало ответа оставляем.
+  delete answer.pending;
+  if (answer.error && answer.text.trim()) {
+    const error = answer.error;
+    delete answer.error;
+    answer.text = answer.text.trim();
+    messages.push({ from: "bot", text: "", error });
+  }
+  setSending(null);
+  saveMessages();
   showMessages();
 }
 
-// Заготовка: собеседник ещё не подключён, отвечаем шаблонной фразой.
-async function reply(text) {
-  return T.stubReply;
-}
-
-chatForm.addEventListener("submit", async (e) => {
+chatForm.addEventListener("submit", (e) => {
   e.preventDefault();
+  if (sending) { sending.abort(); return; }
   const text = chatInput.value.trim();
   if (!text) return;
   chatInput.value = "";
   chatInput.style.height = "";
   addMessage("me", text);
-  addMessage("bot", await reply(text));
+  ask();
+});
+document.getElementById("chat-clear").addEventListener("click", () => {
+  if (sending) sending.abort();
+  messages = [];
+  addMessage("bot", T.greeting, { local: true });
+  chatInput.focus();
 });
 chatInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); chatForm.requestSubmit(); }

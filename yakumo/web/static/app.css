@@ -128,13 +128,37 @@ div.row { cursor: default; }
                        box-shadow: var(--shadow); }
 .segmented button:focus-visible { outline: 2px solid var(--accent); }
 
+/* Поля и кнопки */
+.group-hint { margin: 0 0 6px; }
+.row-hint.good { color: var(--ok); }
+.row-hint.bad { color: var(--bad); }
+.inline-form { display: flex; flex-wrap: wrap; gap: 8px; flex: none; max-width: 100%; }
+.text-input, .select {
+  font: inherit; font-size: 14px; color: var(--text); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; outline: none; min-width: 0;
+}
+.text-input { width: 240px; }
+.select { max-width: 320px; cursor: pointer; }
+.select:disabled { cursor: default; opacity: .6; }
+.text-input:focus, .select:focus-visible { border-color: var(--gold); }
+.btn {
+  font: inherit; font-size: 13px; padding: 7px 14px; border-radius: 8px; cursor: pointer; flex: none;
+  color: var(--text); background: var(--hover); border: 1px solid var(--border);
+}
+.btn:hover { border-color: var(--gold); }
+.btn:disabled { opacity: .5; cursor: default; border-color: var(--border); }
+.btn.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 600; }
+.btn.primary:hover { background: #ecc46a; }
+.btn.small { display: block; margin-top: 8px; padding: 4px 10px; font-size: 12px; }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 .saved { font-size: 13px; }
 .saved.ok { color: var(--ok); }
 .saved.bad { color: var(--bad); }
 
 /* Аватар */
 .avatar {
-  --size: 196px;
+  --size: 232px;
   position: fixed; left: 0; top: 0; z-index: 30; width: var(--size); height: var(--size);
   padding: 0; border: 0; background: none; cursor: grab; touch-action: none; user-select: none;
   -webkit-tap-highlight-color: transparent; border-radius: 50%;
@@ -181,7 +205,23 @@ div.row { cursor: default; }
 .msg { max-width: 82%; padding: 8px 12px; border-radius: 14px; font-size: 14px; line-height: 1.4;
        white-space: pre-wrap; overflow-wrap: anywhere; }
 .msg.bot { align-self: flex-start; background: var(--surface); border: 1px solid var(--border);
-           border-bottom-left-radius: 4px; }
+           border-bottom-left-radius: 4px; white-space: normal; }
+.msg.error { border-color: rgba(229, 103, 90, .45); color: #f1b2a9; white-space: normal; }
+.msg p { margin: 0 0 6px; }
+.msg p:last-child, .msg ul:last-child, .msg ol:last-child, .msg pre:last-child { margin-bottom: 0; }
+.msg ul, .msg ol { margin: 0 0 6px; padding-left: 20px; }
+.msg code { font-family: Consolas, "Cascadia Mono", monospace; font-size: 13px; background: var(--bg);
+            padding: 1px 4px; border-radius: 4px; }
+.msg pre { margin: 0 0 6px; padding: 8px 10px; background: var(--bg); border: 1px solid var(--border);
+           border-radius: 8px; overflow-x: auto; white-space: pre; }
+.msg pre code { padding: 0; background: none; }
+.msg a { color: var(--gold); text-decoration: underline; }
+.typing { display: inline-flex; gap: 4px; padding: 4px 0; }
+.typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); opacity: .4;
+            animation: blink 1.2s infinite; }
+.typing i:nth-child(2) { animation-delay: .2s; }
+.typing i:nth-child(3) { animation-delay: .4s; }
+@keyframes blink { 40% { opacity: 1; } }
 .msg.me { align-self: flex-end; background: var(--accent-soft); border: 1px solid rgba(220, 176, 79, .35);
           border-bottom-right-radius: 4px; }
 .chat-form { display: flex; align-items: flex-end; gap: 8px; padding: 10px; border-top: 1px solid var(--border); }
@@ -192,6 +232,7 @@ div.row { cursor: default; }
 .chat-send { display: grid; place-items: center; width: 38px; height: 38px; flex: none; border: 0;
              border-radius: 10px; background: var(--accent); color: var(--bg); cursor: pointer; }
 .chat-send:hover { background: #ecc46a; }
+.chat-send.stop { background: var(--hover); color: var(--gold); border: 1px solid var(--gold); }
 .chat-send:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .chat-send svg { width: 18px; height: 18px; }
 
@@ -205,12 +246,12 @@ body.compact .row { padding: 9px 0; }
 body.compact .icon-btn { height: 34px; width: 38px; }
 body.compact h1 { font-size: 19px; }
 body.compact .subtitle { margin-bottom: 14px; }
-body.compact .avatar { --size: 160px; }
+body.compact .avatar { --size: 188px; }
 
 /* Узкий экран: прячем подписи, левая полоса уже */
 @media (max-width: 720px) {
   :root { --rail: 52px; }
-  .avatar, body.compact .avatar { --size: 128px; }
+  .avatar, body.compact .avatar { --size: 144px; }
 
   .brand span { display: none; }
   /* Текст состояния скрыт визуально, но доступен экранным чтецам */
@@ -222,6 +263,8 @@ body.compact .avatar { --size: 160px; }
   .topnav .icon-btn::after, .rail .icon-btn::after { display: none; }
   .content { padding: 20px 14px; }
   div.row { flex-wrap: wrap; }
+  .text-input { width: auto; flex: 1; }
+  .inline-form { width: 100%; }
   .segmented { max-width: 100%; overflow-x: auto; }
   .segmented button { padding: 6px 9px; }
   table.kv tr { display: block; padding: 8px 0; border-bottom: 1px solid var(--border); }

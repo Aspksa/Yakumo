@@ -20,6 +20,8 @@ class Config:
     language: str = "ru"             # язык интерфейса: ru или en
     font_scale: int = 100            # размер шрифта веб-версии, %
     compact: bool = False            # компактный режим веб-версии
+    cloud_model: str | None = None   # модель Cloud.ru для чата; ключ хранится в secrets.json
+    cloud_url: str = "https://foundation-models.api.cloud.ru/v1"  # адрес API Cloud.ru
 
     # Что можно менять из веб-версии, и допустимые значения.
     EDITABLE: ClassVar[dict[str, tuple]] = {
