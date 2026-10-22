@@ -28,11 +28,11 @@ class SettingsService:
         return needed
 
     def get(self, _request=None) -> dict:
-        values = {key: getattr(self.config, key) for key in Config.EDITABLE}
+        values = {key: getattr(self.config, key) for key in (*Config.EDITABLE, *Config.MULTI)}
         values["autostart"] = autostart.supported() and autostart.is_enabled()
         return {
             "values": values,
-            "options": {key: list(allowed) for key, allowed in Config.EDITABLE.items()},
+            "options": {key: list(allowed) for key, allowed in (*Config.EDITABLE.items(), *Config.MULTI.items())},
             "autostart_supported": autostart.supported(),
             "tray_available": self.tray_available,
             "restart_needed": self.restart_needed(),

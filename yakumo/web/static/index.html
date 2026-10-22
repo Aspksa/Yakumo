@@ -42,9 +42,15 @@
 
   <!-- Аватар: виден на всех страницах, перетаскивается, по нажатию открывает чат -->
   <button class="avatar" id="avatar" type="button" data-motion="float" data-glow="soft" data-speed="normal" aria-controls="chat" aria-expanded="false">
-    <img src="avatar-600.webp" alt="" width="1254" height="1254" draggable="false" decoding="async"
-         srcset="avatar-400.webp 400w, avatar-600.webp 600w, avatar-900.webp 900w, avatar-1254.webp 1254w"
-         sizes="196px">
+    <canvas class="fx fx-back" aria-hidden="true"></canvas>
+    <!-- Вложенные обёртки двигаются с разными периодами: так движение не повторяется и выглядит живым -->
+    <span class="av-fig"><span class="av-sway"><span class="av-pose">
+      <img class="av-img" src="avatar-600.webp" alt="" width="1254" height="1254" draggable="false" decoding="async"
+           srcset="avatar-400.webp 400w, avatar-600.webp 600w, avatar-900.webp 900w, avatar-1254.webp 1254w"
+           sizes="196px">
+      <img class="av-blink" src="avatar-blink.webp" alt="" draggable="false">
+    </span></span></span>
+    <canvas class="fx fx-front" aria-hidden="true"></canvas>
   </button>
 
   <section class="chat" id="chat" hidden>
@@ -61,6 +67,7 @@
     </form>
   </section>
 
+  <script src="fx.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

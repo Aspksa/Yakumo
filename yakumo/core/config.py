@@ -25,6 +25,8 @@ class Config:
     avatar_motion: str = "float"     # движение аватара
     avatar_glow: str = "soft"        # сияние за аватаром
     avatar_speed: str = "normal"     # скорость анимации
+    avatar_effects: list[str] = field(default_factory=lambda: ["sparkles"])  # эффекты вокруг аватара
+    avatar_fx_power: str = "normal"  # сила эффектов
     cloud_model: str | None = None   # модель Cloud.ru для чата; ключ хранится в secrets.json
     cloud_url: str = "https://foundation-models.api.cloud.ru/v1"  # адрес API Cloud.ru
 
@@ -36,18 +38,31 @@ class Config:
         "font_scale": (90, 100, 115, 130),
         "compact": (True, False),
         "avatar_show": (True, False),
-        "avatar_size": tuple(range(120, 961, 8)),
+        "avatar_size": tuple(range(120, 2001, 8)),
         "avatar_motion": ("none", "float", "glide", "alive"),
         "avatar_glow": ("off", "soft", "bright", "pulse"),
         "avatar_speed": ("slow", "normal", "fast"),
+        "avatar_fx_power": ("low", "normal", "high"),
     }
+    # Настройки-списки: можно выбрать несколько значений сразу (или ни одного).
+    MULTI: ClassVar[dict[str, tuple]] = {
+        "avatar_effects": ("sparkles", "foxfire", "petals", "dust", "fireflies", "leaves", "snow",
+                           "rays", "circle", "shine", "aura"),
+    }
+
+    @classmethod
+    def valid(cls, key: str, value) -> bool:
+        if key in cls.MULTI:
+            return (type(value) is list and len(set(value)) == len(value)
+                    and all(isinstance(v, str) and v in cls.MULTI[key] for v in value))
+        allowed = cls.EDITABLE.get(key)
+        # bool — подкласс int, поэтому сверяем и тип.
+        return allowed is not None and any(value == a and type(value) is type(a) for a in allowed)
 
     def update(self, changes: dict) -> None:
         """Применить изменения из веб-версии; неизвестное или недопустимое отклоняется целиком."""
         for key, value in changes.items():
-            allowed = self.EDITABLE.get(key)
-            # bool — подкласс int, поэтому сверяем и тип.
-            if allowed is None or not any(value == a and type(value) is type(a) for a in allowed):
+            if not self.valid(key, value):
                 raise ValueError(f"Недопустимое значение: {key}={value!r}")
         for key, value in changes.items():
             setattr(self, key, value)
@@ -63,9 +78,8 @@ class Config:
             return cls()
         known = {f.name for f in fields(cls)}
         # Значение, которого больше нет среди допустимых (например, убранный вариант), сбрасываем.
-        valid = {k: v for k, v in raw.items() if k in known
-                 and (k not in cls.EDITABLE or any(v == a and type(v) is type(a) for a in cls.EDITABLE[k]))}
-        return cls(**valid)
+        editable = cls.EDITABLE.keys() | cls.MULTI.keys()
+        return cls(**{k: v for k, v in raw.items() if k in known and (k not in editable or cls.valid(k, v))})
 
     def save(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
