@@ -16,7 +16,7 @@ from pathlib import Path
 
 from yakumo.core.access import AccessResponse
 
-from .installer import atomic_json, digest, pid_alive, read_json, safe_target
+from .installer import atomic_json, digest, pid_alive, read_json, safe_target, same_app
 from .source import GitHub, REPOSITORY, matches, unpack
 
 NAME = "Обновление проекта"
@@ -34,8 +34,17 @@ class Updater:
     def __init__(self, ctx, client_factory=GitHub):
         self.ctx = ctx
         self.app = Path(ctx.paths.app).resolve()
-        key = hashlib.sha256(str(self.app).encode("utf-8")).hexdigest()[:16]
-        self.root = Path(ctx.paths.data).resolve() / "updates" / key
+        # Ключ без буквы диска: переносной диск может подключиться под другой буквой.
+        tail = os.path.normcase(os.path.splitdrive(str(self.app))[1])
+        key = hashlib.sha256(tail.encode("utf-8")).hexdigest()[:16]
+        updates = Path(ctx.paths.data).resolve() / "updates"
+        self.root = updates / key
+        legacy = updates / hashlib.sha256(str(self.app).encode("utf-8")).hexdigest()[:16]
+        if legacy != self.root and legacy.is_dir() and not self.root.exists():
+            try:
+                legacy.rename(self.root)
+            except OSError:
+                pass
         self.root.mkdir(parents=True, exist_ok=True)
         self.client_factory = client_factory
         self.lock = threading.RLock()
@@ -67,14 +76,14 @@ class Updater:
 
     def _installed(self) -> dict:
         installed = read_json(self.root / "installed.json")
-        return installed if installed.get("app") == str(self.app) and isinstance(installed.get("files"), dict) else {}
+        return installed if same_app(installed.get("app"), self.app) and isinstance(installed.get("files"), dict) else {}
 
     def _job(self) -> dict:
         pointer = read_json(self.root / "last-job.json")
         if not valid_id(pointer.get("id")):
             return {}
         job = read_json(self.root / "jobs" / pointer["id"] / "job.json")
-        if job.get("app") != str(self.app):
+        if not same_app(job.get("app"), self.app):
             return {}
         job.setdefault("worker_pid", pointer.get("pid", 0))
         return job
@@ -269,7 +278,7 @@ class Updater:
         if not valid_id(pointer.get("id")):
             raise ValueError("Резервная копия ещё не создана")
         backup = read_json(self.root / "backups" / pointer["id"] / "backup.json")
-        if backup.get("app") != str(self.app) or not backup.get("files"):
+        if not same_app(backup.get("app"), self.app) or not backup.get("files"):
             raise ValueError("Резервная копия недоступна")
         stage_id = uuid.uuid4().hex
         stage = self.root / "stages" / stage_id

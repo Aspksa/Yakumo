@@ -63,6 +63,21 @@ class SourceTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Контрольная сумма"):
                 source.unpack(archive, root / "bad", catalog(files)["files"], lambda *_: None)
 
+    def test_archive_accepts_crlf_from_gitattributes(self):
+        # GitHub собирает zipball через git archive и переводит строки по eol=crlf.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            archive = root / "update.zip"
+            blob = b"@echo off\nstart Yakumo.pyw\n"
+            archive.write_bytes(zip_bytes({"Yakumo.bat": blob.replace(b"\n", b"\r\n")}))
+            result = source.unpack(archive, root / "stage", {"Yakumo.bat": entry(blob)}, lambda *_: None)
+            self.assertEqual((root / "stage" / "Yakumo.bat").read_bytes(), blob.replace(b"\n", b"\r\n"))
+            self.assertTrue(source.matches(root / "stage" / "Yakumo.bat", entry(blob)))
+            self.assertEqual(result["Yakumo.bat"]["size"], len(blob) + 2)
+            archive.write_bytes(zip_bytes({"Yakumo.bat": b"@echo on\r\nstart Yakumo.pyw\r\n"}))
+            with self.assertRaisesRegex(ValueError, "Контрольная сумма"):
+                source.unpack(archive, root / "bad", {"Yakumo.bat": entry(blob)}, lambda *_: None)
+
     def test_archive_rejects_traversal_duplicate_and_missing_files(self):
         cases = [({"../escape.txt": b"x"}, {}), ({"yakumo/a.py": b"x"}, {"yakumo/a.py": entry(b"x"), "yakumo/b.py": entry(b"x")})]
         with tempfile.TemporaryDirectory() as tmp:
@@ -212,6 +227,20 @@ class InstallerTest(unittest.TestCase):
         self.assertEqual((self.app / "old.txt").read_bytes(), b"old")
         self.assertFalse((self.app / "new.txt").exists())
         self.assertFalse((self.app / installer.MARKER).exists())
+
+    def test_recovery_finds_data_after_drive_letter_change(self):
+        installer.make_backup(self.job, self.app, self.root)
+        installer.apply_files(self.job, self.app, self.root, self.path)
+        self.job.update(phase="installing", worker_pid=99999999)
+        installer.atomic_json(self.path, self.job)
+        # Данные переехали (как при новой букве диска), а в задании остался старый путь.
+        moved = self.base / "новая буква"
+        self.root.rename(moved)
+        job_path = moved / "jobs" / self.id / "job.json"
+        self.assertEqual(installer.recover_if_needed(job_path, self.app), 0)
+        self.assertEqual((self.app / "old.txt").read_bytes(), b"old")
+        self.assertFalse((self.app / "new.txt").exists())
+        self.assertTrue(installer.same_app(str(self.app) + "/", self.app))
 
 
 class UpdaterTest(unittest.TestCase):
