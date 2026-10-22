@@ -18,6 +18,10 @@
     <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
     <symbol id="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5"/></symbol>
     <symbol id="i-clear" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
+    <symbol id="i-max" viewBox="0 0 24 24"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/></symbol>
+    <symbol id="i-min" viewBox="0 0 24 24"><path d="M20 10h-6V4M4 14h6v6M14 10l7-7M10 14l-7 7"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></symbol>
+    <symbol id="i-retry" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></symbol>
     <symbol id="i-send" viewBox="0 0 24 24"><path d="M4 12 20 4l-6 16-3-7z"/><path d="m11 13 9-9"/></symbol>
   </svg>
 
@@ -55,16 +59,26 @@
 
   <section class="chat" id="chat" hidden>
     <header class="chat-head">
-      <img src="avatar-face.webp" alt="" width="40" height="40">
+      <span class="chat-face"><img src="avatar-face.webp" alt="" width="44" height="44"><i class="chat-dot" id="chat-dot"></i></span>
       <div class="chat-title"><strong>Yakumo</strong><span class="chat-sub" id="chat-sub"></span></div>
+      <button class="icon-btn" id="chat-max" type="button"><svg><use href="#i-max"/></svg></button>
       <button class="icon-btn" id="chat-clear" type="button"><svg><use href="#i-clear"/></svg></button>
-      <button class="icon-btn chat-close" id="chat-close" type="button"><svg><use href="#i-close"/></svg></button>
+      <button class="icon-btn" id="chat-close" type="button"><svg><use href="#i-close"/></svg></button>
     </header>
     <div class="chat-log" id="chat-log" role="log" aria-live="polite"></div>
+    <div class="chat-hints" id="chat-hints"></div>
     <form class="chat-form" id="chat-form">
-      <textarea id="chat-input" rows="1" maxlength="4000"></textarea>
-      <button class="chat-send" type="submit"><svg><use href="#i-send"/></svg></button>
+      <div class="chat-field">
+        <textarea id="chat-input" rows="1" maxlength="4000"></textarea>
+        <button class="chat-send" type="submit"><svg><use href="#i-send"/></svg></button>
+      </div>
+      <div class="chat-foot"><span id="chat-keys"></span><span id="chat-count"></span></div>
     </form>
+    <!-- Края и углы, за которые окно чата растягивается мышью -->
+    <span class="grip" data-edge="n"></span><span class="grip" data-edge="s"></span>
+    <span class="grip" data-edge="e"></span><span class="grip" data-edge="w"></span>
+    <span class="grip" data-edge="ne"></span><span class="grip" data-edge="nw"></span>
+    <span class="grip" data-edge="se"></span><span class="grip" data-edge="sw"></span>
   </section>
 
   <script src="fx.js"></script>

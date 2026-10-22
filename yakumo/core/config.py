@@ -47,7 +47,8 @@ class Config:
     # Настройки-списки: можно выбрать несколько значений сразу (или ни одного).
     MULTI: ClassVar[dict[str, tuple]] = {
         "avatar_effects": ("sparkles", "foxfire", "petals", "dust", "fireflies", "leaves", "snow",
-                           "rays", "circle", "shine", "aura"),
+                           "rays", "circle", "shine", "aura", "butterflies", "lanterns", "mist",
+                           "meteors", "hearts", "moon", "runes"),
     }
 
     @classmethod

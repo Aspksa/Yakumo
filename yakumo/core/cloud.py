@@ -158,6 +158,16 @@ class CloudService:
                     or not isinstance(m.get("content"), str)):
                 raise ValueError("Неверное сообщение")
             clean.append({"role": m["role"], "content": m["content"][:MAX_MESSAGE_CHARS]})
+        # Многие модели требуют, чтобы после системной подсказки шёл пользователь и роли чередовались.
+        merged: list[dict] = []
+        for m in clean:
+            if merged and merged[-1]["role"] == m["role"]:
+                merged[-1]["content"] += "\n\n" + m["content"]
+            elif merged or m["role"] == "user":
+                merged.append(dict(m))
+        if not merged:
+            raise ValueError("Нет сообщений пользователя")
+        clean = merged
         system = {"role": "system", "content": SYSTEM_PROMPT.get(self.config.language, SYSTEM_PROMPT["ru"])}
         return self._stream([system, *clean])
 

@@ -59,8 +59,8 @@ class SettingsApiTest(unittest.TestCase):
         self.config_path.write_text('{"avatar_motion": "bounce", "avatar_size": 304}', encoding="utf-8")
         old = Config.load(self.config_path)
         self.assertEqual((old.avatar_motion, old.avatar_size), ("float", 304))
-        res = self.post({"avatar_effects": ["foxfire", "petals"], "avatar_fx_power": "high", "avatar_size": 2000})
-        self.assertEqual(res["values"]["avatar_effects"], ["foxfire", "petals"])
+        res = self.post({"avatar_effects": ["foxfire", "petals", "moon", "runes"], "avatar_fx_power": "high", "avatar_size": 2000})
+        self.assertEqual(res["values"]["avatar_effects"], ["foxfire", "petals", "moon", "runes"])
         self.assertEqual(self.post({"avatar_effects": []})["values"]["avatar_effects"], [])
         for bad in ({"avatar_size": 233}, {"avatar_size": 2008}, {"avatar_motion": "sway"}, {"avatar_show": 1},
                     {"avatar_effects": "petals"}, {"avatar_effects": ["petals", "petals"]}, {"avatar_effects": ["boom"]}):
