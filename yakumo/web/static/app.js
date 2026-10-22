@@ -11,6 +11,12 @@ const TEXTS = {
     logSoon: "Здесь будет журнал в реальном времени.",
     settingsHint: "Изменения сохраняются сразу.",
     startup: "Запуск", appearance: "Внешний вид", paths: "Пути",
+    networkAccess: "Доступ по сети", accessHint: "На этом компьютере вход свободный. Для других устройств нужен пароль.",
+    accessOpen: "Пароль задан. Сетевой вход защищён.", accessClosed: "Сетевой вход закрыт: пароль ещё не задан.",
+    accessPassword: "Пароль для других устройств", accessPlaceholder: "Новый пароль: от 8 до 128 символов",
+    accessSave: "Сохранить пароль", accessClose: "Закрыть сетевой вход", accessLogout: "Выйти на этом устройстве",
+    accessLocalOnly: "Менять пароль можно только на компьютере, где запущена Yakumo.",
+    accessSaved: "Сохранено. Прежние сетевые сеансы завершены.",
     avatarSection: "Аватар", avatarShow: "Показывать аватар",
     avatarShowHint: "Кицунэ на всех страницах; по нажатию на неё открывается чат.",
     avatarSize: "Размер", px: "точек", avatarMotion: "Движение", avatarGlow: "Сияние", avatarSpeed: "Скорость анимации",
@@ -83,6 +89,12 @@ const TEXTS = {
     logSoon: "A live log will be here.",
     settingsHint: "Changes are saved immediately.",
     startup: "Startup", appearance: "Appearance", paths: "Paths",
+    networkAccess: "Network access", accessHint: "This computer opens directly. Other devices need a password.",
+    accessOpen: "A password is set. Network sign-in is protected.", accessClosed: "Network sign-in is closed: set a password first.",
+    accessPassword: "Password for other devices", accessPlaceholder: "New password: 8–128 characters",
+    accessSave: "Save password", accessClose: "Close network sign-in", accessLogout: "Sign out on this device",
+    accessLocalOnly: "Change the password on the computer running Yakumo.",
+    accessSaved: "Saved. Previous network sessions have ended.",
     avatarSection: "Avatar", avatarShow: "Show avatar",
     avatarShowHint: "The kitsune on every page; click her to open the chat.",
     avatarSize: "Size", px: "px", avatarMotion: "Motion", avatarGlow: "Glow", avatarSpeed: "Animation speed",
@@ -175,6 +187,8 @@ const statusEl = document.getElementById("status");
 let status = null;
 let settings = null;
 let cloud = null;      // состояние подключения Cloud.ru (без ключа)
+let access = null;
+let accessMsg = null;
 let cloudMsg = null;   // итог последней проверки связи: { text, ok }
 let online = null;
 
@@ -389,6 +403,46 @@ function effectChips() {
         type: "button", "aria-pressed": String(on.includes(fx)), onclick: () => flip(fx) }, T.effects[fx]))));
 }
 
+function accessSection() {
+  const box = h("section", { class: "card group", id: "network-access" }, h("h2", {}, T.networkAccess),
+    h("p", { class: "row-hint group-hint" }, T.accessHint));
+  if (!access) return box;
+  box.append(h("p", { class: "row-hint" }, access.password_set ? T.accessOpen : T.accessClosed));
+  if (access.local) {
+    const input = h("input", { type: "password", class: "text-input", placeholder: T.accessPlaceholder,
+      autocomplete: "new-password", minlength: "8", maxlength: "128", required: true, "aria-label": T.accessPassword });
+    const form = h("form", { class: "inline-form", onsubmit: (e) => {
+      e.preventDefault();
+      if (form.reportValidity()) saveAccess(input.value, form);
+    } }, input, h("button", { class: "btn primary", type: "submit" }, T.accessSave));
+    box.append(form);
+    if (access.password_set) box.append(h("button", { class: "btn", type: "button",
+      onclick: (e) => saveAccess("", e.currentTarget) }, T.accessClose));
+  } else {
+    box.append(h("p", { class: "row-hint" }, T.accessLocalOnly),
+      h("button", { class: "btn", type: "button", onclick: async () => {
+        await postJSON("/api/auth/logout", {});
+        location.assign("/login");
+      } }, T.accessLogout));
+  }
+  if (accessMsg) box.append(h("p", { class: "row-hint " + (accessMsg.ok ? "good" : "bad"), role: "status" }, accessMsg.text));
+  return box;
+}
+
+async function saveAccess(password, source) {
+  const buttons = source.matches("button") ? [source] : [...source.querySelectorAll("button")];
+  buttons.forEach((b) => { b.disabled = true; });
+  try {
+    access = await postJSON("/api/auth/password", { password });
+    accessMsg = { ok: true, text: T.accessSaved };
+  } catch (e) {
+    accessMsg = { ok: false, text: e.message };
+  } finally {
+    buttons.forEach((b) => { b.disabled = false; });
+  }
+  if (currentPage() === "settings") render();
+}
+
 function cloudSection() {
   const box = h("section", { class: "card group", id: "cloud" }, h("h2", {}, "Cloud.ru"),
     h("p", { class: "row-hint group-hint" }, T.cloudHint));
@@ -426,6 +480,7 @@ function cloudSection() {
 async function postJSON(url, data) {
   const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
                                body: JSON.stringify(data) });
+  if (r.status === 401) location.assign("/login");
   const res = await r.json();
   if (!r.ok) throw new Error(res.error || `HTTP ${r.status}`);
   return res;
@@ -493,6 +548,7 @@ const PAGES = {
         choice("card_alpha", T.cardAlpha, null, (v) => T.alphas[v]),
         toggle("power_save", T.powerSave, T.powerSaveHint)),
       avatarSection(),
+      accessSection(),
       cloudSection(),
       h("section", { class: "card group" },
         h("h2", {}, T.paths),
@@ -562,6 +618,7 @@ function showOnline() {
 
 async function getJSON(url) {
   const r = await fetch(url, { cache: "no-store" });
+  if (r.status === 401) location.assign("/login");
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return r.json();
 }
@@ -603,6 +660,9 @@ async function start() {
     settings = await getJSON("/api/settings");
     applyLook();
   } catch { /* без настроек работаем со значениями по умолчанию */ }
+  try {
+    access = await getJSON("/api/auth");
+  } catch { /* при следующем открытии настройки доступа загрузятся заново */ }
   avatarBtn.classList.add("ready");
   placeAvatar();
   loadModulePages();

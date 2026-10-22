@@ -10,6 +10,7 @@ import time
 import webbrowser
 
 from yakumo import APP_NAME, __version__
+from yakumo.core.access import AccessControl
 from yakumo.core.cloud import CloudService
 from yakumo.core.config import Config
 from yakumo.core.instance import InstanceLock
@@ -114,6 +115,7 @@ def serve(args, storage: StorageChoice, paths: Paths, config: Config,
     from yakumo.web.server import create_server
 
     cloud = CloudService(config, paths.config_file, paths.secrets_file)
+    access = AccessControl(paths.config / "access.json")
     ctx = Context(paths=paths, config=config, cloud=cloud)
     modules = load_all(ctx, [paths.app / "modules", paths.modules], config.disabled_modules)
     cloud.tools = ctx.chat_tools
@@ -147,7 +149,7 @@ def serve(args, storage: StorageChoice, paths: Paths, config: Config,
     # Порт мог заняться между проверкой и запуском: пробуем следующий.
     for _ in range(5):
         try:
-            server = create_server(endpoint.host, endpoint.port, paths.web, routes)
+            server = create_server(endpoint.host, endpoint.port, paths.web, routes, access=access)
             break
         except OSError:
             log.warning("Порт %s занят, ищу другой", endpoint.port)

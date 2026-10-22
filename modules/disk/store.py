@@ -330,26 +330,45 @@ class Disk:
         with self.lock:
             index = self._trash_index()
             count = 0
-            for rel in _as_list(rels):
-                src = self.path(rel)
-                if src == self.root:
-                    raise DiskError("Корень удалить нельзя")
-                entry = self.entry(src)
-                if src.is_dir():
-                    entry["size"] = _tree_size(src)
-                tid = uuid.uuid4().hex[:12]
-                (self.trash_dir / tid).mkdir()
-                shutil.move(str(src), str(self.trash_dir / tid / src.name))
-                index[tid] = {**entry, "id": tid, "deleted": int(time.time())}
-                self._unlink_shares(entry["path"])
-                count += 1
-            _write_json(self.meta / "trash.json", index)
-            self._changed()
+            # Проверить всю пачку до первого перемещения (файл мог уже исчезнуть).
+            sources = [self.path(rel) for rel in _as_list(rels)]
+            if self.root in sources:
+                raise DiskError("Корень удалить нельзя")
+            try:
+                for src in sources:
+                    entry = self.entry(src)
+                    if src.is_dir():
+                        entry["size"] = _tree_size(src)
+                    tid = uuid.uuid4().hex[:12]
+                    target_dir = self.trash_dir / tid
+                    target = target_dir / src.name
+                    target_dir.mkdir()
+                    index[tid] = {**entry, "id": tid, "deleted": int(time.time())}
+                    try:
+                        # Сначала журнал, затем файл: даже после сбоя процесса
+                        # уже перемещённый файл имеет запись для восстановления.
+                        _write_json(self.meta / "trash.json", index)
+                    except Exception:
+                        index.pop(tid)
+                        target_dir.rmdir()
+                        raise
+                    try:
+                        shutil.move(str(src), str(target))
+                    except Exception:
+                        if not target.exists():
+                            index.pop(tid)
+                            target_dir.rmdir()
+                            _write_json(self.meta / "trash.json", index)
+                        raise
+                    count += 1
+                    self._unlink_shares(entry["path"])
+            finally:
+                self._changed()  # сбросить кэш и после частично выполненной пачки
             return count
 
     def trash(self) -> list[dict]:
         index = self._trash_index()
-        return sorted((v for k, v in index.items() if (self.trash_dir / k).exists()),
+        return sorted((v for k, v in index.items() if (self.trash_dir / k / v["name"]).exists()),
                       key=lambda e: -e["deleted"])
 
     def restore(self, ids: list[str]) -> list[dict]:

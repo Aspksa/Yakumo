@@ -6,6 +6,7 @@ import json
 from dataclasses import asdict, dataclass, field, fields
 from typing import ClassVar
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 @dataclass
@@ -67,8 +68,8 @@ class Config:
     @classmethod
     def valid(cls, key: str, value) -> bool:
         if key in cls.MULTI:
-            return (type(value) is list and len(set(value)) == len(value)
-                    and all(isinstance(v, str) and v in cls.MULTI[key] for v in value))
+            return (type(value) is list and all(isinstance(v, str) and v in cls.MULTI[key] for v in value)
+                    and len(set(value)) == len(value))
         allowed = cls.EDITABLE.get(key)
         # bool — подкласс int, поэтому сверяем и тип.
         return allowed is not None and any(value == a and type(value) is type(a) for a in allowed)
@@ -90,6 +91,8 @@ class Config:
             raw = json.loads(path.read_text(encoding="utf-8-sig"))
         except (OSError, ValueError):
             return cls()
+        if not isinstance(raw, dict):
+            return cls()
         known = {f.name for f in fields(cls)}
         # Значение, которого больше нет среди допустимых (например, убранный вариант), сбрасываем.
         editable = cls.EDITABLE.keys() | cls.MULTI.keys()
@@ -97,7 +100,29 @@ class Config:
             # Из списка убираем только исчезнувшие варианты, остальной выбор сохраняется.
             if isinstance(raw.get(key), list):
                 raw[key] = list(dict.fromkeys(v for v in raw[key] if isinstance(v, str) and v in allowed))
-        return cls(**{k: v for k, v in raw.items() if k in known and (k not in editable or cls.valid(k, v))})
+        def valid_saved(key, value):
+            if key in editable:
+                return cls.valid(key, value)
+            if key == "port":
+                return value is None or (type(value) is int and 1 <= value <= 65535)
+            if key == "lan":
+                return type(value) is bool
+            if key == "disabled_modules":
+                return isinstance(value, list) and all(isinstance(v, str) for v in value)
+            if key in ("host", "workspace", "cloud_model"):
+                return value is None or (isinstance(value, str) and bool(value.strip()) and "\0" not in value)
+            if key == "cloud_url":
+                if not isinstance(value, str):
+                    return False
+                try:
+                    url = urlsplit(value)
+                    return (url.scheme in ("https", "http") and bool(url.hostname)
+                            and url.port != 0 and not any(c.isspace() for c in value))
+                except ValueError:
+                    return False
+            return False
+
+        return cls(**{k: v for k, v in raw.items() if k in known and valid_saved(k, v)})
 
     def save(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)

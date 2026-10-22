@@ -21,7 +21,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PYTHON = "3.12.10"
-COPY = ["Yakumo.bat", "launcher", "yakumo", "modules", "README.md", "requirements.txt"]
+COPY = ["Yakumo.bat", "Yakumo.pyw", "launcher", "yakumo", "modules", "README.md", "requirements.txt"]
 
 
 def download(url: str, dest: Path) -> Path:
