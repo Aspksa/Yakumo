@@ -418,6 +418,19 @@ body[data-page="settings"] .content { position: relative; z-index: 31; }
            border-radius: 10px; overflow-x: auto; white-space: pre; }
 .msg pre code { padding: 0; background: none; border: 0; }
 .msg a { color: var(--gold); text-decoration: underline; }
+.msg-status { margin-top: 6px; font-size: 12.5px; color: var(--muted); font-style: italic; }
+.msg-status::before { content: "✦ "; color: var(--gold); font-style: normal; }
+/* План действий от Yakumo: выполняется только по кнопке */
+.plan-card { padding: 10px 13px; border-radius: 12px; font-size: 13.5px; background: var(--surface);
+             border: 1px solid rgba(var(--accent-rgb), .45); }
+.plan-card strong { color: var(--gold); }
+.plan-card ol { margin: 6px 0 4px; padding-left: 20px; }
+.plan-card li { overflow-wrap: anywhere; }
+.plan-card li.ok::marker { color: var(--ok); }
+.plan-card li.bad { color: #f1b2a9; }
+.plan-card li small { display: block; color: var(--muted); }
+.plan-actions .btn.small { display: inline-block; margin: 6px 6px 0 0; }
+.plan-state { margin-top: 4px; color: var(--muted); font-size: 12.5px; }
 .typing { display: inline-flex; gap: 4px; padding: 5px 0; }
 .typing i { width: 7px; height: 7px; border-radius: 50%; background: var(--gold); opacity: .35;
             animation: blink 1.2s infinite; }

@@ -25,7 +25,15 @@
 .dk-tablist button:hover { color: var(--text); }
 .dk-tablist button.on { color: var(--accent); border-bottom-color: var(--accent); }
 .dk-tablist button:focus-visible { outline: 2px solid var(--accent); }
-.dk-search { position: relative; display: flex; align-items: center; flex: 0 1 300px; margin-bottom: 8px; }
+.dk-searchrow { display: flex; align-items: center; gap: 6px; flex: 0 1 346px; margin-bottom: 8px; }
+.dk-search { position: relative; display: flex; align-items: center; flex: 1; min-width: 0; }
+.dk-searchrow .dk-btn { padding: 7px 9px; color: var(--accent); }
+.dk-snippet { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+              white-space: normal; font-size: 12.5px; color: var(--muted); margin-top: 2px; line-height: 1.35; }
+.dk-snippet b { font-weight: 600; color: var(--accent); margin-right: 6px; font-size: 11.5px; }
+.dk-smart p { margin: 0 0 10px; font-size: 14px; line-height: 1.45; }
+.dk-smart .row { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); margin-bottom: 10px; }
+.dk-tip { margin-top: 12px !important; }
 .dk-search svg { position: absolute; left: 10px; width: 17px; height: 17px; color: var(--muted); pointer-events: none; }
 .dk-search .text-input { width: 100%; padding-left: 34px; }
 
@@ -199,7 +207,7 @@
   .tiles .dk-item { padding: 8px 6px; }
   .list .dk-item, .dk-listhead { grid-template-columns: 26px 26px minmax(0, 1fr) auto; gap: 8px; }
   .list .dk-item > .dk-meta:not(.dk-size), .dk-listhead > span:nth-child(4) { display: none; }
-  .dk-search { flex: 1 1 100%; }
+  .dk-searchrow { flex: 1 1 100%; }
   .dk-tablist button span { display: none; }
   .dk-btn:not(.primary) span { display: none; }
   .dk-stage { padding: 4px 4px 16px; }

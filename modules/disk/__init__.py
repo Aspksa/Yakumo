@@ -16,10 +16,12 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 from yakumo.core.network import lan_address
 
+from . import assistant
+from .index import Index, data_url
 from .store import CHUNK, Disk, DiskError, mime_of
 
 NAME = "Диск"
-VERSION = "1.0"
+VERSION = "1.1"
 
 # Такие файлы браузер мог бы выполнить как страницу Yakumo: показываем как текст или в песочнице.
 AS_TEXT = {".html", ".htm", ".xhtml", ".mht", ".mhtml", ".shtml"}
@@ -177,6 +179,53 @@ def readable_errors(handler):
 def setup(ctx):
     disk = Disk(disk_root(ctx.paths))
     ctx.log.info("Диск: %s", disk.root)
+    cloud = getattr(ctx, "cloud", None)
+
+    def describe(image: bytes, mime: str, prompt: str) -> str:
+        """Описание фото через Cloud.ru (только если пользователь включил это сам)."""
+        model = cloud.vision_model()
+        if not model:
+            raise RuntimeError("no_vision_model")
+        return cloud.complete([{"role": "user", "content": [
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": data_url(image, mime)}}]}], model=model)
+
+    index = Index(disk, describe if cloud else None, lambda: ctx.config.language)
+    disk.on_change.append(index.poke)
+    disk.on_move.append(index.moved)
+    index.start()
+    ctx.on_stop(index.stop)
+
+    def smart_search(q: str, limit: int = 300) -> dict:
+        """Имена файлов, текст внутри документов и описания фото — одним списком."""
+        names = disk.search(q)
+        items = {i["path"]: {**i, "match": "name"} for i in names["items"]}
+        for hit in index.search(q):
+            if hit["path"] in items:
+                items[hit["path"]].setdefault("snippet", hit["snippet"])
+                continue
+            try:
+                entry = disk.entry(disk.path(hit["path"]))
+            except (OSError, DiskError):
+                continue  # файл уже удалили, индекс ещё не обновился
+            items[hit["path"]] = {**entry, "match": hit["match"], "snippet": hit["snippet"]}
+        return {"items": list(items.values())[:limit], "more": names["more"] or len(items) > limit}
+
+    def smart(_req):
+        vision = None
+        if cloud and cloud.api_key():
+            try:
+                vision = cloud.vision_model()
+            except Exception:  # noqa: BLE001 — нет связи: просто не показываем модель
+                vision = None
+        return {**index.status(), "cloud": bool(cloud and cloud.api_key()), "vision_model": vision}
+
+    def smart_save(req):
+        data = req.read_json()
+        if not isinstance(data, dict) or type(data.get("photos")) is not bool:
+            raise DiskError("Ожидается photos: true/false")
+        index.set_photos(data["photos"])
+        return smart(req)
 
     def body(request) -> dict:
         data = request.read_json()
@@ -192,8 +241,7 @@ def setup(ctx):
         return disk.list(query(req).get("path"))
 
     def search(req):
-        q = query(req)
-        return disk.search(q.get("q", ""), q.get("path"))
+        return smart_search(query(req).get("q", ""))
 
     def file(req):
         q = query(req)
@@ -222,6 +270,8 @@ def setup(ctx):
         "/api/disk/trash": lambda _req: disk.trash(),
         "/api/disk/shares": lambda _req: disk.shares(),
         "/api/disk/s": shared,
+        "/api/disk/smart": smart,
+        "POST /api/disk/smart": smart_save,
         "POST /api/disk/upload": upload,
         "POST /api/disk/mkdir": lambda r: (d := body(r)) and disk.mkdir(d.get("path"), d.get("name")),
         "POST /api/disk/rename": lambda r: (d := body(r)) and disk.rename(d.get("path"), d.get("name")),
@@ -236,4 +286,5 @@ def setup(ctx):
     for path, handler in routes.items():
         ctx.route(path, readable_errors(handler))
     ctx.web("disk.css", "disk.js")
+    assistant.register(ctx, disk, index, smart_search)
     ctx.status(lambda: {"root": str(disk.root)})
