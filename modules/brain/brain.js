@@ -10,7 +10,7 @@
 
   const TX = {
     ru: {
-      title: "Память", facts: "Факты", map: "Карта", talks: "Разговоры", plans: "Обещания и даты", skills: "Навыки",
+      title: "Мозг", facts: "Факты", map: "Карта", talks: "Разговоры", plans: "Обещания и даты", skills: "Навыки",
       lead: (f, t) => `Yakumo помнит ${f} ${plural(f, "факт", "факта", "фактов")} о вас и ${t} ${plural(t, "разговор", "разговора", "разговоров")}.`,
       enabled: "Помнить в чате", enabledHint: "Yakumo видит свою память в каждом новом разговоре.",
       auto: "Запоминать самой", autoHint: "После паузы в разговоре Yakumo выписывает факты, людей и места, обещания и даты. Для этого текст разговора ещё раз отправляется в Cloud.ru.",
@@ -47,13 +47,13 @@
       steps: (n) => `${n} ${plural(n, "шаг", "шага", "шагов")}`, used: (n) => `использован ${n} ${plural(n, "раз", "раза", "раз")}`,
       moodTitle: "Настроение за месяц", factsAbout: (n) => `Фактов: ${n}`, relation: "Кем приходится", rename: "Имя",
       openFile: "Открыть на Диске",
-      grow: "Саморазвитие во сне", growHint: "Ночью Yakumo учится по вашим документам на Диске, сдаёт себе экзамен по своим ответам и раз в неделю улучшает свой стиль. Тратит фоновые запросы из дневного бюджета.",
+      grow: "Саморазвитие в простое", growHint: "Когда вы не работаете с Yakumo, она учится по вашим документам на Диске, сдаёт себе экзамен по своим ответам и раз в неделю улучшает свой стиль. Тратит фоновые запросы из дневного бюджета.",
       mind: "Разум", growth: "Рост", archive: (n) => `Архив · ${n}`, restore: "Вернуть из архива",
-      archiveHint: "Потускневшие факты Yakumo во сне уносит в архив: в подсказку они не попадают, но находятся поиском.",
+      archiveHint: "Потускневшие факты Yakumo в простое уносит в архив: в подсказку они не попадают, но находятся поиском.",
       modes: { awake: "Бодрствует", drowsy: "Дремлет", asleep: "Спит" },
       modeHints: { awake: "Вы недавно писали — Yakumo с вами, фоновые дела только самые лёгкие.",
                    drowsy: "В чате тихо — Yakumo разбирает Диск и считает векторы.",
-                   asleep: "Глубокий сон — сон кицунэ, учёба по документам, ночной экзамен, улучшение стиля." },
+                   asleep: "Вы давно не заходили — Yakumo спит и растёт: сон кицунэ, учёба по документам, экзамен, улучшение стиля." },
       budget: "Фоновых запросов в день", budgetUsed: (u, l) => l ? `Сегодня: ${u} из ${l}` : `Сегодня: ${u}`,
       noLimit: "Без ограничения",
       budgetHint: "Работа «круглые сутки» тратит запросы к Cloud.ru. Когда лимит исчерпан, Yakumo отдыхает до завтра; разговоры в чате не ограничиваются.",
@@ -68,17 +68,21 @@
       tools: "Инструменты, которые Yakumo написала себе", toolPending: "ждёт вашего решения", toolOn: "включён", toolOff: "выключен",
       enable: "Включить", disable: "Выключить", code: "Код", test: "Проверка",
       toolsHint: "Код выполняется в отдельном процессе: без файлов, сети и программ, не дольше 5 секунд.",
-      lessonFrom: { chat: "из разговора", exam: "ночной экзамен", feedback: "после 👎", think: "глубокое размышление", edit: "по вашим правкам", sleep: "укреплён во сне" }, lessons: "Уроки", lessonsHint: "Правила, которые Yakumo вывела сама из ошибок и ваших поправок. Она видит их в каждом разговоре.",
+      lessonFrom: { chat: "из разговора", exam: "экзамен в простое", feedback: "после 👎", think: "глубокое размышление", edit: "по вашим правкам", sleep: "укреплён в простое" }, lessons: "Уроки", lessonsHint: "Правила, которые Yakumo вывела сама из ошибок и ваших поправок. Она видит их в каждом разговоре.",
       style: "Стиль ответов", styleHint: "Раз в неделю Yakumo переписывает свою инструкцию «как отвечать». Можно вернуть любую версию.",
       styleOff: "Стиль выключен", turnOff: "Выключить", use: "Вернуть", active: "сейчас",
       wishes: "Чему Yakumo хочет научиться", times: (n) => `×${n}`,
       notes: "Конспекты по вашим темам", links: "Ассоциации",
-      linksHint: "Связи между фактами, которые Yakumo нашла во сне. На карте — пунктиром.",
+      linksHint: "Связи между фактами, которые Yakumo нашла, пока вы не работали. На карте — пунктиром.",
       good: "Хороший ответ", bad: "Плохой ответ", whyBad: "Что было не так? (можно пропустить)",
       kindsT2: { feedback: "Разбор 👎", curious: "Любопытство", consolidate: "Уроки", think: "Мысль", edit: "Правки", foresee: "Наперёд", doc: "Документ" },
       docs: "Читать новые документы", docsHint: "Положили файл на Диск — Yakumo сама прочитает его: суммы, стороны и номера запомнит со ссылкой на файл, сроки добавит в напоминания, о важном напишет в чат и предложит, в какую папку его положить. Тратит фоновые запросы.",
       brain: "Рост мозга", neurons: (n) => `${n} ${plural(n, "нейрон", "нейрона", "нейронов")}`,
       linksN: (n) => `${n} ${plural(n, "связь", "связи", "связей")}`,
+      groupMe: "Обо мне", groupHer: "Сама Yakumo",
+      dNeurons: "нейронов", dFacts: "фактов", dPeople: "людей и мест", dBudget: "запросов сегодня", dToday: (n) => `+${n} сегодня`,
+      dNoLimit: "без лимита",
+      zoomIn: "Приблизить", zoomOut: "Отдалить", zoomReset: "Вернуть как было", mapHint: "Звёзды можно перетаскивать, колесо мыши или кнопки приближают, фон двигается мышью.",
       improve: "Улучшения", improveLead: "Что стоит доработать в самой Yakumo. Пункты появляются сами: из её неудач, ошибок программы и её собственных идей. Каждый оформлен как задача; скопируйте и отдайте Claude.",
       impStatuses: { new: "Новые", given: "Отданы", done: "Сделаны", rejected: "Отклонены" },
       impStatus1: { new: "новая", given: "отдана", done: "сделана", rejected: "отклонена" },
@@ -98,10 +102,10 @@
       brainHint: "Нейроны — всё, что Yakumo знает: факты, люди и места, уроки, конспекты, навыки, разговоры, фрагменты документов. Связи — ассоциации и ссылки между ними.",
       best: (n) => `Ответов с 👍 (образцы для стиля): ${n}`,
       curiousNow: "Задать мне вопрос", consolidateNow: "Укрепить уроки", foreseeNow: "Подумать наперёд",
-      emptyGrow: "Yakumo только начинает расти", emptyGrowHint: "Уроки, стиль, желания и конспекты появятся после разговоров и первых ночей.",
+      emptyGrow: "Yakumo только начинает расти", emptyGrowHint: "Уроки, стиль, желания и конспекты появятся после разговоров и первого простоя.",
     },
     en: {
-      title: "Memory", facts: "Facts", map: "Map", talks: "Conversations", plans: "Promises & dates", skills: "Skills",
+      title: "Brain", facts: "Facts", map: "Map", talks: "Conversations", plans: "Promises & dates", skills: "Skills",
       lead: (f, t) => `Yakumo remembers ${f} ${f === 1 ? "fact" : "facts"} about you and ${t} ${t === 1 ? "conversation" : "conversations"}.`,
       enabled: "Use memory in chat", enabledHint: "Yakumo sees her memory in every new conversation.",
       auto: "Learn by herself", autoHint: "After a pause Yakumo writes down facts, people and places, promises and dates. The conversation text is sent to Cloud.ru once more for that.",
@@ -138,13 +142,13 @@
       steps: (n) => `${n} ${n === 1 ? "step" : "steps"}`, used: (n) => `used ${n} ${n === 1 ? "time" : "times"}`,
       moodTitle: "Mood this month", factsAbout: (n) => `Facts: ${n}`, relation: "Relation", rename: "Name",
       openFile: "Open on Drive",
-      grow: "Self-development at night", growHint: "At night Yakumo studies your Drive documents, takes an exam on her own answers and improves her style once a week. Uses background requests from the daily budget.",
+      grow: "Self-development when idle", growHint: "When you are not working with her, Yakumo studies your Drive documents, takes an exam on her own answers and improves her style once a week. Uses background requests from the daily budget.",
       mind: "Mind", growth: "Growth", archive: (n) => `Archive · ${n}`, restore: "Restore from archive",
-      archiveHint: "Yakumo moves faded facts to the archive while sleeping: they're not in the prompt but still found by search.",
+      archiveHint: "Yakumo moves faded facts to the archive when idle: they're not in the prompt but still found by search.",
       modes: { awake: "Awake", drowsy: "Drowsy", asleep: "Asleep" },
       modeHints: { awake: "You wrote recently — Yakumo is with you, only the lightest background work.",
                    drowsy: "The chat is quiet — Yakumo indexes the Drive and computes vectors.",
-                   asleep: "Deep sleep — kitsune sleep, studying documents, night exam, style improvement." },
+                   asleep: "You have been away a while — Yakumo sleeps and grows: kitsune sleep, studying documents, exam, style improvement." },
       budget: "Background requests per day", budgetUsed: (u, l) => l ? `Today: ${u} of ${l}` : `Today: ${u}`,
       noLimit: "No limit",
       budgetHint: "Working around the clock uses Cloud.ru requests. When the limit is reached Yakumo rests until tomorrow; chat is never limited.",
@@ -159,17 +163,21 @@
       tools: "Tools Yakumo wrote for herself", toolPending: "awaiting your decision", toolOn: "on", toolOff: "off",
       enable: "Enable", disable: "Disable", code: "Code", test: "Test",
       toolsHint: "Code runs in a separate process: no files, network or programs, at most 5 seconds.",
-      lessonFrom: { chat: "from a conversation", exam: "night exam", feedback: "after a 👎", think: "deep thinking", edit: "from your edits", sleep: "strengthened in sleep" }, lessons: "Lessons", lessonsHint: "Rules Yakumo derived herself from mistakes and your corrections. She sees them in every conversation.",
+      lessonFrom: { chat: "from a conversation", exam: "idle exam", feedback: "after a 👎", think: "deep thinking", edit: "from your edits", sleep: "strengthened when idle" }, lessons: "Lessons", lessonsHint: "Rules Yakumo derived herself from mistakes and your corrections. She sees them in every conversation.",
       style: "Answer style", styleHint: "Once a week Yakumo rewrites her “how to answer” instruction. Any version can be restored.",
       styleOff: "Style is off", turnOff: "Turn off", use: "Restore", active: "current",
       wishes: "What Yakumo wants to learn", times: (n) => `×${n}`,
       notes: "Notes on your topics", links: "Associations",
-      linksHint: "Connections between facts Yakumo found while sleeping. Dashed on the map.",
+      linksHint: "Connections between facts Yakumo found while you were away. Dashed on the map.",
       good: "Good answer", bad: "Bad answer", whyBad: "What was wrong? (optional)",
       kindsT2: { feedback: "👎 review", curious: "Curiosity", consolidate: "Lessons", think: "Thought", edit: "Edits", foresee: "Ahead", doc: "Document" },
       docs: "Read new documents", docsHint: "Put a file on the Drive and Yakumo reads it herself: remembers amounts, parties and numbers with a link to the file, adds deadlines to reminders, writes to the chat about anything important and suggests a folder. Uses background requests.",
       brain: "Brain growth", neurons: (n) => `${n} ${n === 1 ? "neuron" : "neurons"}`,
       linksN: (n) => `${n} ${n === 1 ? "link" : "links"}`,
+      groupMe: "About me", groupHer: "Yakumo herself",
+      dNeurons: "neurons", dFacts: "facts", dPeople: "people & places", dBudget: "requests today", dToday: (n) => `+${n} today`,
+      dNoLimit: "no limit",
+      zoomIn: "Zoom in", zoomOut: "Zoom out", zoomReset: "Reset view", mapHint: "Drag the stars, zoom with the mouse wheel or buttons, drag the background to move.",
       improve: "Improvements", improveLead: "What is worth improving in Yakumo herself. Items appear on their own: from her failures, program errors and her own ideas. Each is written as a task; copy it and give it to Claude.",
       impStatuses: { new: "New", given: "Given", done: "Done", rejected: "Rejected" },
       impStatus1: { new: "new", given: "given", done: "done", rejected: "rejected" },
@@ -189,7 +197,7 @@
       brainHint: "Neurons are everything Yakumo knows: facts, people and places, lessons, notes, skills, conversations, document chunks. Links are associations and references between them.",
       best: (n) => `Answers with 👍 (style examples): ${n}`,
       curiousNow: "Ask me a question", consolidateNow: "Strengthen lessons", foreseeNow: "Think ahead",
-      emptyGrow: "Yakumo is just starting to grow", emptyGrowHint: "Lessons, style, wishes and notes appear after conversations and the first nights.",
+      emptyGrow: "Yakumo is just starting to grow", emptyGrowHint: "Lessons, style, wishes and notes appear after conversations and the first idle time.",
     },
   };
 
@@ -203,7 +211,8 @@
   const lang = () => window.Yakumo.lang();
   const L = new Proxy({}, { get: (_t, k) => (TX[lang()] || TX.ru)[k] });
   const state = { data: null, tab: "facts", query: "", editing: null, open: null, node: null, msg: null, error: null,
-                  sleeping: false, archive: false, growing: null, impFilter: "new" };
+                  sleeping: false, archive: false, growing: null, impFilter: "new",
+                  mapPos: {}, mapView: { x: 0, y: 0, k: 1 } };
   const root = h("div", { class: "brain" });
   let timer = 0;
 
@@ -396,6 +405,136 @@
     } }, input, kind, h("button", { class: "btn primary", type: "submit" }, L.add));
   }
 
+  // --- Значки групп фактов ---
+
+  const KIND_ICONS = {
+    person: '<circle cx="12" cy="8" r="3.6"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/>',
+    likes: '<path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.4a4.3 4.3 0 0 1 7.5 2.4C19.5 15.4 12 20 12 20z"/>',
+    work: '<rect x="3.5" y="7.5" width="17" height="12" rx="2"/><path d="M9 7.5V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1.5M3.5 12.5h17"/>',
+    other: '<path d="M12 3.5l2.1 5.4 5.4 2.1-5.4 2.1L12 18.5l-2.1-5.4L4.5 11l5.4-2.1z"/>',
+    self: '<path d="M4 4l4.5 4.5h7L20 4l-1 8.5a7 7 0 0 1-14 0z"/><circle cx="9.5" cy="12.5" r=".9"/><circle cx="14.5" cy="12.5" r=".9"/><path d="M11 16h2"/>',
+  };
+
+  function kindIcon(k) {
+    const svg = document.createElementNS(SVG, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("class", "br-kind-icon");
+    svg.setAttribute("aria-hidden", "true");
+    svg.innerHTML = KIND_ICONS[k] || KIND_ICONS.other;
+    return svg;
+  }
+
+  // --- Живой мозг: нейроны и связи, растёт вместе со знаниями ---
+
+  function rng(seed) {  // одинаковые места для одних и тех же нейронов: новые просто добавляются
+    return () => {
+      seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+      let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  function insideBrain(x, y) {
+    // Два полушария, лобная выпуклость и мозжечок; координаты от -1 до 1.
+    const e = (cx, cy, rx, ry) => ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1;
+    return (e(-0.24, -0.06, 0.66, 0.78) || e(0.24, -0.06, 0.66, 0.78) || e(0.5, 0.55, 0.3, 0.24)) && Math.abs(x) > 0.03;
+  }
+
+  function brainSvg(neurons, links, fresh, w = 300, hgt = 200) {
+    const n = Math.max(6, Math.min(170, neurons));
+    const rand = rng(17);
+    const pts = [];
+    while (pts.length < n) {
+      const x = rand() * 2 - 1, y = rand() * 2 - 1;
+      if (insideBrain(x, y)) pts.push({ x: w / 2 + x * w * 0.42, y: hgt / 2 + y * hgt * 0.45 });
+    }
+    const svg = document.createElementNS(SVG, "svg");
+    svg.setAttribute("viewBox", `0 0 ${w} ${hgt}`);
+    svg.setAttribute("class", "br-brainviz");
+    svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", `${L.neurons(neurons)}, ${L.linksN(links)}`);
+    const el = (tag, attrs, parent = svg) => {
+      const x = document.createElementNS(SVG, tag);
+      for (const [k, v] of Object.entries(attrs)) x.setAttribute(k, v);
+      parent.append(x);
+      return x;
+    };
+    // Контур: два полушария и мозжечок — мозг узнаётся, даже пока нейронов мало.
+    const shape = el("g", { class: "br-bv-shape" });
+    for (const [cx, cy, rx, ry] of [[-0.24, -0.06, 0.66, 0.78], [0.24, -0.06, 0.66, 0.78], [0.5, 0.55, 0.3, 0.24]]) {
+      el("ellipse", { cx: (w / 2 + cx * w * 0.42).toFixed(1), cy: (hgt / 2 + cy * hgt * 0.45).toFixed(1),
+                      rx: (rx * w * 0.42).toFixed(1), ry: (ry * hgt * 0.45).toFixed(1) }, shape);
+    }
+    el("path", { d: `M${w / 2} ${(hgt * 0.16).toFixed(1)} q ${-w * 0.02} ${hgt * 0.17} 0 ${hgt * 0.34} t 0 ${hgt * 0.3}` }, shape);
+    const lines = el("g", { class: "br-bv-links" });
+    const limit = Math.min(pts.length * 2, Math.max(pts.length, links + pts.length / 2));
+    let made = 0;
+    for (let i = 1; i < pts.length && made < limit; i++) {
+      const near = pts.slice(0, i).map((q, j) => [Math.hypot(q.x - pts[i].x, q.y - pts[i].y), j]).sort((a, b) => a[0] - b[0]);
+      for (const [d, j] of near.slice(0, 2)) {
+        if (d > w * 0.18 || made >= limit) continue;
+        const line = el("line", { x1: pts[i].x.toFixed(1), y1: pts[i].y.toFixed(1), x2: pts[j].x.toFixed(1), y2: pts[j].y.toFixed(1) }, lines);
+        if (made % 7 === 3) line.setAttribute("class", "pulse"), line.style.animationDelay = `${(made % 11) * 0.37}s`;
+        made++;
+      }
+    }
+    const dots = el("g", { class: "br-bv-dots" });
+    pts.forEach((q, i) => {
+      const c = el("circle", { cx: q.x.toFixed(1), cy: q.y.toFixed(1), r: (1.4 + (i % 5) * 0.35).toFixed(2),
+                               class: i >= pts.length - Math.min(fresh, pts.length) ? "new" : "" }, dots);
+      c.style.animationDelay = `${(i * 0.29) % 4}s`;
+    });
+    return svg;
+  }
+
+  function sparkline(values, w = 300, hgt = 40) {
+    const svg = document.createElementNS(SVG, "svg");
+    svg.setAttribute("viewBox", `0 0 ${w} ${hgt}`);
+    svg.setAttribute("class", "br-spark");
+    svg.setAttribute("preserveAspectRatio", "none");
+    svg.setAttribute("aria-hidden", "true");
+    if (values.length < 2) return svg;
+    const max = Math.max(...values), min = Math.min(...values), span = max - min || 1;
+    const pts = values.map((v, i) => `${(i / (values.length - 1) * (w - 4) + 2).toFixed(1)},${(hgt - 3 - (v - min) / span * (hgt - 8)).toFixed(1)}`);
+    for (const [tag, attrs] of [["polygon", { points: `2,${hgt} ${pts.join(" ")} ${w - 2},${hgt}`, class: "area" }],
+                                ["polyline", { points: pts.join(" ") }]]) {
+      const x = document.createElementNS(SVG, tag);
+      for (const [k, v] of Object.entries(attrs)) x.setAttribute(k, v);
+      svg.append(x);
+    }
+    return svg;
+  }
+
+  function growthNumbers() {
+    const days = state.data.brain || [];
+    const last = days[days.length - 1] || { neurons: 0, links: 0 };
+    const prev = days.length > 1 ? days[days.length - 2].neurons : last.neurons;
+    return { days, last, fresh: Math.max(0, last.neurons - prev) };
+  }
+
+  // --- Приборная панель: главное одной строкой ---
+
+  function dashboard() {
+    const d = state.data;
+    const m = d.mind || {};
+    const { last, fresh } = growthNumbers();
+    const tile = (num, label, extra = "") => h("div", { class: "br-dash-tile" },
+      h("strong", {}, String(num)), h("span", {}, label), extra);
+    return h("section", { class: "card br-dash" },
+      h("div", { class: "br-dash-brain" }, brainSvg(last.neurons, last.links, fresh, 240, 150)),
+      h("div", { class: "br-dash-tiles" },
+        tile(last.neurons, L.dNeurons, fresh ? h("em", {}, L.dToday(fresh)) : ""),
+        tile(d.facts.filter((f) => !f.archived).length, L.dFacts),
+        tile(d.entities.filter((e) => e.facts > 0).length, L.dPeople),
+        tile(m.budget ? `${m.used} / ${m.budget}` : String(m.used ?? 0), L.dBudget,
+          m.budget ? h("i", { class: "br-dash-bar" }, h("b", { style: `width:${Math.min(100, Math.round((m.used || 0) / m.budget * 100))}%` }))
+            : h("em", {}, L.dNoLimit)),
+        h("div", { class: "br-dash-mode", "data-mode": m.mode },
+          h("span", { class: "br-mind-dot" }), h("strong", {}, L.modes[m.mode] || m.mode || ""),
+          h("span", { class: "row-hint" }, L.modeHints[m.mode] || ""))));
+  }
+
   // --- Факты ---
 
   function chips(f) {
@@ -422,10 +561,9 @@
         h("button", { class: "btn primary", type: "submit" }, L.save),
         h("button", { class: "btn", type: "button", onclick: () => { state.editing = null; draw(); } }, L.cancel)));
     }
-    // Сила памяти: 0..5 делений; закреплённые — всегда полные.
-    const level = Math.max(0, Math.min(5, Math.round(f.score)));
-    const meter = h("span", { class: "br-meter", title: L.strength(f.score), "aria-label": L.strength(f.score) },
-      [0, 1, 2, 3, 4].map((i) => h("i", { class: i < level ? "on" : "" })));
+    // Сила памяти — полоска слева: чем важнее и свежее факт, тем ярче; закреплённые — всегда полные.
+    const level = f.pinned ? 5 : Math.max(0, Math.min(5, Math.round(f.score)));
+    const meter = h("span", { class: `br-stripe l-${level}`, title: L.strength(f.score), "aria-label": L.strength(f.score) });
     const open = state.open === f.id;
     return h("li", { class: "br-fact" + (f.pinned ? " pinned" : "") + (f.score < 1 ? " faded" : "") },
       meter,
@@ -454,13 +592,13 @@
     const ents = entityById();
     const text = (f) => `${f.text} ${(f.about || []).map((id) => ents[id]?.name || "").join(" ")}`;
     const facts = state.data.facts.filter((f) => matches(text(f)));
-    if (!state.data.facts.length) return empty(L.emptyFacts, L.emptyFactsHint);
-    if (!facts.length) return empty(L.nothing, "");
+    if (!state.data.facts.length) return [addForm(), empty(L.emptyFacts, L.emptyFactsHint)];
+    if (!facts.length) return [addForm(), empty(L.nothing, "")];
     const archived = facts.filter((f) => f.archived);
-    return [state.data.kinds.map((k) => {
+    return [addForm(), state.data.kinds.map((k) => {
       const list = facts.filter((f) => f.kind === k && !f.archived);
-      return list.length ? h("section", { class: "br-kind" },
-        h("h2", {}, L.kinds[k], h("span", {}, String(list.length))),
+      return list.length ? h("section", { class: `br-kind k-${k}` },
+        h("h2", {}, kindIcon(k), L.kinds[k], h("span", {}, String(list.length))),
         h("ul", { class: "br-list" }, list.map(factEl))) : "";
     }), archived.length ? h("section", { class: "br-kind br-archive" },
       h("h2", {}, h("button", { type: "button", class: "br-link", "aria-expanded": String(state.archive),
@@ -544,6 +682,10 @@
       }
     }
     layout(nodes, links, w, hgt);
+    for (const n of nodes) {  // звёзды, которые вы передвинули, остаются на своих местах
+      const saved = state.mapPos[n.id];
+      if (saved && !n.fixed) { n.x = saved[0]; n.y = saved[1]; }
+    }
     const svg = document.createElementNS(SVG, "svg");
     svg.setAttribute("viewBox", `0 0 ${w} ${hgt}`);
     svg.setAttribute("class", "br-map");
@@ -555,32 +697,113 @@
       parent.append(x);
       return x;
     };
-    for (const l of links) {
-      const line = el("line", { x1: l.a.x, y1: l.a.y, x2: l.b.x, y2: l.b.y, class: l.assoc ? "assoc" : l.doc ? "doc" : l.side ? "side" : "" });
-      if (l.assoc) el("title", {}, line).textContent = l.assoc;
+    // Фон — россыпь мелких звёзд; он же ловит перетаскивание всей карты.
+    const sky = el("g", { class: "br-sky" });
+    const rand = rng(5);
+    for (let i = 0; i < 90; i++) {
+      const c = el("circle", { cx: (rand() * w).toFixed(1), cy: (rand() * hgt).toFixed(1), r: (0.4 + rand() * 0.9).toFixed(2) }, sky);
+      c.style.animationDelay = `${(rand() * 6).toFixed(2)}s`;
     }
-    for (const n of nodes) {
+    const world = el("g", { class: "br-world" });
+    const view = state.mapView;
+    const apply = () => world.setAttribute("transform", `translate(${view.x.toFixed(1)} ${view.y.toFixed(1)}) scale(${view.k.toFixed(3)})`);
+    apply();
+    const lineEls = [];
+    for (const l of links) {
+      const line = el("line", { x1: l.a.x, y1: l.a.y, x2: l.b.x, y2: l.b.y, class: l.assoc ? "assoc" : l.doc ? "doc" : l.side ? "side" : "" }, world);
+      if (l.assoc) el("title", {}, line).textContent = l.assoc;
+      lineEls.push([l, line]);
+    }
+    const toWorld = (e) => {
+      const pt = svg.createSVGPoint();
+      pt.x = e.clientX; pt.y = e.clientY;
+      const q = pt.matrixTransform(svg.getScreenCTM().inverse());
+      return [(q.x - view.x) / view.k, (q.y - view.y) / view.k, q.x, q.y];
+    };
+    nodes.forEach((n, i) => {
       const g = el("g", { class: `br-node t-${n.type || "me"}` + (state.node === n.id ? " on" : ""), tabindex: n.fixed ? -1 : 0,
-                          transform: `translate(${n.x.toFixed(1)} ${n.y.toFixed(1)})` });
-      el("circle", { r: n.r }, g);
+                          transform: `translate(${n.x.toFixed(1)} ${n.y.toFixed(1)})` }, world);
+      el("circle", { r: n.r * 1.9, class: "halo" }, g).style.animationDelay = `${(i * 0.53) % 5}s`;
+      el("circle", { r: n.r + 8, class: "hit" }, g);  // попасть пальцем легче, чем в маленькую звезду
+      el("circle", { r: n.r, class: "core" }, g);
       const label = el("text", { y: n.r + 15 }, g);
       label.textContent = n.name;
       if (n.relation) {
         const sub = el("text", { y: n.r + 28, class: "sub" }, g);
         sub.textContent = n.relation;
       }
+      let act = null;
       if (n.path) {
         const openDoc = () => window.open(`/api/disk/file?path=${encodeURIComponent(n.path)}`, "_blank");
         el("title", {}, g).textContent = n.path;
-        g.addEventListener("click", openDoc);
-        g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDoc(); } });
+        act = openDoc;
       } else if (!n.fixed) {
-        const pick = () => { state.node = state.node === n.id ? null : n.id; draw(); };
-        g.addEventListener("click", pick);
-        g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } });
+        act = () => { state.node = state.node === n.id ? null : n.id; draw(); };
       }
-    }
-    return [h("div", { class: "br-map-wrap" }, svg), nodePanel()];
+      if (act) g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); act(); } });
+      // Перетаскивание звезды; короткое нажатие без сдвига — обычный выбор.
+      g.addEventListener("pointerdown", (e) => {
+        if (n.fixed) return;
+        e.stopPropagation();
+        g.setPointerCapture(e.pointerId);
+        const [sx, sy] = toWorld(e);
+        const ox = n.x, oy = n.y;
+        let moved = false;
+        const move = (ev) => {
+          const [x, y] = toWorld(ev);
+          if (!moved && Math.hypot(x - sx, y - sy) * view.k < 4) return;
+          moved = true;
+          g.classList.add("dragging");
+          n.x = ox + x - sx; n.y = oy + y - sy;
+          g.setAttribute("transform", `translate(${n.x.toFixed(1)} ${n.y.toFixed(1)})`);
+          for (const [l, line] of lineEls) {
+            if (l.a === n) { line.setAttribute("x1", n.x); line.setAttribute("y1", n.y); }
+            if (l.b === n) { line.setAttribute("x2", n.x); line.setAttribute("y2", n.y); }
+          }
+        };
+        const up = () => {
+          g.removeEventListener("pointermove", move);
+          g.classList.remove("dragging");
+          if (moved) state.mapPos[n.id] = [n.x, n.y];
+          else act?.();
+        };
+        g.addEventListener("pointermove", move);
+        g.addEventListener("pointerup", up, { once: true });
+        g.addEventListener("pointercancel", () => g.removeEventListener("pointermove", move), { once: true });
+      });
+    });
+    // Приближение колесом (к курсору) и кнопками, сдвиг карты — перетаскиванием фона.
+    const zoom = (factor, cx = w / 2, cy = hgt / 2) => {
+      const k = Math.max(0.5, Math.min(3, view.k * factor));
+      view.x = cx - (cx - view.x) * k / view.k;
+      view.y = cy - (cy - view.y) * k / view.k;
+      view.k = k;
+      apply();
+    };
+    svg.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const [, , x, y] = toWorld(e);
+      zoom(e.deltaY < 0 ? 1.15 : 1 / 1.15, x, y);
+    }, { passive: false });
+    svg.addEventListener("pointerdown", (e) => {
+      svg.setPointerCapture(e.pointerId);
+      const [, , sx, sy] = toWorld(e);
+      const ox = view.x, oy = view.y;
+      svg.classList.add("panning");
+      const move = (ev) => {
+        const [, , x, y] = toWorld(ev);
+        view.x = ox + x - sx; view.y = oy + y - sy;
+        apply();
+      };
+      svg.addEventListener("pointermove", move);
+      svg.addEventListener("pointerup", () => { svg.removeEventListener("pointermove", move); svg.classList.remove("panning"); }, { once: true });
+    });
+    const ctl = (text, label, fn) => h("button", { type: "button", class: "br-map-btn", title: label, "aria-label": label, onclick: fn }, text);
+    return [h("div", { class: "br-map-wrap" }, svg,
+      h("div", { class: "br-map-ctl" },
+        ctl("+", L.zoomIn, () => zoom(1.25)), ctl("−", L.zoomOut, () => zoom(0.8)),
+        ctl("⟲", L.zoomReset, () => { state.mapPos = {}; state.mapView = { x: 0, y: 0, k: 1 }; draw(); }))),
+      h("p", { class: "row-hint br-map-hint" }, L.mapHint), nodePanel()];
   }
 
   function nodePanel() {
@@ -779,18 +1002,16 @@
   }
 
   function brainCard() {
-    const days = state.data.brain || [];
+    const { days, last, fresh } = growthNumbers();
     if (!days.length) return "";
-    const last = days[days.length - 1];
-    const max = Math.max(...days.map((d) => d.neurons), 1);
     const grew = days.length > 1 ? last.neurons - days[0].neurons : 0;
     return h("section", { class: "card br-brain" },
       h("div", { class: "br-brain-head" }, h("strong", {}, L.brain),
         h("span", { class: "br-brain-num" }, L.neurons(last.neurons)), h("span", { class: "row-hint" }, L.linksN(last.links)),
         grew > 0 ? h("span", { class: "br-brain-up" }, `+${grew}`) : ""),
-      h("div", { class: "br-brain-bars" }, days.map((d) => h("i", {
-        style: `height:${Math.max(4, Math.round(d.neurons / max * 64))}px`,
-        title: `${day(d.date)}: ${L.neurons(d.neurons)}, ${L.linksN(d.links)}` }))),
+      brainSvg(last.neurons, last.links, fresh, 600, 300),
+      days.length > 1 ? h("div", { class: "br-spark-wrap", title: days.map((d) => `${day(d.date)}: ${d.neurons}`).join("\n") },
+        sparkline(days.map((d) => d.neurons), 600, 44)) : "",
       h("p", { class: "row-hint" }, L.brainHint));
   }
 
@@ -982,12 +1203,15 @@
                                   again.setSelectionRange(pos, pos);
                                 } });
     const openPromises = d.promises.filter((p) => !p.done).length;
-    const tabs = [["facts", L.facts, d.facts.length], ["map", L.map, d.entities.filter((e) => e.facts > 0).length],
-                  ["talks", L.talks, d.talks.length], ["plans", L.plans, openPromises + d.events.length],
-                  ["skills", L.skills, d.skills.length],
-                  ["mind", L.mind, (d.mind.thoughts || []).filter((t) => t.status === "queued" || t.status === "running").length],
-                  ["grow", L.growth, d.suggestions.length + d.user_tools.filter((t) => t.status === "pending").length],
-                  ["improve", L.improve, (d.improvements || []).filter((x) => x.status === "new").length]];
+    const growing = d.suggestions.length + d.user_tools.length + d.lessons.length + (d.style.versions || []).length
+      + d.wishes.length + d.notes.length + d.links.length;
+    const groups = [
+      [L.groupMe, [["facts", L.facts, d.facts.length], ["map", L.map, d.entities.filter((e) => e.facts > 0).length],
+                   ["talks", L.talks, d.talks.length], ["plans", L.plans, openPromises + d.events.length],
+                   ["skills", L.skills, d.skills.length]]],
+      [L.groupHer, [["mind", L.mind, (d.mind.thoughts || []).length + (d.versions || []).length],
+                    ["grow", L.growth, growing],
+                    ["improve", L.improve, (d.improvements || []).filter((x) => x.status === "new").length]]]];
     const views = { facts: factsView, map: mapView, talks: talksView, plans: plansView, skills: skillsView,
                     mind: mindView, grow: growView, improve: improveView };
     root.replaceChildren(
@@ -998,15 +1222,22 @@
           h("button", { class: "btn", type: "button", onclick: importFile }, L.imp),
           h("button", { class: "btn br-danger", type: "button", disabled: !d.facts.length && !d.talks.length,
                         onclick: () => confirm(L.clearAsk) && send("clear", { all: true }) }, L.clear))),
+      dashboard(),
       state.msg?.text ? h("p", { class: "row-hint br-msg " + (state.msg.bad ? "bad" : "good") }, state.msg.text) : "",
       settingsCard(),
-      addForm(),
       h("div", { class: "br-tabs" },
-        h("div", { class: "br-tablist", role: "tablist" }, tabs.map(([id, label, n]) => h("button", {
-          type: "button", role: "tab", "aria-selected": String(state.tab === id), class: state.tab === id ? "on" : "",
-          onclick: () => { state.tab = id; state.open = null; draw(); } }, label, h("span", {}, String(n))))),
+        h("div", { class: "br-tablist", role: "tablist" }, groups.map(([title, tabs], gi) => h("div", { class: "br-tabgroup" },
+          h("span", { class: "br-tabgroup-name", "aria-hidden": "true" }, title),
+          h("div", { class: "br-tabgroup-tabs" }, tabs.map(([id, label, n]) => h("button", {
+            type: "button", role: "tab", "aria-selected": String(state.tab === id), class: state.tab === id ? "on" : "",
+            "data-group": String(gi), onclick: () => { state.tab = id; state.open = null; draw(); } },
+            label, n ? h("span", {}, String(n)) : "")))))),
         h("div", { class: "br-search" }, search)),
       h("div", { class: "br-view" }, views[state.tab]()));
+    const list = root.querySelector(".br-tablist"), on = list?.querySelector("button.on");
+    if (on && (on.offsetLeft < list.scrollLeft || on.offsetLeft + on.offsetWidth > list.scrollLeft + list.clientWidth)) {
+      list.scrollLeft = on.offsetLeft - 24;  // только по горизонтали: страница не прыгает
+    }
   }
 
   window.Yakumo.addPage({

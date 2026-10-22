@@ -423,7 +423,9 @@ class BrainTest(BrainBase):
                 {}["нет"]
             except KeyError:
                 log.exception("Не удалось разобрать файл")
-        items = {x["source"]: x for x in self.get("/api/brain")["improvements"]}
+        # Посторонние сбои фоновых дел тоже могут попасть в список — берём именно этот.
+        items = {x["source"]: x for x in self.get("/api/brain")["improvements"]
+                 if x["source"] != "error" or x["title"].startswith("Не удалось разобрать файл")}
         self.assertEqual(set(items), {"wish", "thumbs", "error"})
         self.assertEqual(items["thumbs"]["title"], "ошибка в счёте")
         self.assertEqual((items["error"]["module"], items["error"]["count"]), ("Диск", 2))
@@ -453,7 +455,7 @@ class BrainTest(BrainBase):
         # Удалённое желание не возвращается, сделанная ошибка при повторе снова новая.
         self.post("/api/brain/item/delete", {"type": "improvements", "ids": [wish["id"]]})
         improve.scan()
-        error = next(x for x in self.get("/api/brain")["improvements"] if x["source"] == "error")
+        error = next(x for x in self.get("/api/brain")["improvements"] if x["title"].startswith("Не удалось разобрать файл"))
         self.post("/api/brain/improvement", {"id": error["id"], "status": "done"})
         try:
             {}["нет"]
@@ -461,7 +463,7 @@ class BrainTest(BrainBase):
             log.exception("Не удалось разобрать файл")
         state = self.get("/api/brain")["improvements"]
         self.assertNotIn("wish", {x["source"] for x in state})
-        self.assertEqual(next(x for x in state if x["source"] == "error")["status"], "new")
+        self.assertEqual(next(x for x in state if x["id"] == error["id"])["status"], "new")
         self.post("/api/brain/improvement", {"title": "Тёмная тема для Диска"})
         self.assertIn("manual", {x["source"] for x in self.get("/api/brain")["improvements"]})
 
