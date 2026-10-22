@@ -79,6 +79,16 @@
       docs: "Читать новые документы", docsHint: "Положили файл на Диск — Yakumo сама прочитает его: суммы, стороны и номера запомнит со ссылкой на файл, сроки добавит в напоминания, о важном напишет в чат и предложит, в какую папку его положить. Тратит фоновые запросы.",
       brain: "Рост мозга", neurons: (n) => `${n} ${plural(n, "нейрон", "нейрона", "нейронов")}`,
       linksN: (n) => `${n} ${plural(n, "связь", "связи", "связей")}`,
+      improve: "Улучшения", improveLead: "Что стоит доработать в самой Yakumo. Пункты появляются сами: из её неудач, ошибок программы и её собственных идей. Каждый оформлен как задача; скопируйте и отдайте Claude.",
+      impStatuses: { new: "Новые", given: "Отданы", done: "Сделаны", rejected: "Отклонены" },
+      impStatus1: { new: "новая", given: "отдана", done: "сделана", rejected: "отклонена" },
+      impSources: { wish: "не смогла", thumbs: "👎", error: "ошибка", idea: "идея Yakumo", manual: "вы" },
+      impPrio: { high: "важно", normal: "обычно", low: "мелочь" },
+      impFields: { problem: "Что не так", steps: "Как воспроизвести", want: "Что хочется", detail: "Подробности" },
+      impCopy: "Скопировать для Claude", impCopyAll: (n) => `Скопировать новые для Claude (${n})`, impCopied: "Скопировано. Вставьте в проект с Claude.",
+      impIdeas: "Придумать идеи", impAdd: "Своя задача: что улучшить", impAddBtn: "Добавить", impTimes: (n) => `${n} раз`,
+      impReopened: "вернулась", impEmpty: "Пока нечего улучшать", impEmptyHint: "Сюда попадут ошибки программы, ответы с 👎, то, что Yakumo не смогла, и её идеи.",
+      impStatusLabel: "Статус",
       versions: "История меня", versionKinds: { install: "Обновление", rollback: "Возврат", seen: "Версия" },
       versionsHint: "Когда Yakumo обновили или вернули к прошлой версии и что в ней нового. Она помнит это и может рассказать в чате.",
       changesN: (n) => `изменений: ${n}`,
@@ -157,6 +167,16 @@
       docs: "Read new documents", docsHint: "Put a file on the Drive and Yakumo reads it herself: remembers amounts, parties and numbers with a link to the file, adds deadlines to reminders, writes to the chat about anything important and suggests a folder. Uses background requests.",
       brain: "Brain growth", neurons: (n) => `${n} ${n === 1 ? "neuron" : "neurons"}`,
       linksN: (n) => `${n} ${n === 1 ? "link" : "links"}`,
+      improve: "Improvements", improveLead: "What is worth improving in Yakumo herself. Items appear on their own: from her failures, program errors and her own ideas. Each is written as a task; copy it and give it to Claude.",
+      impStatuses: { new: "New", given: "Given", done: "Done", rejected: "Rejected" },
+      impStatus1: { new: "new", given: "given", done: "done", rejected: "rejected" },
+      impSources: { wish: "couldn't", thumbs: "👎", error: "error", idea: "Yakumo's idea", manual: "you" },
+      impPrio: { high: "important", normal: "normal", low: "minor" },
+      impFields: { problem: "What is wrong", steps: "Steps to reproduce", want: "Desired result", detail: "Details" },
+      impCopy: "Copy for Claude", impCopyAll: (n) => `Copy new for Claude (${n})`, impCopied: "Copied. Paste it into your Claude project.",
+      impIdeas: "Come up with ideas", impAdd: "Your own task: what to improve", impAddBtn: "Add", impTimes: (n) => `${n} times`,
+      impReopened: "came back", impEmpty: "Nothing to improve yet", impEmptyHint: "Program errors, 👎 answers, things Yakumo couldn't do and her ideas will appear here.",
+      impStatusLabel: "Status",
       versions: "My history", versionKinds: { install: "Update", rollback: "Rollback", seen: "Version" },
       versionsHint: "When Yakumo was updated or rolled back and what was new. She remembers it and can tell you in chat.",
       changesN: (n) => `changes: ${n}`,
@@ -177,7 +197,7 @@
   const lang = () => window.Yakumo.lang();
   const L = new Proxy({}, { get: (_t, k) => (TX[lang()] || TX.ru)[k] });
   const state = { data: null, tab: "facts", query: "", editing: null, open: null, node: null, msg: null, error: null,
-                  sleeping: false, archive: false, growing: null };
+                  sleeping: false, archive: false, growing: null, impFilter: "new" };
   const root = h("div", { class: "brain" });
   let timer = 0;
 
@@ -755,7 +775,60 @@
     const res = await send("grow", { what });
     state.growing = null;
     if (what === "curious" || what === "foresee") await inbox();
+    if (what === "ideas") state.impFilter = "new";
     draw();
+  }
+
+  async function copyFor(ids) {
+    const res = await send("improvements/copy", ids ? { ids } : {});
+    if (!res?.text) return;
+    try {
+      await navigator.clipboard.writeText(res.text);
+    } catch {  // не через localhost: буфер обмена недоступен, копируем по-старому
+      const area = h("textarea", { style: "position:fixed;opacity:0" }, res.text);
+      document.body.append(area); area.select(); document.execCommand("copy"); area.remove();
+    }
+    state.msg = { text: L.impCopied };
+    draw();
+  }
+
+  function improveView() {
+    const d = state.data;
+    const all = d.improvements || [];
+    const items = all.filter((x) => x.status === state.impFilter
+      && matches(`${x.title} ${x.problem || ""} ${x.module || ""}`));
+    const fresh = all.filter((x) => x.status === "new").length;
+    const title = h("input", { class: "text-input", maxlength: 200, placeholder: L.impAdd, "aria-label": L.impAdd });
+    const add = () => title.value.trim() && send("improvement", { title: title.value.trim() });
+    return [
+      h("p", { class: "row-hint br-section-hint" }, L.improveLead),
+      h("div", { class: "br-grow-actions" },
+        h("button", { class: "btn primary", type: "button", disabled: !fresh, onclick: () => copyFor(null) }, L.impCopyAll(fresh)),
+        h("button", { class: "btn", type: "button", disabled: !(d.cloud && d.enabled) || !!state.growing,
+                      onclick: () => growNow("ideas") }, state.growing === "ideas" ? L.working : L.impIdeas)),
+      h("div", { class: "br-add" }, title, h("button", { class: "btn", type: "button", onclick: add }, L.impAddBtn)),
+      h("div", { class: "br-imp-filter", role: "tablist" }, Object.entries(L.impStatuses).map(([id, label]) => h("button", {
+        type: "button", role: "tab", class: "br-chip" + (state.impFilter === id ? " on" : ""), "aria-selected": String(state.impFilter === id),
+        onclick: () => { state.impFilter = id; draw(); } }, `${label} · ${all.filter((x) => x.status === id).length}`))),
+      items.length ? h("ul", { class: "br-list" }, items.map((x) => {
+        const open = state.open === x.id;
+        const status = select(Object.entries(L.impStatus1), x.status, L.impStatusLabel);
+        status.onchange = () => send("improvement", { id: x.id, status: status.value });
+        return h("li", { class: `br-fact br-imp p-${x.priority || "normal"}` },
+          h("span", { class: "br-thought-kind" }, L.impSources[x.source] || x.source),
+          h("div", { class: "br-fact-body" },
+            h("button", { type: "button", class: "br-link br-fact-text", "aria-expanded": String(open),
+                          onclick: () => { state.open = open ? null : x.id; draw(); } }, x.title),
+            h("div", { class: "br-meta" }, [x.module, x.priority ? L.impPrio[x.priority] : "", date(x.last || x.created),
+              (x.count || 1) > 1 ? L.impTimes(x.count) : "", x.reopened && x.status === "new" ? L.impReopened : ""].filter(Boolean).join(" · ")),
+            open ? h("div", { class: "br-quote br-imp-body" }, ["problem", "steps", "want"].filter((k) => x[k]).map((k) =>
+              h("p", {}, h("b", {}, `${L.impFields[k]}: `), x[k])),
+              x.detail ? [h("b", {}, L.impFields.detail), h("pre", { class: "br-code" }, x.detail)] : "") : "",
+            open ? h("div", { class: "br-add br-imp-actions" }, status,
+              h("button", { class: "btn", type: "button", onclick: () => copyFor([x.id]) }, L.impCopy)) : ""),
+          h("div", { class: "br-tools" }, tool("✕", L.del, () => send("item/delete", { type: "improvements", ids: [x.id] }), "danger")));
+      })) : empty(L.impEmpty, L.impEmptyHint),
+    ];
   }
 
   function section(title, count, hint, body) {
@@ -886,9 +959,10 @@
                   ["talks", L.talks, d.talks.length], ["plans", L.plans, openPromises + d.events.length],
                   ["skills", L.skills, d.skills.length],
                   ["mind", L.mind, (d.mind.thoughts || []).filter((t) => t.status === "queued" || t.status === "running").length],
-                  ["grow", L.growth, d.suggestions.length + d.user_tools.filter((t) => t.status === "pending").length]];
+                  ["grow", L.growth, d.suggestions.length + d.user_tools.filter((t) => t.status === "pending").length],
+                  ["improve", L.improve, (d.improvements || []).filter((x) => x.status === "new").length]];
     const views = { facts: factsView, map: mapView, talks: talksView, plans: plansView, skills: skillsView,
-                    mind: mindView, grow: growView };
+                    mind: mindView, grow: growView, improve: improveView };
     root.replaceChildren(
       h("div", { class: "br-head" },
         h("div", {}, h("h1", {}, L.title), h("p", { class: "br-lead" }, L.lead(d.facts.length, d.talks.length))),

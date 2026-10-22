@@ -328,6 +328,8 @@ class CloudService:
                     try:
                         results.append((name, tool.run(args)))
                     except Exception as exc:  # noqa: BLE001 — ошибку видит модель и может исправиться
+                        if not isinstance(exc, (ValueError, LookupError, OSError)):  # не ошибка ввода — сбой кода
+                            log.error("Инструмент %s упал", name, exc_info=True)
                         results.append((name, {"error": str(exc) or type(exc).__name__}))
                 if not asked:
                     break  # только план: дальше решает пользователь

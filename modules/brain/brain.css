@@ -215,3 +215,11 @@
 .br-node.t-doc text { font-size: 10.5px; fill: var(--muted); }
 .br-node.t-doc { cursor: pointer; }
 .br-node.t-doc:hover circle, .br-node.t-doc:focus circle { stroke: var(--accent); }
+
+/* Улучшения */
+.br-imp-filter { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 12px; }
+.br-imp-filter .br-chip.on { background: var(--accent-soft); color: var(--accent); }
+.br-imp.p-high .br-thought-kind { color: var(--accent); }
+.br-imp-body p { margin: 4px 0; }
+.br-imp-body .br-code { margin-top: 4px; white-space: pre-wrap; }
+.br-imp-actions { margin: 8px 0 0; }

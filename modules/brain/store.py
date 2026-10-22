@@ -33,6 +33,7 @@ MAX_TEXT = 300      # символов в одном факте
 MAX_SUMMARY = 1200  # символов в конспекте разговора
 MAX_DAYS = 400      # сколько дней хранить настроение и программы
 MAX_VERSIONS = 200  # записей «истории меня»: установленные версии Yakumo
+MAX_IMPROVEMENTS = 200  # пунктов «что улучшить в Yakumo»
 FADE_DAYS = 45      # за столько дней без упоминания факт теряет одно очко
 FORGET_DAYS = 180   # мелкие факты, которые не вспоминались так долго, забываются сами
 
@@ -132,7 +133,7 @@ class Memory:
             if type(data.get(key)) is not bool:
                 data[key] = default
         data["facts"] = [f for f in data.get("facts", []) if isinstance(f, dict) and isinstance(f.get("text"), str)]
-        for name in ("talks", "entities", "promises", "events", "skills", "inbox", "versions", *GROWTH):
+        for name in ("talks", "entities", "promises", "events", "skills", "inbox", "versions", "improvements", *GROWTH):
             data[name] = [x for x in data.get(name, []) if isinstance(x, dict) and isinstance(x.get("id"), str)]
         for key in ("days", "meta", "chains", "style"):
             if not isinstance(data.get(key), dict):
@@ -554,10 +555,14 @@ class Memory:
         return found
 
     def delete_items(self, name: str, ids) -> int:
-        if name not in ("promises", "events", "skills", "inbox", *GROWTH):
+        if name not in ("promises", "events", "skills", "inbox", "improvements", *GROWTH):
             raise BrainError("Неизвестный список")
         ids = set(_ids(ids))
         with self.lock:
+            if name == "improvements":  # удалённое не возвращается само при следующем просмотре источников
+                dropped = self.data["meta"].setdefault("improvements_dropped", [])
+                dropped += [x["key"] for x in self.data[name] if x["id"] in ids and x.get("key")]
+                del dropped[:-300]
             before = len(self.data[name])
             self.data[name] = [x for x in self.data[name] if x["id"] not in ids]
             self.save()
@@ -787,6 +792,65 @@ class Memory:
     def versions(self) -> list[dict]:
         """Свои версии, новые сверху."""
         return sorted(self.data["versions"], key=lambda v: -v.get("at", 0))
+
+    # --- Улучшения: что доработать в самой Yakumo ---
+
+    IMPROVEMENT_TEXT = {"title": 200, "problem": 1500, "steps": 1500, "want": 1500, "module": 40}
+
+    def _improvement_fields(self, fields: dict) -> dict:
+        out = {}
+        for key, limit in self.IMPROVEMENT_TEXT.items():
+            if isinstance(fields.get(key), str):
+                out[key] = " ".join(fields[key].split())[:limit]
+        if isinstance(fields.get("detail"), str):
+            out["detail"] = fields["detail"].strip()[:3000]
+        if fields.get("priority") in ("high", "normal", "low"):
+            out["priority"] = fields["priority"]
+        if fields.get("status") in ("new", "given", "done", "rejected"):
+            out["status"] = fields["status"]
+        if isinstance(fields.get("refined"), bool):
+            out["refined"] = fields["refined"]
+        return out
+
+    def improvement(self, item: dict) -> dict | None:
+        """Добавить пункт или отметить повтор (тот же key). Сделанный пункт при повторе снова становится новым."""
+        key = item.get("key") if isinstance(item, dict) else None
+        if not isinstance(key, str) or not key:
+            return None
+        fields = self._improvement_fields(item)
+        if not fields.get("title"):
+            return None
+        with self.lock:
+            same = next((x for x in self.data["improvements"] if x.get("key") == key), None)
+            if same:
+                count = item.get("count") if type(item.get("count")) is int else same.get("count", 1) + 1
+                if count > same.get("count", 1):
+                    same.update(count=count, last=int(time.time()))
+                    if same.get("status") == "done":
+                        same.update(status="new", reopened=True)
+                    self.save()
+                return None
+            source = item.get("source") if item.get("source") in ("wish", "thumbs", "error", "idea", "manual") else "manual"
+            return self.add_item("improvements", {
+                "key": key[:100], "source": source, "status": "new", "refined": False,
+                "count": item["count"] if type(item.get("count")) is int and item["count"] > 0 else 1,
+                "last": int(time.time()), **fields}, MAX_IMPROVEMENTS)
+
+    def edit_improvement(self, item_id: str, **fields) -> dict:
+        with self.lock:
+            item = self.item("improvements", item_id)
+            if item is None:
+                raise BrainError("Нет такого пункта")
+            item.update(self._improvement_fields(fields))
+            self.save()
+            return item
+
+    def improvements(self) -> list[dict]:
+        """Новые и важные выше, потом по повторам и свежести."""
+        rank = {"new": 0, "given": 1, "done": 2, "rejected": 3}
+        prio = {"high": 0, "normal": 1, "low": 2}
+        return sorted(self.data["improvements"], key=lambda x: (rank.get(x.get("status"), 0), prio.get(x.get("priority"), 1),
+                                                                -x.get("count", 1), -x.get("last", 0)))
 
     # --- Всё сразу ---
 
