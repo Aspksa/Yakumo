@@ -23,7 +23,8 @@ class Handler(SimpleHTTPRequestHandler):
     routes: dict[str, Callable[[Any], Any]] = {}
     # Явный charset, чтобы браузер не угадывал кодировку русских текстов.
     extensions_map = {**SimpleHTTPRequestHandler.extensions_map,
-                      **{ext: f"{ctype}; charset=utf-8" for ext, ctype in TEXT_TYPES.items()}}
+                      **{ext: f"{ctype}; charset=utf-8" for ext, ctype in TEXT_TYPES.items()},
+                      ".webp": "image/webp"}  # в старых Windows его нет в реестре типов
 
     @property
     def route_path(self) -> str:

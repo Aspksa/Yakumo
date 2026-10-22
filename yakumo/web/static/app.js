@@ -23,6 +23,10 @@ const TEXTS = {
     compactHint: "Меньше отступов, больше помещается на экран.",
     restart: "Нужен перезапуск Yakumo, чтобы изменение вступило в силу.",
     saved: "Сохранено", saveError: "Не сохранилось",
+    avatar: "Yakumo: открыть чат", chatClose: "Закрыть чат", chatPlaceholder: "Напишите сообщение…",
+    send: "Отправить", chatSub: "чат пока без собеседника",
+    greeting: "Привет! Я Yakumo. Меня можно перетащить куда угодно, а по нажатию открывается этот чат.",
+    stubReply: "Я пока только учусь отвечать. Скоро здесь появится настоящий собеседник.",
     pathNames: { app: "Программа", data: "Данные", config: "Настройки", logs: "Журналы", cache: "Кэш",
                  temp: "Временные", workspace: "Рабочая папка", modules: "Модули", web: "Веб-страницы" },
   },
@@ -46,6 +50,10 @@ const TEXTS = {
     compactHint: "Less spacing, more fits on screen.",
     restart: "Restart Yakumo for this change to take effect.",
     saved: "Saved", saveError: "Not saved",
+    avatar: "Yakumo: open chat", chatClose: "Close chat", chatPlaceholder: "Type a message…",
+    send: "Send", chatSub: "chat has no one to talk to yet",
+    greeting: "Hi! I'm Yakumo. Drag me anywhere; click me to open this chat.",
+    stubReply: "I'm still learning to reply. A real conversation partner is coming soon.",
     pathNames: { app: "Program", data: "Data", config: "Settings", logs: "Logs", cache: "Cache",
                  temp: "Temp", workspace: "Workspace", modules: "Modules", web: "Web pages" },
   },
@@ -62,6 +70,11 @@ const SECTIONS = [
 const SETTINGS = { id: "settings", icon: "i-settings" };
 
 const content = document.getElementById("content");
+const avatarBtn = document.getElementById("avatar");
+const chatBox = document.getElementById("chat");
+const chatLog = document.getElementById("chat-log");
+const chatForm = document.getElementById("chat-form");
+const chatInput = document.getElementById("chat-input");
 const statusEl = document.getElementById("status");
 let status = null;
 let settings = null;
@@ -98,6 +111,12 @@ function buildMenu() {
   const gear = document.querySelector(".rail-settings");
   gear.dataset.label = T.settings;
   gear.setAttribute("aria-label", T.settings);
+  avatarBtn.setAttribute("aria-label", T.avatar);
+  chatBox.setAttribute("aria-label", T.avatar);
+  document.getElementById("chat-close").setAttribute("aria-label", T.chatClose);
+  document.getElementById("chat-sub").textContent = T.chatSub;
+  chatInput.placeholder = T.chatPlaceholder;
+  chatForm.querySelector(".chat-send").setAttribute("aria-label", T.send);
 }
 
 // --- Внешний вид из настроек ---
@@ -110,6 +129,7 @@ function applyLook() {
   document.documentElement.style.setProperty("--scale", v.font_scale / 100);
   document.body.classList.toggle("compact", v.compact);
   buildMenu();
+  placeAvatar();
   showOnline();
 }
 
@@ -260,5 +280,135 @@ async function start() {
   setTimeout(poll, 10000);
 }
 
+// --- Аватар и чат ---
+// Позиция аватара и переписка хранятся в браузере: это личное удобство, не настройки Yakumo.
+
+function stored(key, fallback) {
+  try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
+}
+function store(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* приватный режим */ }
+}
+
+// Позиция в долях свободного места (0..1), чтобы аватар оставался на своём месте при смене размера окна.
+let avatarPos = stored("yakumo.avatar", { x: 1, y: 1 });
+let messages = stored("yakumo.chat", []);
+
+// Страница масштабируется через zoom, поэтому размеры окна переводим в CSS-пиксели страницы.
+function zoom() { return (settings?.values.font_scale || 100) / 100; }
+function viewport() { return { w: innerWidth / zoom(), h: innerHeight / zoom() }; }
+function margins() { return { top: document.querySelector(".topbar").offsetHeight + 4, side: 8 }; }
+
+function placeAvatar() {
+  const { w, h } = viewport(), m = margins(), size = avatarBtn.offsetWidth;
+  const free = { x: Math.max(0, w - size - 2 * m.side), y: Math.max(0, h - size - m.top - m.side) };
+  avatarBtn.style.left = m.side + avatarPos.x * free.x + "px";
+  avatarBtn.style.top = m.top + avatarPos.y * free.y + "px";
+  if (!chatBox.hidden) placeChat();
+}
+
+// Чат рядом с аватаром: слева или справа, если хватает места, иначе над или под ним.
+function placeChat() {
+  const { w, h } = viewport(), m = margins(), gap = 10;
+  const a = { x: avatarBtn.offsetLeft, y: avatarBtn.offsetTop, s: avatarBtn.offsetWidth };
+  const cw = Math.min(340, w - 2 * m.side);
+  let ch = Math.min(440, h - m.top - m.side), x, y;
+  const clampX = (v) => Math.min(Math.max(v, m.side), w - cw - m.side);
+  const clampY = (v) => Math.min(Math.max(v, m.top), h - ch - m.side);
+  if (a.x - gap - cw >= m.side || a.x + a.s + gap + cw <= w - m.side) {
+    x = a.x - gap - cw >= m.side ? a.x - gap - cw : a.x + a.s + gap;
+    y = clampY(a.y + a.s - ch);
+  } else {
+    const above = a.y - gap - m.top, below = h - m.side - (a.y + a.s + gap);
+    ch = Math.min(ch, Math.max(above, below, 200));
+    x = clampX(a.x + a.s / 2 - cw / 2);
+    y = above >= below ? clampY(a.y - gap - ch) : clampY(a.y + a.s + gap);
+  }
+  Object.assign(chatBox.style, { left: x + "px", top: y + "px", width: cw + "px", height: ch + "px" });
+}
+
+function setChatOpen(open) {
+  chatBox.hidden = !open;
+  avatarBtn.setAttribute("aria-expanded", String(open));
+  if (!open) return;
+  if (!messages.length) addMessage("bot", T.greeting);
+  placeChat();
+  chatInput.focus();
+}
+
+function showMessages() {
+  chatLog.replaceChildren(...messages.map((m) => h("div", { class: "msg " + m.from }, m.text)));
+  chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+function addMessage(from, text) {
+  messages = [...messages, { from, text }].slice(-200);
+  store("yakumo.chat", messages);
+  showMessages();
+}
+
+// Заготовка: собеседник ещё не подключён, отвечаем шаблонной фразой.
+async function reply(text) {
+  return T.stubReply;
+}
+
+chatForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const text = chatInput.value.trim();
+  if (!text) return;
+  chatInput.value = "";
+  chatInput.style.height = "";
+  addMessage("me", text);
+  addMessage("bot", await reply(text));
+});
+chatInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); chatForm.requestSubmit(); }
+  if (e.key === "Escape") { setChatOpen(false); avatarBtn.focus(); }
+});
+chatInput.addEventListener("input", () => {
+  chatInput.style.height = "";
+  chatInput.style.height = chatInput.scrollHeight + 2 + "px";
+});
+document.getElementById("chat-close").addEventListener("click", () => { setChatOpen(false); avatarBtn.focus(); });
+
+// Перетаскивание: короткое нажатие без сдвига открывает чат, сдвиг больше 5 точек двигает аватар.
+let drag = null;
+avatarBtn.addEventListener("pointerdown", (e) => {
+  if (e.button !== 0) return;
+  justDragged = false;
+  drag = { x: e.clientX, y: e.clientY, left: avatarBtn.offsetLeft, top: avatarBtn.offsetTop, moved: false };
+  avatarBtn.setPointerCapture(e.pointerId);
+});
+avatarBtn.addEventListener("pointermove", (e) => {
+  if (!drag) return;
+  const dx = (e.clientX - drag.x) / zoom(), dy = (e.clientY - drag.y) / zoom();
+  if (!drag.moved && Math.hypot(dx, dy) < 5) return;
+  drag.moved = true;
+  avatarBtn.classList.add("dragging");
+  const { w, h } = viewport(), m = margins(), size = avatarBtn.offsetWidth;
+  const free = { x: Math.max(1, w - size - 2 * m.side), y: Math.max(1, h - size - m.top - m.side) };
+  avatarPos = {
+    x: Math.min(Math.max((drag.left + dx - m.side) / free.x, 0), 1),
+    y: Math.min(Math.max((drag.top + dy - m.top) / free.y, 0), 1),
+  };
+  placeAvatar();
+});
+let justDragged = false;
+function endDrag() {
+  if (drag?.moved) { store("yakumo.avatar", avatarPos); justDragged = true; }
+  drag = null;
+  avatarBtn.classList.remove("dragging");
+}
+avatarBtn.addEventListener("pointerup", endDrag);
+avatarBtn.addEventListener("pointercancel", endDrag);
+avatarBtn.addEventListener("click", () => {
+  // После перетаскивания браузер всё равно присылает click, его пропускаем.
+  if (justDragged) { justDragged = false; return; }
+  setChatOpen(chatBox.hidden);
+});
+
+window.addEventListener("resize", placeAvatar);
 window.addEventListener("hashchange", render);
+showMessages();
+placeAvatar();
 start();
