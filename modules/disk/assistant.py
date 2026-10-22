@@ -10,14 +10,18 @@
 
 from __future__ import annotations
 
+import difflib
 import io
 import time
 
+from . import tables
+from .extract import extract
 from .store import Disk, DiskError
 
 READ_LIMIT = 12000  # символов текста файла для модели
 WRITE_LIMIT = 200_000  # символов в файле, который пишет Yakumo
 WRITE_EXT = (".md", ".txt")
+DIFF_LIMIT = 10000     # символов разницы версий для модели
 
 
 def _when(t: int) -> str:
@@ -83,6 +87,31 @@ def register(ctx, disk: Disk, index, search) -> None:
             memory.authored(entry["path"], text)
         return {"path": entry["path"]}
 
+    def table(args):
+        rel = str(args.get("path", ""))
+        where = args.get("where") if isinstance(args.get("where"), dict) else None
+        sums = args.get("sum")
+        sums = [sums] if isinstance(sums, str) else sums if isinstance(sums, list) else None
+        try:
+            return {"path": rel, **tables.query(disk.path(rel), args.get("sheet"), where, sums, args.get("group_by"))}
+        except tables.TableError as exc:
+            raise DiskError(str(exc)) from exc
+
+    def compare(args):
+        a, b = disk.path(str(args.get("a", ""))), disk.path(str(args.get("b", "")))
+        old, new = extract(a), extract(b)
+        if not old and not new:
+            raise DiskError("Из этих файлов не извлекается текст")
+        lines = list(difflib.unified_diff(old.splitlines(), new.splitlines(), disk.rel(a), disk.rel(b),
+                                          lineterm="", n=1))
+        text = "\n".join(lines)
+        return {"a": disk.rel(a), "b": disk.rel(b), "same": not lines,
+                "similarity": round(difflib.SequenceMatcher(None, old[:20000], new[:20000]).ratio(), 3),
+                "added_lines": sum(1 for x in lines if x.startswith("+") and not x.startswith("+++")),
+                "removed_lines": sum(1 for x in lines if x.startswith("-") and not x.startswith("---")),
+                "diff": text[:DIFF_LIMIT], "truncated": len(text) > DIFF_LIMIT,
+                "note": "- строки из a, + строки из b. Объясни пользователю главные отличия по смыслу."}
+
     def info(_args):
         u = disk.usage()
         return {"used_bytes": u["used"], "trash_bytes": u["trash"], "free_bytes": u["free"],
@@ -117,6 +146,14 @@ def register(ctx, disk: Disk, index, search) -> None:
         ("disk_read", "текст документа (txt, docx, xlsx, pptx, pdf и др.) или описание фото, чтобы пересказать "
                       'или ответить по нему. args: {"path": "путь/к/файлу"}', read, False,
          lambda a: (f"Читаю {q(name_of(a.get('path')))}" if ru() else f"Reading {q(name_of(a.get('path')))}")),
+        ("disk_table", 'таблица Excel/CSV: строки, отбор, суммы и группировки (считать только так, не в уме). '
+                       'args: {"path": "путь.xlsx", "sheet": "лист (необязательно)", "where": {"колонка": "текст"}, '
+                       '"sum": ["колонка"], "group_by": "колонка"}', table, False,
+         lambda a: (f"Считаю по таблице {q(name_of(a.get('path')))}" if ru() else f"Reading table {q(name_of(a.get('path')))}")),
+        ("disk_compare", 'сравнить две версии документа: что добавлено и что удалено. args: {"a": "старый путь", '
+                         '"b": "новый путь"}', compare, False,
+         lambda a: (f"Сравниваю {q(name_of(a.get('a')))} и {q(name_of(a.get('b')))}" if ru()
+                    else f"Comparing {q(name_of(a.get('a')))} and {q(name_of(a.get('b')))}")),
         ("disk_info", "сколько места занято и свободно, сколько файлов. args: {}", info, False,
          lambda a: "Смотрю место на Диске" if ru() else "Checking Drive space"),
         ("disk_mkdir", 'создать папку (и недостающие родительские). args: {"path": "Фото/2024"}', mkdir, True,
