@@ -199,15 +199,6 @@ const AvatarFx = (() => {
         ctx.restore();
       },
     },
-    snow: {
-      count: 40,
-      spawn(i, n, first) {
-        return { x: rnd(-0.85, 0.85), y: first ? rnd(-0.85, 0.85) : -0.88, vy: rnd(0.05, 0.12), ph: rnd(0, TAU),
-                 r: rnd(0.004, 0.011), t: 0, front: Math.random() < 0.6 };
-      },
-      step(p, dt) { p.t += dt; p.y += p.vy * dt; p.x += Math.sin(p.t * 1.1 + p.ph) * 0.02 * dt; return p.y < 0.9; },
-      draw(ctx, p) { dot(ctx, "255,255,255", p.x, p.y, p.r * 2.4, 0.85 * Math.min(1, (0.9 - p.y) * 5)); },
-    },
     butterflies: {
       count: 5,
       spawn() {
@@ -243,29 +234,6 @@ const AvatarFx = (() => {
           ctx.restore();
         }
         ctx.restore();
-      },
-    },
-    lanterns: {
-      count: 5,
-      spawn(i, n, first) {
-        return { x: rnd(-0.75, 0.75), y: first ? rnd(-0.6, 0.85) : 0.9, vy: rnd(-0.05, -0.03), ph: rnd(0, TAU),
-                 s: rnd(0.028, 0.042), t: 0, front: Math.random() < 0.4 };
-      },
-      step(p, dt) { p.t += dt; p.y += p.vy * dt; p.x += Math.sin(p.t * 0.6 + p.ph) * 0.01 * dt; return p.y > -0.9; },
-      draw(ctx, p) {
-        const fade = Math.min(1, (p.y + 0.9) * 3, (0.9 - p.y) * 3), flick = 0.85 + 0.15 * Math.sin(p.t * 9 + p.ph);
-        const w = p.s * 0.75, h = p.s;
-        dot(ctx, "255,170,70", p.x, p.y, p.s * 3.2, 0.45 * fade * flick);
-        ctx.globalAlpha = 0.95 * fade;
-        const g = ctx.createRadialGradient(p.x, p.y + h * 0.2, 0, p.x, p.y, h * 1.1);
-        g.addColorStop(0, `rgba(255,236,170,${flick})`); g.addColorStop(1, "rgba(214,110,40,.95)");
-        ctx.fillStyle = g;
-        ctx.beginPath();  // бумажный фонарик: овал со срезанными верхом и низом
-        ctx.ellipse(p.x, p.y, w, h, 0, 0, TAU);
-        ctx.fill();
-        ctx.fillStyle = "rgba(60,30,15,.9)";
-        ctx.fillRect(p.x - w * 0.55, p.y - h * 1.02, w * 1.1, h * 0.16);
-        ctx.fillRect(p.x - w * 0.55, p.y + h * 0.86, w * 1.1, h * 0.16);
       },
     },
     mist: {
@@ -309,25 +277,6 @@ const AvatarFx = (() => {
         dot(ctx, "255,240,200", p.x, p.y, 0.02, a);
       },
     },
-    hearts: {
-      count: 8,
-      spawn(i, n, first) {
-        return { x: rnd(-0.5, 0.5), y: first ? rnd(-0.5, 0.45) : rnd(0.2, 0.45), vy: rnd(-0.09, -0.05), ph: rnd(0, TAU),
-                 s: rnd(0.014, 0.024), t: 0, life: rnd(3, 5), front: true, pink: Math.random() < 0.5 };
-      },
-      step(p, dt) { p.t += dt; p.y += p.vy * dt; p.x += Math.sin(p.t * 2 + p.ph) * 0.02 * dt; return p.t < p.life; },
-      draw(ctx, p) {
-        const a = Math.sin(Math.PI * p.t / p.life), s = p.s * (0.8 + 0.2 * Math.sin(p.t * 5));
-        dot(ctx, p.pink ? "255,150,170" : "255,210,120", p.x, p.y, s * 2.6, a * 0.4);
-        ctx.globalAlpha = a;
-        ctx.fillStyle = p.pink ? "#ffb3c1" : "#f6d27a";
-        ctx.beginPath();
-        ctx.moveTo(p.x, p.y + s * 0.9);
-        ctx.bezierCurveTo(p.x - s * 1.4, p.y, p.x - s * 0.7, p.y - s * 1.1, p.x, p.y - s * 0.35);
-        ctx.bezierCurveTo(p.x + s * 0.7, p.y - s * 1.1, p.x + s * 1.4, p.y, p.x, p.y + s * 0.9);
-        ctx.fill();
-      },
-    },
     runes: {
       count: 6,
       spawn(i, n) {
@@ -369,75 +318,6 @@ const AvatarFx = (() => {
     ctx.fill();
   }
 
-  // --- Неподвижные рисунки за фигурой ---
-
-  function drawRays(ctx) {
-    const cx = 0, cy = -0.08, n = 12, turn = clock * 0.06;
-    ctx.save();
-    ctx.globalCompositeOperation = "lighter";
-    const g = ctx.createRadialGradient(cx, cy, 0.05, cx, cy, 0.85);
-    g.addColorStop(0, "rgba(255,206,110,.34)");
-    g.addColorStop(1, "rgba(255,206,110,0)");
-    ctx.fillStyle = g;
-    for (let i = 0; i < n; i++) {
-      const a = turn + (i / n) * TAU, w = 0.07 + 0.03 * Math.sin(clock * 0.7 + i);
-      ctx.globalAlpha = 0.55 + 0.45 * Math.sin(clock * 0.9 + i * 1.7);
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.arc(cx, cy, 0.85, a - w, a + w);
-      ctx.closePath();
-      ctx.fill();
-    }
-    ctx.restore();
-  }
-
-  function drawMoon(ctx) {
-    const x = 0.32, y = -0.48, r = 0.17, pulse = 0.9 + 0.1 * Math.sin(clock * 0.5);
-    dot(ctx, "255,226,160", x, y, r * 2, 0.4 * pulse);
-    ctx.globalAlpha = 0.92;
-    const g = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.1, x, y, r);
-    g.addColorStop(0, "#fff8e2"); g.addColorStop(1, "#f0cf86");
-    ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
-    ctx.globalAlpha = 0.18;  // пятна на луне
-    ctx.fillStyle = "#c79a45";
-    for (const [dx, dy, rr] of [[-0.05, -0.03, 0.035], [0.05, 0.04, 0.028], [0.02, -0.07, 0.018]]) {
-      ctx.beginPath(); ctx.arc(x + dx, y + dy, rr, 0, TAU); ctx.fill();
-    }
-  }
-
-  function drawCircle(ctx) {
-    const turn = clock * 0.25, pulse = 0.75 + 0.25 * Math.sin(clock * 1.6);
-    ctx.save();
-    ctx.translate(0, 0.43);
-    ctx.scale(1, 0.24);  // круг на полу в перспективе
-    dot(ctx, "255,200,90", 0, 0, 0.75, 0.25 * pulse);
-    ctx.globalAlpha = 0.75 * pulse;
-    ctx.strokeStyle = "rgb(255,214,120)";
-    ctx.lineWidth = 0.008;
-    for (const r of [0.6, 0.52, 0.32]) { ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.stroke(); }
-    ctx.lineWidth = 0.006;
-    ctx.save(); ctx.rotate(turn);  // знаки между кольцами
-    for (let i = 0; i < 28; i++) {
-      ctx.rotate(TAU / 28);
-      ctx.beginPath();
-      if (i % 3 === 0) { ctx.arc(0.56, 0, 0.012, 0, TAU); } else { ctx.moveTo(0.54, -0.01); ctx.lineTo(0.58, 0.01); }
-      ctx.stroke();
-    }
-    ctx.restore();
-    ctx.save(); ctx.rotate(-turn * 0.7);  // звезда из двух треугольников
-    for (const off of [0, Math.PI]) {
-      ctx.beginPath();
-      for (let k = 0; k < 3; k++) {
-        const a = off + k * TAU / 3 - Math.PI / 2;
-        ctx[k ? "lineTo" : "moveTo"](Math.cos(a) * 0.5, Math.sin(a) * 0.5);
-      }
-      ctx.closePath(); ctx.stroke();
-    }
-    ctx.restore();
-    ctx.restore();
-  }
-
   // --- Цикл ---
 
   function fill(first = false) {
@@ -468,11 +348,6 @@ const AvatarFx = (() => {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, w, w);
       ctx.setTransform(w / SPAN, 0, 0, w / SPAN, w / 2, w / 2);
-      if (!isFront) {
-        if (effects.has("moon")) drawMoon(ctx);
-        if (effects.has("rays")) drawRays(ctx);
-        if (effects.has("circle")) drawCircle(ctx);
-      }
       for (const p of parts) if (!!p.front === isFront) KINDS[p.kind].draw(ctx, p);
       ctx.globalAlpha = 1;
     }
@@ -511,7 +386,7 @@ const AvatarFx = (() => {
     },
     set(list, strength) {
       const first = effects.size === 0;
-      effects = new Set(list.filter((k) => KINDS[k] || ["rays", "circle", "moon"].includes(k)));
+      effects = new Set(list.filter((k) => KINDS[k]));
       power = POWER[strength] || 1;
       fill(first);
       kick();
