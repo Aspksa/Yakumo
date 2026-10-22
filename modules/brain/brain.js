@@ -79,6 +79,9 @@
       docs: "Читать новые документы", docsHint: "Положили файл на Диск — Yakumo сама прочитает его: суммы, стороны и номера запомнит со ссылкой на файл, сроки добавит в напоминания, о важном напишет в чат и предложит, в какую папку его положить. Тратит фоновые запросы.",
       brain: "Рост мозга", neurons: (n) => `${n} ${plural(n, "нейрон", "нейрона", "нейронов")}`,
       linksN: (n) => `${n} ${plural(n, "связь", "связи", "связей")}`,
+      versions: "История меня", versionKinds: { install: "Обновление", rollback: "Возврат", seen: "Версия" },
+      versionsHint: "Когда Yakumo обновили или вернули к прошлой версии и что в ней нового. Она помнит это и может рассказать в чате.",
+      changesN: (n) => `изменений: ${n}`,
       brainHint: "Нейроны — всё, что Yakumo знает: факты, люди и места, уроки, конспекты, навыки, разговоры, фрагменты документов. Связи — ассоциации и ссылки между ними.",
       best: (n) => `Ответов с 👍 (образцы для стиля): ${n}`,
       curiousNow: "Задать мне вопрос", consolidateNow: "Укрепить уроки", foreseeNow: "Подумать наперёд",
@@ -154,6 +157,9 @@
       docs: "Read new documents", docsHint: "Put a file on the Drive and Yakumo reads it herself: remembers amounts, parties and numbers with a link to the file, adds deadlines to reminders, writes to the chat about anything important and suggests a folder. Uses background requests.",
       brain: "Brain growth", neurons: (n) => `${n} ${n === 1 ? "neuron" : "neurons"}`,
       linksN: (n) => `${n} ${n === 1 ? "link" : "links"}`,
+      versions: "My history", versionKinds: { install: "Update", rollback: "Rollback", seen: "Version" },
+      versionsHint: "When Yakumo was updated or rolled back and what was new. She remembers it and can tell you in chat.",
+      changesN: (n) => `changes: ${n}`,
       brainHint: "Neurons are everything Yakumo knows: facts, people and places, lessons, notes, skills, conversations, document chunks. Links are associations and references between them.",
       best: (n) => `Answers with 👍 (style examples): ${n}`,
       curiousNow: "Ask me a question", consolidateNow: "Strengthen lessons", foreseeNow: "Think ahead",
@@ -685,6 +691,7 @@
           budget),
         h("p", { class: "row-hint" }, k.available ? L.knowledge(k) : L.noDisk)),
       brainCard(),
+      versionsCard(),
       h("section", { class: "br-kind" }, h("h2", {}, L.thoughts, h("span", {}, String(thoughts.length))),
         thoughts.length ? h("ul", { class: "br-list" }, thoughts.map((t) => {
           const open = state.open === t.id;
@@ -701,6 +708,27 @@
             h("div", { class: "br-tools" }, live ? tool("■", L.stop, () => send("thought/cancel", { id: t.id }).then(load), "danger") : ""));
         })) : empty(L.noThoughts, L.noThoughtsHint)),
     ];
+  }
+
+  function versionsCard() {
+    const items = (state.data.versions || []).filter((v) => matches(`${v.title} ${v.revision} ${(v.changes || []).join(" ")}`));
+    if (!items.length) return "";
+    return h("section", { class: "br-kind br-versions" }, h("h2", {}, L.versions, h("span", {}, String(items.length))),
+      h("p", { class: "row-hint" }, L.versionsHint),
+      h("ul", { class: "br-list" }, items.map((v) => {
+        const open = state.open === v.id;
+        const name = v.title || v.revision.slice(0, 7);
+        const changes = v.changes || [];
+        return h("li", { class: "br-fact" },
+          h("span", { class: "br-thought-kind" }, L.versionKinds[v.kind] || v.kind),
+          h("div", { class: "br-fact-body" },
+            changes.length ? h("button", { type: "button", class: "br-link br-fact-text", "aria-expanded": String(open),
+                                           onclick: () => { state.open = open ? null : v.id; draw(); } }, name)
+              : h("div", { class: "br-fact-text" }, name),
+            h("div", { class: "br-meta" }, `${date(v.at)} · ${v.revision.slice(0, 7)}`,
+              changes.length ? ` · ${L.changesN(Math.max(v.total || 0, changes.length))}` : ""),
+            open ? h("ul", { class: "br-quote br-changes" }, changes.map((c) => h("li", {}, c))) : ""));
+      })));
   }
 
   function brainCard() {

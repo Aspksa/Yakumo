@@ -395,6 +395,21 @@ class BrainTest(BrainBase):
         self.assertIn("Сделать график", FakeCloud.requests[-1]["messages"][-1]["content"])
         self.assertEqual(self.get("/api/brain")["skills"][0]["used"], 1)
 
+    def test_remembers_own_versions_and_tells_in_chat(self):
+        api = self.ctx.memory
+        record = {"key": "job:1", "kind": "install", "revision": "b" * 40, "from_revision": "a" * 40,
+                  "title": "main", "at": 1_700_000_000, "changes": ["Диск: избранное и недавние", "Чат: кнопка повтора"]}
+        self.assertIsNotNone(api.version(record))
+        self.assertIsNone(api.version(record))  # та же установка второй раз не пишется
+        self.assertIsNone(api.version({**record, "key": "job:2", "revision": "не коммит"}))
+        self.assertEqual(len(self.get("/api/brain")["versions"]), 1)
+        FakeCloud.replies = ['<tool>{"name": "my_versions", "args": {}}</tool>', "Меня обновили!"]
+        self.chat([{"role": "user", "content": "Что в тебе нового?"}])
+        self.assertIn("Диск: избранное и недавние", self.system_prompt())
+        self.assertIn("Чат: кнопка повтора", FakeCloud.requests[-1]["messages"][-1]["content"])
+        self.post("/api/brain/clear", {"all": True})
+        self.assertEqual(len(api.versions()), 1)  # очистка памяти о пользователе не стирает историю версий
+
     # --- Контекст компьютера ---
 
     def test_activity_only_with_consent(self):

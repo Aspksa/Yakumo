@@ -198,6 +198,9 @@
 
 /* Рост мозга */
 .br-brain { margin-bottom: 8px; }
+.br-versions { margin-bottom: 8px; }
+.br-changes { margin: 6px 0 0; padding-left: 26px; }
+.br-changes li { margin: 2px 0; }
 .br-brain-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .br-brain-num { font-size: 20px; font-weight: 600; color: var(--accent); }
 .br-brain-up { font-size: 13px; color: var(--ok, var(--accent)); }
