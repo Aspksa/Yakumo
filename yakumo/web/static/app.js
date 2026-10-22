@@ -14,6 +14,11 @@ const TEXTS = {
     avatarSection: "Аватар", avatarShow: "Показывать аватар",
     avatarShowHint: "Кицунэ на всех страницах; по нажатию на неё открывается чат.",
     avatarSize: "Размер", px: "точек", avatarMotion: "Движение", avatarGlow: "Сияние", avatarSpeed: "Скорость анимации",
+    avatarEffects: "Эффекты", avatarEffectsHint: "Можно выбрать несколько сразу.", fxPower: "Сила эффектов",
+    effects: { sparkles: "Золотые искры", foxfire: "Кицунэ-би", petals: "Лепестки сакуры", dust: "Золотая пыльца",
+               fireflies: "Светлячки", leaves: "Листья гинкго", snow: "Снег", rays: "Лучи света",
+               circle: "Магический круг", shine: "Блик", aura: "Золотая аура" },
+    powers: { low: "Слабо", normal: "Обычно", high: "Сильно" },
     motions: { none: "Нет", float: "Парение", glide: "Мягкое парение", alive: "Живая" },
     glows: { off: "Нет", soft: "Мягкое", bright: "Яркое", pulse: "Мерцание" },
     speeds: { slow: "Медленно", normal: "Обычно", fast: "Быстро" },
@@ -61,6 +66,11 @@ const TEXTS = {
     avatarSection: "Avatar", avatarShow: "Show avatar",
     avatarShowHint: "The kitsune on every page; click her to open the chat.",
     avatarSize: "Size", px: "px", avatarMotion: "Motion", avatarGlow: "Glow", avatarSpeed: "Animation speed",
+    avatarEffects: "Effects", avatarEffectsHint: "Pick as many as you like.", fxPower: "Effect strength",
+    effects: { sparkles: "Golden sparks", foxfire: "Kitsune-bi", petals: "Sakura petals", dust: "Golden dust",
+               fireflies: "Fireflies", leaves: "Ginkgo leaves", snow: "Snow", rays: "Light rays",
+               circle: "Magic circle", shine: "Shine", aura: "Golden aura" },
+    powers: { low: "Low", normal: "Normal", high: "High" },
     motions: { none: "None", float: "Float", glide: "Gentle float", alive: "Alive" },
     glows: { off: "None", soft: "Soft", bright: "Bright", pulse: "Pulse" },
     speeds: { slow: "Slow", normal: "Normal", fast: "Fast" },
@@ -111,7 +121,7 @@ const SETTINGS = { id: "settings", icon: "i-settings" };
 
 const content = document.getElementById("content");
 const avatarBtn = document.getElementById("avatar");
-const avatarImg = avatarBtn.querySelector("img");
+const avatarImg = avatarBtn.querySelector(".av-img");
 const chatBox = document.getElementById("chat");
 const chatLog = document.getElementById("chat-log");
 const chatForm = document.getElementById("chat-form");
@@ -183,6 +193,10 @@ function applyAvatarLook(v) {
   document.documentElement.style.setProperty("--avatar-size", v.avatar_size + "px");
   Object.assign(avatarBtn.dataset, { motion: v.avatar_motion, glow: v.avatar_glow, speed: v.avatar_speed });
   avatarBtn.hidden = !v.avatar_show;
+  avatarBtn.classList.toggle("fx-shine", v.avatar_effects.includes("shine"));
+  avatarBtn.classList.toggle("fx-aura", v.avatar_effects.includes("aura"));
+  AvatarFx.set(v.avatar_effects, v.avatar_fx_power);
+  scheduleBlink();
   if (!v.avatar_show && !chatBox.hidden) setChatOpen(false);
 }
 
@@ -247,7 +261,21 @@ function avatarSection() {
       choice("avatar_motion", T.avatarMotion, null, (v) => T.motions[v]),
       choice("avatar_glow", T.avatarGlow, null, (v) => T.glows[v]),
       choice("avatar_speed", T.avatarSpeed, null, (v) => T.speeds[v]),
+      effectChips(),
+      choice("avatar_fx_power", T.fxPower, null, (v) => T.powers[v]),
     ] : []);
+}
+
+function effectChips() {
+  const on = settings.values.avatar_effects;
+  const flip = (fx) => save({ avatar_effects: settings.options.avatar_effects
+    .filter((k) => (k === fx ? !on.includes(k) : on.includes(k))) });
+  return h("div", { class: "row" },
+    h("span", { class: "row-text" }, h("span", { class: "row-title" }, T.avatarEffects),
+      h("span", { class: "row-hint" }, T.avatarEffectsHint)),
+    h("span", { class: "chips", role: "group", "aria-label": T.avatarEffects },
+      settings.options.avatar_effects.map((fx) => h("button", {
+        type: "button", "aria-pressed": String(on.includes(fx)), onclick: () => flip(fx) }, T.effects[fx]))));
 }
 
 function cloudSection() {
@@ -467,6 +495,7 @@ function placeAvatar() {
   const { w, h } = viewport(), m = margins(), size = avatarBtn.offsetWidth;
   // Подсказка браузеру, какой из размеров картинки брать: с учётом масштаба страницы.
   avatarImg.sizes = Math.round(size * zoom()) + "px";
+  AvatarFx.resize(zoom());
   const free = { x: Math.max(0, w - size - 2 * m.side), y: Math.max(0, h - size - m.top - m.side) };
   avatarBtn.style.left = m.side + avatarPos.x * free.x + "px";
   avatarBtn.style.top = m.top + avatarPos.y * free.y + "px";
@@ -703,6 +732,7 @@ avatarBtn.addEventListener("pointercancel", endDrag);
 avatarBtn.addEventListener("click", () => {
   // После перетаскивания браузер всё равно присылает click, его пропускаем.
   if (justDragged) { justDragged = false; return; }
+  react();
   setChatOpen(chatBox.hidden);
 });
 
@@ -719,16 +749,50 @@ function lookAt(x, y) {
     const dy = Math.max(-1, Math.min(1, (y - (r.top + r.height / 2)) / reach));
     avatarBtn.style.setProperty("--ry", (dx * 9).toFixed(2) + "deg");
     avatarBtn.style.setProperty("--rx", (-dy * 6).toFixed(2) + "deg");
+    // Курсор совсем рядом: она оживляется и слегка тянется навстречу.
+    const near = Math.hypot(x - (r.left + r.width / 2), y - (r.top + r.height / 2)) < r.width * 0.75;
+    avatarBtn.classList.toggle("near", near);
   });
 }
 function lookAway() {
   avatarBtn.style.removeProperty("--rx");
   avatarBtn.style.removeProperty("--ry");
+  avatarBtn.classList.remove("near");
+}
+
+// Моргание в случайные моменты, иногда дважды подряд, как у живых.
+let blinkTimer = 0;
+function scheduleBlink() {
+  clearTimeout(blinkTimer);
+  if (avatarBtn.dataset.motion !== "alive" || reducedMotion.matches) return;
+  blinkTimer = setTimeout(() => {
+    if (!document.hidden && !avatarBtn.hidden) {
+      blinkOnce();
+      if (Math.random() < 0.2) setTimeout(blinkOnce, 260);
+    }
+    scheduleBlink();
+  }, 2500 + Math.random() * 4500);
+}
+function blinkOnce() {
+  avatarBtn.classList.add("blink");
+  setTimeout(() => avatarBtn.classList.remove("blink"), 130);
+}
+
+// Ответ на нажатие: подскок, моргание и россыпь искр, если включены эффекты.
+function react() {
+  if (reducedMotion.matches) return;
+  avatarBtn.classList.remove("hop");
+  void avatarBtn.offsetWidth;  // перезапуск анимации
+  avatarBtn.classList.add("hop");
+  setTimeout(() => avatarBtn.classList.remove("hop"), 800);
+  if (avatarBtn.dataset.motion === "alive") blinkOnce();
+  if (settings?.values.avatar_effects.length) AvatarFx.burst();
 }
 window.addEventListener("pointermove", (e) => { if (e.pointerType === "mouse") lookAt(e.clientX, e.clientY); });
 document.documentElement.addEventListener("pointerleave", lookAway);
 window.addEventListener("blur", lookAway);
 
+AvatarFx.init(avatarBtn);
 window.addEventListener("resize", placeAvatar);
 window.addEventListener("hashchange", render);
 showMessages();
