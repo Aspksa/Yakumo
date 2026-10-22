@@ -31,7 +31,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 
 /* Верхняя панель */
 .topbar {
-  position: fixed; inset: 0 0 auto 0; height: var(--top); z-index: 10;
+  position: fixed; inset: 0 0 auto 0; height: var(--top); z-index: 34;
   display: flex; align-items: center; gap: 16px; padding: 0 16px;
   background: var(--bg);
 }
@@ -66,7 +66,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 
 /* Левая полоса */
 .rail {
-  position: fixed; top: var(--top); bottom: 0; left: 0; width: var(--rail); z-index: 5;
+  position: fixed; top: var(--top); bottom: 0; left: 0; width: var(--rail); z-index: 34;
   display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
   padding: 12px 0; background: var(--bg);
 }
@@ -166,7 +166,9 @@ div.row { cursor: default; }
 .avatar {
   --size: var(--avatar-size, 232px);
   --speed: 1;
-  position: fixed; left: 0; top: 0; z-index: 30; width: var(--size); height: var(--size);
+  /* Не больше окна, даже если в настройках задан огромный размер */
+  --fit: min(var(--size), calc(100vh - var(--top) - 16px), calc(100vw - 16px));
+  position: fixed; left: 0; top: 0; z-index: 30; width: var(--fit); height: var(--fit);
   padding: 0; border: 0; background: none; cursor: grab; touch-action: none; user-select: none;
   -webkit-tap-highlight-color: transparent; border-radius: 50%;
 }
@@ -187,17 +189,27 @@ div.row { cursor: default; }
 .avatar[data-speed="slow"] { --speed: 1.7; }
 .avatar[data-speed="fast"] { --speed: .55; }
 .avatar[data-motion="float"] img { animation: float calc(6s * var(--speed)) ease-in-out infinite; }
-.avatar[data-motion="sway"] img { animation: sway calc(5s * var(--speed)) ease-in-out infinite; }
-.avatar[data-motion="breathe"] img { animation: breathe calc(4s * var(--speed)) ease-in-out infinite; }
-.avatar[data-motion="bounce"] img { animation: bounce calc(2.4s * var(--speed)) ease-in-out infinite; }
-.avatar[data-motion="drift"] img { animation: drift calc(8s * var(--speed)) ease-in-out infinite; }
+.avatar[data-motion="glide"] img { animation: glide calc(11s * var(--speed)) ease-in-out infinite; }
+.avatar[data-motion="alive"] img { animation: alive calc(7s * var(--speed)) ease-in-out infinite; }
 @keyframes float { 50% { transform: translateY(-5px); } }
-@keyframes sway { 25% { transform: rotate(-2deg); } 75% { transform: rotate(2deg); } }
-@keyframes breathe { 50% { transform: scale(1.03); } }
-@keyframes bounce { 0%, 50%, 100% { transform: none; } 20% { transform: translateY(-12px); }
-                    35% { transform: translateY(0); } 42% { transform: translateY(-4px); } }
-@keyframes drift { 25% { transform: translate(-3px, -5px) rotate(-1.5deg); } 50% { transform: translateY(-7px); }
-                   75% { transform: translate(3px, -4px) rotate(1.5deg); } }
+/* Мягкое парение: неровный путь вверх-вниз с едва заметным наклоном */
+@keyframes glide {
+  0%, 100% { transform: none; }
+  30% { transform: translateY(-6px) rotate(-.5deg); }
+  55% { transform: translateY(-3px) rotate(.3deg); }
+  80% { transform: translateY(-5px) rotate(-.2deg); }
+}
+/* Живая: парение и лёгкий вдох */
+@keyframes alive {
+  0%, 100% { transform: none; }
+  45% { transform: translateY(-5px) scale(1.012, 1.018); }
+  70% { transform: translateY(-3px) scale(1.006, 1.008); }
+}
+/* «Живая» ещё и поворачивается к курсору: углы задаёт скрипт */
+.avatar[data-motion="alive"] {
+  transform: perspective(700px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+  transition: transform .9s cubic-bezier(.2, .7, .2, 1);
+}
 
 /* Сияние: data-glow */
 .avatar[data-glow="off"]::before { display: none; }
@@ -214,9 +226,12 @@ div.row { cursor: default; }
 .avatar.dragging img { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) { .avatar img, .avatar::before { animation: none !important; } }
 
+/* В настройках карточки поверх аватара, чтобы большой аватар не закрывал ползунок */
+body[data-page="settings"] .content { position: relative; z-index: 31; }
+
 /* Чат */
 .chat {
-  position: fixed; z-index: 29; width: 340px; height: 440px;
+  position: fixed; z-index: 32; width: 340px; height: 440px;
   display: flex; flex-direction: column; overflow: hidden;
   background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
   box-shadow: 0 12px 36px rgba(0, 0, 0, .6);
@@ -282,7 +297,7 @@ body.compact .avatar { --size: calc(var(--avatar-size, 232px) * .82); }
 /* Узкий экран: прячем подписи, левая полоса уже */
 @media (max-width: 720px) {
   :root { --rail: 52px; }
-  .avatar, body.compact .avatar { --size: min(calc(var(--avatar-size, 232px) * .62), 45vw); }
+  .avatar, body.compact .avatar { --size: min(calc(var(--avatar-size, 232px) * .62), 85vw); }
 
   .brand span { display: none; }
   /* Текст состояния скрыт визуально, но доступен экранным чтецам */

@@ -36,8 +36,8 @@ class Config:
         "font_scale": (90, 100, 115, 130),
         "compact": (True, False),
         "avatar_show": (True, False),
-        "avatar_size": tuple(range(120, 361, 8)),
-        "avatar_motion": ("none", "float", "sway", "breathe", "bounce", "drift"),
+        "avatar_size": tuple(range(120, 961, 8)),
+        "avatar_motion": ("none", "float", "glide", "alive"),
         "avatar_glow": ("off", "soft", "bright", "pulse"),
         "avatar_speed": ("slow", "normal", "fast"),
     }
@@ -62,7 +62,10 @@ class Config:
         except (OSError, ValueError):
             return cls()
         known = {f.name for f in fields(cls)}
-        return cls(**{k: v for k, v in raw.items() if k in known})
+        # Значение, которого больше нет среди допустимых (например, убранный вариант), сбрасываем.
+        valid = {k: v for k, v in raw.items() if k in known
+                 and (k not in cls.EDITABLE or any(v == a and type(v) is type(a) for a in cls.EDITABLE[k]))}
+        return cls(**valid)
 
     def save(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)

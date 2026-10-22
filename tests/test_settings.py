@@ -50,12 +50,16 @@ class SettingsApiTest(unittest.TestCase):
         got = json.loads(urllib.request.urlopen(self.base + "/api/settings").read())
         self.assertEqual(got["values"]["avatar_size"], 232)
         self.assertIn(232, got["options"]["avatar_size"])
-        res = self.post({"avatar_show": False, "avatar_size": 304, "avatar_motion": "sway",
+        res = self.post({"avatar_show": False, "avatar_size": 960, "avatar_motion": "alive",
                          "avatar_glow": "pulse", "avatar_speed": "fast"})
-        self.assertEqual(res["values"]["avatar_motion"], "sway")
+        self.assertEqual(res["values"]["avatar_motion"], "alive")
         saved = json.loads(self.config_path.read_text(encoding="utf-8"))
-        self.assertEqual((saved["avatar_show"], saved["avatar_size"]), (False, 304))
-        for bad in ({"avatar_size": 233}, {"avatar_size": 1000}, {"avatar_motion": "spin"}, {"avatar_show": 1}):
+        self.assertEqual((saved["avatar_show"], saved["avatar_size"]), (False, 960))
+        # Убранный вариант движения в старом файле настроек сбрасывается на значение по умолчанию.
+        self.config_path.write_text('{"avatar_motion": "bounce", "avatar_size": 304}', encoding="utf-8")
+        old = Config.load(self.config_path)
+        self.assertEqual((old.avatar_motion, old.avatar_size), ("float", 304))
+        for bad in ({"avatar_size": 233}, {"avatar_size": 1000}, {"avatar_motion": "sway"}, {"avatar_show": 1}):
             with self.assertRaises(urllib.error.HTTPError):
                 self.post(bad)
 
