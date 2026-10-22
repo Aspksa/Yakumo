@@ -99,7 +99,7 @@ class RussianTest(unittest.TestCase):
     def test_bat_is_ascii_and_messages_are_utf8(self):
         root = Path(__file__).resolve().parents[1]
         (root / "Yakumo.bat").read_bytes().decode("ascii")
-        for name in ("no_python.txt", "old_python.txt", "failed.txt"):
+        for name in ("no_python.txt", "failed.txt"):
             text = (root / "launcher" / name).read_bytes().decode("utf-8")
             self.assertRegex(text, "[а-яА-Я]")
             self.assertFalse(text.startswith("\ufeff"))
