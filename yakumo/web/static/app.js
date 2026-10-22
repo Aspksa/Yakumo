@@ -17,7 +17,9 @@ const TEXTS = {
     avatarEffects: "Эффекты", avatarEffectsHint: "Можно выбрать несколько сразу.", fxPower: "Сила эффектов",
     effects: { sparkles: "Золотые искры", foxfire: "Кицунэ-би", petals: "Лепестки сакуры", dust: "Золотая пыльца",
                fireflies: "Светлячки", leaves: "Листья гинкго", snow: "Снег", rays: "Лучи света",
-               circle: "Магический круг", shine: "Блик", aura: "Золотая аура" },
+               circle: "Магический круг", shine: "Блик", aura: "Золотая аура", butterflies: "Бабочки",
+               lanterns: "Фонарики", mist: "Золотой туман", meteors: "Падающие звёзды", hearts: "Сердечки",
+               moon: "Луна", runes: "Иероглифы" },
     powers: { low: "Слабо", normal: "Обычно", high: "Сильно" },
     motions: { none: "Нет", float: "Парение", glide: "Мягкое парение", alive: "Живая" },
     glows: { off: "Нет", soft: "Мягкое", bright: "Яркое", pulse: "Мерцание" },
@@ -34,7 +36,10 @@ const TEXTS = {
     compactHint: "Меньше отступов, больше помещается на экран.",
     restart: "Нужен перезапуск Yakumo, чтобы изменение вступило в силу.",
     saved: "Сохранено", saveError: "Не сохранилось",
-    avatar: "Yakumo: открыть чат", chatClose: "Закрыть чат", chatPlaceholder: "Напишите сообщение…",
+    avatar: "Yakumo: открыть чат", chatClose: "Закрыть чат", chatPlaceholder: "Напишите Yakumo…",
+    maximize: "Развернуть", restore: "Свернуть", copy: "Копировать", copied: "Скопировано", retry: "Повторить",
+    chatKeys: "Enter — отправить · Shift+Enter — новая строка",
+    hints: ["Расскажи о себе", "Что ты умеешь?", "Придумай имя для проекта", "Объясни простыми словами, что такое API"],
     send: "Отправить", stop: "Остановить", clearChat: "Очистить чат", noCloud: "Cloud.ru не подключён",
     greeting: "Привет! Я Yakumo. Меня можно перетащить куда угодно, а по нажатию открывается этот чат.",
     openSettings: "Открыть настройки", stopped: "(остановлено)",
@@ -69,7 +74,9 @@ const TEXTS = {
     avatarEffects: "Effects", avatarEffectsHint: "Pick as many as you like.", fxPower: "Effect strength",
     effects: { sparkles: "Golden sparks", foxfire: "Kitsune-bi", petals: "Sakura petals", dust: "Golden dust",
                fireflies: "Fireflies", leaves: "Ginkgo leaves", snow: "Snow", rays: "Light rays",
-               circle: "Magic circle", shine: "Shine", aura: "Golden aura" },
+               circle: "Magic circle", shine: "Shine", aura: "Golden aura", butterflies: "Butterflies",
+               lanterns: "Lanterns", mist: "Golden mist", meteors: "Shooting stars", hearts: "Hearts",
+               moon: "Moon", runes: "Kanji" },
     powers: { low: "Low", normal: "Normal", high: "High" },
     motions: { none: "None", float: "Float", glide: "Gentle float", alive: "Alive" },
     glows: { off: "None", soft: "Soft", bright: "Bright", pulse: "Pulse" },
@@ -86,7 +93,10 @@ const TEXTS = {
     compactHint: "Less spacing, more fits on screen.",
     restart: "Restart Yakumo for this change to take effect.",
     saved: "Saved", saveError: "Not saved",
-    avatar: "Yakumo: open chat", chatClose: "Close chat", chatPlaceholder: "Type a message…",
+    avatar: "Yakumo: open chat", chatClose: "Close chat", chatPlaceholder: "Message Yakumo…",
+    maximize: "Maximize", restore: "Restore", copy: "Copy", copied: "Copied", retry: "Retry",
+    chatKeys: "Enter to send · Shift+Enter for a new line",
+    hints: ["Tell me about yourself", "What can you do?", "Name my project", "Explain what an API is in simple words"],
     send: "Send", stop: "Stop", clearChat: "Clear chat", noCloud: "Cloud.ru is not connected",
     greeting: "Hi! I'm Yakumo. Drag me anywhere; click me to open this chat.",
     openSettings: "Open settings", stopped: "(stopped)",
@@ -171,6 +181,9 @@ function buildMenu() {
   document.getElementById("chat-clear").title = T.clearChat;
   showChatSub();
   chatInput.placeholder = T.chatPlaceholder;
+  document.getElementById("chat-keys").textContent = T.chatKeys;
+  showMaxButton();
+  showHints();
   setSending(sending);
 }
 
@@ -502,24 +515,90 @@ function placeAvatar() {
   if (!chatBox.hidden) placeChat();
 }
 
+// Размер окна чата задаёт пользователь (растягивая за края); храним в браузере.
+let chatSize = stored("yakumo.chatSize", { w: 420, h: 600 });
+let chatMax = stored("yakumo.chatMax", false);
+const CHAT_MIN = { w: 300, h: 320 };
+
 // Чат рядом с аватаром: слева или справа, если хватает места, иначе над или под ним.
 function placeChat() {
   const { w, h } = viewport(), m = margins(), gap = 10;
+  chatBox.classList.toggle("max", chatMax);
+  if (chatMax) {
+    Object.assign(chatBox.style, { left: m.side + "px", top: m.top + "px",
+                                   width: w - 2 * m.side + "px", height: h - m.top - m.side + "px" });
+    return;
+  }
   const a = { x: avatarBtn.offsetLeft, y: avatarBtn.offsetTop, s: avatarBtn.offsetWidth };
-  const cw = Math.min(340, w - 2 * m.side);
-  let ch = Math.min(440, h - m.top - m.side), x, y;
+  const cw = Math.max(Math.min(chatSize.w, w - 2 * m.side), Math.min(CHAT_MIN.w, w - 2 * m.side));
+  let ch = Math.max(Math.min(chatSize.h, h - m.top - m.side), Math.min(CHAT_MIN.h, h - m.top - m.side)), x, y;
   const clampX = (v) => Math.min(Math.max(v, m.side), w - cw - m.side);
   const clampY = (v) => Math.min(Math.max(v, m.top), h - ch - m.side);
-  if (a.x - gap - cw >= m.side || a.x + a.s + gap + cw <= w - m.side) {
+  if (avatarBtn.hidden) {
+    x = w - cw - m.side * 3; y = clampY(h - ch - m.side * 3);
+  } else if (a.x - gap - cw >= m.side || a.x + a.s + gap + cw <= w - m.side) {
     x = a.x - gap - cw >= m.side ? a.x - gap - cw : a.x + a.s + gap;
     y = clampY(a.y + a.s - ch);
   } else {
     const above = a.y - gap - m.top, below = h - m.side - (a.y + a.s + gap);
-    ch = Math.min(ch, Math.max(above, below, 200));
+    ch = Math.min(ch, Math.max(above, below, CHAT_MIN.h));
     x = clampX(a.x + a.s / 2 - cw / 2);
     y = above >= below ? clampY(a.y - gap - ch) : clampY(a.y + a.s + gap);
   }
   Object.assign(chatBox.style, { left: x + "px", top: y + "px", width: cw + "px", height: ch + "px" });
+}
+
+function showMaxButton() {
+  const btn = document.getElementById("chat-max");
+  btn.setAttribute("aria-label", chatMax ? T.restore : T.maximize);
+  btn.title = chatMax ? T.restore : T.maximize;
+  btn.querySelector("use").setAttribute("href", chatMax ? "#i-min" : "#i-max");
+}
+
+document.getElementById("chat-max").addEventListener("click", () => {
+  chatMax = !chatMax;
+  store("yakumo.chatMax", chatMax);
+  showMaxButton();
+  placeChat();
+});
+
+// Растягивание за края и углы. Противоположный край стоит на месте.
+let resize = null;
+for (const grip of chatBox.querySelectorAll(".grip")) {
+  grip.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0 || chatMax) return;
+    e.preventDefault();
+    grip.setPointerCapture(e.pointerId);
+    resize = { edge: grip.dataset.edge, x: e.clientX, y: e.clientY, left: chatBox.offsetLeft, top: chatBox.offsetTop,
+               w: chatBox.offsetWidth, h: chatBox.offsetHeight };
+    chatBox.classList.add("resizing");
+  });
+  grip.addEventListener("pointermove", (e) => {
+    if (!resize) return;
+    const { w, h } = viewport(), m = margins(), r = resize;
+    const dx = (e.clientX - r.x) / zoom(), dy = (e.clientY - r.y) / zoom();
+    let { left, top, w: cw, h: ch } = r;
+    if (r.edge.includes("e")) cw = Math.min(Math.max(r.w + dx, CHAT_MIN.w), w - m.side - left);
+    if (r.edge.includes("s")) ch = Math.min(Math.max(r.h + dy, CHAT_MIN.h), h - m.side - top);
+    if (r.edge.includes("w")) {
+      cw = Math.min(Math.max(r.w - dx, CHAT_MIN.w), r.left + r.w - m.side);
+      left = r.left + r.w - cw;
+    }
+    if (r.edge.includes("n")) {
+      ch = Math.min(Math.max(r.h - dy, CHAT_MIN.h), r.top + r.h - m.top);
+      top = r.top + r.h - ch;
+    }
+    Object.assign(chatBox.style, { left: left + "px", top: top + "px", width: cw + "px", height: ch + "px" });
+  });
+  const end = () => {
+    if (!resize) return;
+    resize = null;
+    chatBox.classList.remove("resizing");
+    chatSize = { w: chatBox.offsetWidth, h: chatBox.offsetHeight };
+    store("yakumo.chatSize", chatSize);
+  };
+  grip.addEventListener("pointerup", end);
+  grip.addEventListener("pointercancel", end);
 }
 
 function setChatOpen(open) {
@@ -534,6 +613,35 @@ function setChatOpen(open) {
 function showChatSub() {
   const model = cloud?.has_key && cloud.model ? cloud.model.split("/").pop() : null;
   document.getElementById("chat-sub").textContent = model || T.noCloud;
+  document.getElementById("chat-dot").classList.toggle("on", !!model);
+}
+
+// Подсказки-вопросы, пока разговор не начат.
+function showHints() {
+  const box = document.getElementById("chat-hints");
+  const started = messages.some((m) => m.from === "me");
+  box.replaceChildren(...(started ? [] : T.hints.map((text) => h("button", { type: "button",
+    onclick: () => { chatInput.value = text; chatForm.requestSubmit(chatForm.querySelector(".chat-send")); } }, text))));
+}
+
+// Рассуждения моделей в <think>…</think> пользователю не показываем и обратно не отправляем.
+function visible(text) {
+  return text.replace(/<think>[\s\S]*?(<\/think>|$)/g, "").replace(/^\s+/, "");
+}
+
+async function copyText(text, btn) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {  // не через localhost: буфер обмена недоступен, копируем по-старому
+    const area = h("textarea", { style: "position:fixed;opacity:0" }, text);
+    document.body.append(area); area.select(); document.execCommand("copy"); area.remove();
+  }
+  btn.classList.add("done"); btn.title = T.copied;
+  setTimeout(() => { btn.classList.remove("done"); btn.title = T.copy; }, 1500);
+}
+
+function timeLabel(at) {
+  return at ? new Date(at).toLocaleTimeString(document.documentElement.lang, { hour: "2-digit", minute: "2-digit" }) : "";
 }
 
 // Короткий безопасный Markdown: сначала экранируем всё, потом размечаем.
@@ -577,19 +685,43 @@ function markdown(text) {
 }
 
 function messageEl(m) {
-  const el = h("div", { class: `msg ${m.from}${m.error ? " error" : ""}` });
-  if (m.from === "bot" && !m.error) el.innerHTML = markdown(m.text) || "<span class=\"typing\"><i></i><i></i><i></i></span>";
-  else el.textContent = m.error ? errorText(m.error) : m.text;
+  const bubble = h("div", { class: `msg ${m.from}${m.error ? " error" : ""}` });
+  const text = m.from === "bot" ? visible(m.text) : m.text;
+  if (m.from === "bot" && !m.error) bubble.innerHTML = markdown(text) || "<span class=\"typing\"><i></i><i></i><i></i></span>";
+  else bubble.textContent = m.error ? errorText(m.error) : text;
   if (m.error === "no_key" || m.error === "bad_key" || m.error === "bad_model") {
-    el.append(h("button", { class: "btn small", type: "button",
-                            onclick: () => { location.hash = "#/settings"; } }, T.openSettings));
+    bubble.append(h("button", { class: "btn small", type: "button",
+                                onclick: () => { location.hash = "#/settings"; } }, T.openSettings));
   }
-  return el;
+  const meta = h("div", { class: "msg-meta" }, timeLabel(m.at));
+  if (m.error && !sending && m === messages[messages.length - 1]) {
+    meta.append(iconButton("i-retry", T.retry, () => retry(m)));
+    meta.lastChild.style.opacity = 1;
+  } else if (!m.pending && !m.error && text) {
+    meta.append(iconButton("i-copy", T.copy, (e) => copyText(text, e.currentTarget)));
+  }
+  const col = h("div", { class: "msg-col" }, bubble, meta);
+  if (m.from === "me") return h("div", { class: "msg-row me" }, col);
+  return h("div", { class: "msg-row bot" }, h("img", { class: "msg-face", src: "avatar-face.webp", alt: "" }), col);
+}
+
+function iconButton(id, label, onclick) {
+  const b = h("button", { type: "button", title: label, "aria-label": label, onclick });
+  b.append(icon(id));
+  return b;
+}
+
+function retry(errorMessage) {
+  messages = messages.filter((m) => m !== errorMessage);
+  saveMessages();
+  showMessages();
+  ask();
 }
 
 function showMessages() {
   chatLog.replaceChildren(...messages.map(messageEl));
   chatLog.scrollTop = chatLog.scrollHeight;
+  showHints();
 }
 
 function saveMessages() {
@@ -598,7 +730,7 @@ function saveMessages() {
 }
 
 function addMessage(from, text, extra = {}) {
-  const m = { from, text, ...extra };
+  const m = { from, text, at: Date.now(), ...extra };
   messages = [...messages, m];
   saveMessages();
   showMessages();
@@ -607,8 +739,8 @@ function addMessage(from, text, extra = {}) {
 
 // Что отправить модели: настоящие реплики, без приветствия и ошибок.
 function history() {
-  const list = messages.filter((m) => !m.error && !m.local && !m.pending && m.text)
-    .map((m) => ({ role: m.from === "me" ? "user" : "assistant", content: m.text }));
+  const list = messages.filter((m) => !m.error && !m.local && !m.pending && visible(m.text))
+    .map((m) => ({ role: m.from === "me" ? "user" : "assistant", content: m.from === "me" ? m.text : visible(m.text) }));
   const first = list.findIndex((m) => m.role === "user");  // разговор начинается с пользователя
   return first < 0 ? [] : list.slice(first);
 }
@@ -627,11 +759,17 @@ async function ask() {
   const controller = new AbortController();
   setSending(controller);
   const answer = addMessage("bot", "", { pending: true });
+  // Перерисовываем ответ не чаще кадра; если чат очистили, старый ответ больше не показываем.
+  let drawn = 0;
   const update = () => {
-    const last = chatLog.lastElementChild;
-    if (last) last.replaceWith(messageEl(answer));
-    const nearBottom = chatLog.scrollHeight - chatLog.scrollTop - chatLog.clientHeight < 80;
-    if (nearBottom) chatLog.scrollTop = chatLog.scrollHeight;
+    if (drawn) return;
+    drawn = requestAnimationFrame(() => {
+      drawn = 0;
+      if (!messages.includes(answer)) return;
+      const nearBottom = chatLog.scrollHeight - chatLog.scrollTop - chatLog.clientHeight < 80;
+      chatLog.lastElementChild?.replaceWith(messageEl(answer));
+      if (nearBottom) chatLog.scrollTop = chatLog.scrollHeight;
+    });
   };
   try {
     const r = await fetch("/api/chat", {
@@ -658,28 +796,32 @@ async function ask() {
     if (!answer.text && !answer.error) answer.error = "network";
   } catch (e) {
     if (e.name === "AbortError") answer.text += (answer.text ? " " : "") + T.stopped;
-    else answer.error = e.message === "Failed to fetch" ? "network" : e.message;
+    else answer.error = e instanceof TypeError ? "network" : e.message;
   }
+  cancelAnimationFrame(drawn);
+  setSending(null);
+  if (!messages.includes(answer)) return;  // чат очистили во время ответа
   // Ошибку после части ответа показываем отдельной репликой, а начало ответа оставляем.
   delete answer.pending;
   if (answer.error && answer.text.trim()) {
     const error = answer.error;
     delete answer.error;
     answer.text = answer.text.trim();
-    messages.push({ from: "bot", text: "", error });
+    messages.push({ from: "bot", text: "", error, at: Date.now() });
   }
-  setSending(null);
   saveMessages();
   showMessages();
 }
 
 chatForm.addEventListener("submit", (e) => {
   e.preventDefault();
-  if (sending) { sending.abort(); return; }
+  // Во время ответа Enter ничего не делает, а кнопка останавливает ответ.
+  if (sending) { if (e.submitter) sending.abort(); return; }
   const text = chatInput.value.trim();
   if (!text) return;
   chatInput.value = "";
   chatInput.style.height = "";
+  showCount();
   addMessage("me", text);
   ask();
 });
@@ -691,11 +833,19 @@ document.getElementById("chat-clear").addEventListener("click", () => {
 });
 chatInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); chatForm.requestSubmit(); }
+});
+chatBox.addEventListener("keydown", (e) => {
   if (e.key === "Escape") { setChatOpen(false); avatarBtn.focus(); }
 });
+function showCount() {
+  const n = chatInput.value.length, el = document.getElementById("chat-count");
+  el.textContent = n > 3000 ? `${n} / 4000` : "";
+  el.className = n >= 4000 ? "over" : "";
+}
 chatInput.addEventListener("input", () => {
   chatInput.style.height = "";
-  chatInput.style.height = chatInput.scrollHeight + 2 + "px";
+  chatInput.style.height = chatInput.scrollHeight + "px";
+  showCount();
 });
 document.getElementById("chat-close").addEventListener("click", () => { setChatOpen(false); avatarBtn.focus(); });
 

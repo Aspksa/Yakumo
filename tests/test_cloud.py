@@ -121,6 +121,15 @@ class CloudApiTest(unittest.TestCase):
         self.assertEqual(sent["messages"][0]["role"], "system")
         self.assertEqual(sent["messages"][1:], [{"role": "user", "content": "Привет"}])
 
+    def test_chat_history_is_normalized(self):
+        self.post("/api/cloud", {"api_key": GOOD_KEY})
+        self.chat([{"role": "assistant", "content": "Привет!"}, {"role": "user", "content": "раз"},
+                   {"role": "user", "content": "два"}, {"role": "assistant", "content": "ок"},
+                   {"role": "user", "content": "три"}])
+        self.assertEqual(FakeCloud.last_body["messages"][1:], [
+            {"role": "user", "content": "раз\n\nдва"}, {"role": "assistant", "content": "ок"},
+            {"role": "user", "content": "три"}])
+
     def test_chat_errors(self):
         self.assertEqual(self.chat([{"role": "user", "content": "x"}]), [{"error": "no_key"}])
         self.post("/api/cloud", {"api_key": GOOD_KEY, "model": "missing/model"})
