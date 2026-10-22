@@ -18,6 +18,7 @@ from urllib.parse import parse_qs, quote, urlsplit
 from yakumo.core.network import lan_address
 
 from . import assistant
+from .extract import extract
 from .index import Index, data_url
 from .store import CHUNK, Disk, DiskError, mime_of
 
@@ -290,9 +291,18 @@ def setup(ctx):
         ctx.route(path, readable_errors(handler))
     ctx.web("disk.css", "disk.js")
     assistant.register(ctx, disk, index, smart_search)
+
+    def current_text(rel: str):
+        """(время изменения, текст) файла прямо сейчас, без индекса; None — файла нет."""
+        try:
+            path = disk.path(rel)
+            return int(path.stat().st_mtime), extract(path)
+        except (DiskError, OSError):
+            return None
+
     # Другие модули (например, «Память» для базы знаний) читают документы Диска через ctx.services["disk"].
     services = getattr(ctx, "services", None)
     if isinstance(services, dict):
         services["disk"] = SimpleNamespace(documents=index.documents, search=smart_search,
-                                           text=lambda rel: index.text_of(rel)["text"])
+                                           text=lambda rel: index.text_of(rel)["text"], current=current_text)
     ctx.status(lambda: {"root": str(disk.root)})

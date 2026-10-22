@@ -1,17 +1,23 @@
 """Инструменты «Диска» для чата: Yakumo ищет, читает и предлагает разложить файлы.
 
 Чтение (поиск, список, текст файла) выполняется сразу. Изменения (папки,
-перенос, переименование, корзина) попадают в план, который пользователь
-подтверждает кнопкой в чате.
+перенос, переименование, корзина, новый текстовый файл) попадают в план,
+который пользователь подтверждает кнопкой в чате.
+
+Файлы, которые написала Yakumo, отдаются «Памяти» (ctx.memory.authored): если вы
+потом поправите такой файл, Yakumo сравнит версии и поймёт, что делать иначе.
 """
 
 from __future__ import annotations
 
+import io
 import time
 
 from .store import Disk, DiskError
 
 READ_LIMIT = 12000  # символов текста файла для модели
+WRITE_LIMIT = 200_000  # символов в файле, который пишет Yakumo
+WRITE_EXT = (".md", ".txt")
 
 
 def _when(t: int) -> str:
@@ -64,6 +70,19 @@ def register(ctx, disk: Disk, index, search) -> None:
                 "text": text[:READ_LIMIT], "truncated": len(text) > READ_LIMIT,
                 "note": None if text or data["photo"] else "текст из этого файла не извлекается"}
 
+    def write(args):
+        rel, text = str(args.get("path", "")).strip().strip("/"), args.get("text")
+        if not rel.lower().endswith(WRITE_EXT):
+            raise DiskError("Можно создать только .md или .txt")
+        if not isinstance(text, str) or not text.strip() or len(text) > WRITE_LIMIT:
+            raise DiskError("Нужен текст файла")
+        data = text.encode("utf-8")
+        entry = disk.upload(rel, io.BytesIO(data), len(data))  # имя занято — допишет (2), старое не трогает
+        memory = getattr(ctx, "memory", None)
+        if memory:
+            memory.authored(entry["path"], text)
+        return {"path": entry["path"]}
+
     def info(_args):
         u = disk.usage()
         return {"used_bytes": u["used"], "trash_bytes": u["trash"], "free_bytes": u["free"],
@@ -109,6 +128,9 @@ def register(ctx, disk: Disk, index, search) -> None:
         ("disk_rename", 'переименовать. args: {"path": "путь", "name": "новое имя.расширение"}', rename, True,
          lambda a: (f"Переименовать {q(name_of(a.get('path')))} → {q(a.get('name', ''))}" if ru()
                     else f"Rename {q(name_of(a.get('path')))} → {q(a.get('name', ''))}")),
+        ("disk_write", 'создать текстовый файл на Диске (.md или .txt): конспект, план, письмо, таблицу в Markdown. '
+                       'args: {"path": "Папка/имя.md", "text": "содержимое"}', write, True,
+         lambda a: (f"Создать файл {q(name_of(a.get('path')))}" if ru() else f"Create file {q(name_of(a.get('path')))}")),
         ("disk_delete", 'удалить в корзину (можно восстановить). args: {"paths": ["путь", ...]}', delete, True,
          lambda a: (f"Удалить в корзину {many(a)}" if ru() else f"Move to trash {many(a)}")),
     ]

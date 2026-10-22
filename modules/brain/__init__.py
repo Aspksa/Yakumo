@@ -10,7 +10,9 @@ Yakumo сама выписывает из разговоров факты о п�
 Фоновый «разум» (mind.py) работает круглые сутки: бодрствует, дремлет и спит,
 учится по документам Диска (knowledge.py), сдаёт себе ночные экзамены и
 улучшает стиль (grow.py), выполняет длинные задачи в фоне (tasks.py) и пишет
-себе инструменты в песочнице (usertools.py). Всё видно на вкладках «Разум» и «Рост».
+себе инструменты в песочнице (usertools.py). Для сложных задач думает в несколько
+голов (think.py), учится на 👍/👎 в чате и сама задаёт вопросы. Всё видно на
+вкладках «Разум» и «Рост».
 """
 
 from __future__ import annotations
@@ -28,10 +30,11 @@ from .semantic import Semantic
 from .sleep import Sleep
 from .store import ENTITY_TYPES, KINDS, SETTINGS, BrainError, Memory, today
 from .tasks import Tasks
+from .think import DeepThink
 from .usertools import NAME as TOOL_NAME, ToolError, calc, check, sandbox
 
 NAME = "Мозг"
-VERSION = "3.0"
+VERSION = "3.1"
 
 PROMPT_FACTS = 30     # самые важные факты — в каждую подсказку
 PROMPT_RELEVANT = 10  # и ещё столько подходящих к последней реплике (по словам и по смыслу)
@@ -55,13 +58,15 @@ INTRO = {
 }
 RULES = {
     "ru": ("Как думать: перед непростым ответом порассуждай про себя внутри <think>…</think> — пользователь этого не "
-           "видит; на простые реплики отвечай сразу. Любые вычисления делай через calc, не в уме. Сведения из документов "
+           "видит; на простые реплики отвечай сразу. Сложную задачу (расчёт в несколько шагов, план, анализ, выбор, "
+           "код, важное решение) сначала реши через deep_think — несколько голов думают сильнее одной. Любые вычисления делай через calc, не в уме. Сведения из документов "
            "пользователя бери через knowledge_search и давай ссылку на файл. Если в чём-то не уверена, честно пометь это "
            "(«не уверена», «стоит проверить»), не выдумывай. Долгую работу (разобрать много файлов, собрать сводку) ставь "
            "в фон через background_task. Если не хватает умения, напиши себе инструмент через tool_propose: его включит "
            "пользователь."),
     "en": ("How to think: before a non-trivial answer reason privately inside <think>…</think> — the user doesn't see "
-           "it; answer simple messages right away. Do any calculation with calc, never in your head. Take information "
+           "it; answer simple messages right away. Solve a hard task (multi-step calculation, plan, analysis, choice, "
+           "code, an important decision) with deep_think first — several minds think better than one. Do any calculation with calc, never in your head. Take information "
            "from the user's documents with knowledge_search and link the file. If you're unsure, say so honestly "
            "(\"not sure\", \"worth checking\"), don't make things up. Put long work (many files, a summary) in the "
            "background with background_task. If you lack a skill, write yourself a tool with tool_propose; the user "
@@ -136,6 +141,12 @@ class MemoryAPI:
         """Yakumo сама напишет это в чат при следующем открытии."""
         return self._memory.say(text)
 
+    def authored(self, path: str, text: str) -> dict | None:
+        """Yakumo написала файл на Диске: если пользователь его поправит, она поучится на правках."""
+        if not self._memory.enabled:
+            return None
+        return self._memory.add_item("drafts", {"path": path, "text": text[:20000], "at": int(time.time())}, 50)
+
 
 def setup(ctx):
     memory = Memory(ctx.paths.data / "brain" / "memory.json")
@@ -146,9 +157,10 @@ def setup(ctx):
     semantic = Semantic(ctx.paths.data / "brain" / "vectors.json", memory, cloud)
     knowledge = Knowledge(ctx.paths.data / "brain" / "knowledge.json", ctx.services, semantic, mind, memory)
     sleep = Sleep(memory, mind, lang, learner)
-    growth = Growth(memory, mind, lang)
     activity = Activity(memory)
     tasks = Tasks(memory, mind, ctx.chat_tools, lang)
+    growth = Growth(memory, mind, lang, ctx.services, tasks)
+    deep = DeepThink(memory, cloud, lang)
 
     def growing(fn):
         """Саморазвитие во сне — только если оно включено."""
@@ -166,6 +178,12 @@ def setup(ctx):
     mind.every("study", "asleep", 30 * 60, growing(study))
     mind.every("exam", "asleep", 30 * 60, growing(growth.exam))
     mind.every("style", "asleep", 30 * 60, growing(growth.evolve))
+    mind.every("consolidate", "asleep", 30 * 60, growing(growth.consolidate))
+    mind.every("curious", "rest", 30 * 60, growing(growth.curious))
+    mind.every("feedback", "any", 60, growth.digest)
+    mind.every("edits", "rest", 10 * 60, growing(growth.edits))
+    mind.every("foresee", "rest", 30 * 60, growing(growth.foresee))
+    mind.every("census", "any", 60 * 60, lambda: growth.census(len(knowledge.items)))
     learner.ticks = [mind.tick]
     learner.start()
     tasks.resume()
@@ -385,6 +403,12 @@ def setup(ctx):
                 "note": "Задача в очереди; результат придёт сообщением в чат, её видно на вкладке «Разум»."
                         if ru() else "Queued; the result will arrive as a chat message, see the Mind tab."}
 
+    def deep_tool(args):
+        task = str(args.get("task", "")).strip()
+        if not task:
+            return {"error": "Нужна задача" if ru() else "Task required"}
+        return deep.run(task, str(args.get("context", "")))
+
     def register_tool(t) -> None:
         from yakumo.core.cloud import ChatTool
 
@@ -447,6 +471,9 @@ def setup(ctx):
         ("calc", 'точно посчитать выражение (всегда вместо счёта в уме): + - * / // % ** ^, проценты «15%», sqrt, '
          'log, sin, round, pi… args: {"expr": "2000 * 15% + sqrt(16)"}', calc_tool, False,
          lambda a: f"Считаю: {short(a, 'expr')}" if ru() else f"Calculating: {short(a, 'expr')}"),
+        ("deep_think", 'подумать сильно над сложной задачей: три внутренних голоса решают независимо, критик собирает '
+         'лучший ответ. args: {"task": "задача полностью", "context": "что известно (факты, числа, условия)"}',
+         deep_tool, False, lambda a: "Думаю глубоко…" if ru() else "Thinking deeply…"),
         ("knowledge_search", 'найти ответ в документах пользователя на Диске (по смыслу, с цитатой и ссылкой). '
          'args: {"query": "вопрос"}', knowledge_tool, False,
          lambda a: f"Ищу в документах: {short(a, 'query')}" if ru() else f"Searching documents: {short(a, 'query')}"),
@@ -489,7 +516,7 @@ def setup(ctx):
                 "wishes": sorted(m["wishes"], key=lambda x: -x.get("count", 1)),
                 "suggestions": [x for x in m["suggestions"] if x.get("status") == "new"],
                 "user_tools": m["user_tools"], "notes": sorted(m["notes"], key=lambda x: -x["created"]),
-                "links": memory.links(), "style": {"versions": m["style"].get("versions", []),
+                "links": memory.links(), "best": len(m["best"]), "brain": growth.history(), "style": {"versions": m["style"].get("versions", []),
                                                    "active": m["style"].get("active")},
                 "mood_days": [{"date": k, "mood": round(sum(v["mood"]) / len(v["mood"]), 2)}
                          for k, v in sorted(m["days"].items())[-30:] if v.get("mood")]}
@@ -586,6 +613,16 @@ def setup(ctx):
             memory.save()
         return state()
 
+    def feedback(req):
+        d = body(req)
+        if not memory.enabled:
+            raise BrainError("Память выключена")
+        try:
+            growth.rate(d.get("question") or "", d.get("answer") or "", d.get("good") is True, d.get("note") or "")
+        except ValueError as exc:
+            raise BrainError(str(exc)) from exc
+        return {"ok": True}
+
     def style(req):
         version = body(req).get("id")
         memory.use_style(str(version) if version else None)
@@ -593,14 +630,21 @@ def setup(ctx):
 
     def grow_now(req):
         what = body(req).get("what")
-        if what not in ("exam", "style", "study"):
-            raise BrainError("what: exam, style или study")
+        if what not in ("exam", "style", "study", "curious", "consolidate", "foresee"):
+            raise BrainError("what: exam, style, study, curious, consolidate или foresee")
         if not mind.can_think():
             raise BrainError("Нет ключа Cloud.ru или исчерпан дневной бюджет")
         if what == "exam":
             growth.exam(force=True)
         elif what == "style":
             growth.evolve(force=True)
+        elif what == "curious":
+            question = growth.curious(force=True)
+            return {"question": question, "state": state()}
+        elif what == "consolidate":
+            growth.consolidate(force=True)
+        elif what == "foresee":
+            growth.foresee(force=True)
         else:
             knowledge.sync()
             knowledge.study(lang())
@@ -624,6 +668,7 @@ def setup(ctx):
         "POST /api/brain/suggestion": suggestion,
         "POST /api/brain/tool": user_tool,
         "POST /api/brain/style": style,
+        "POST /api/brain/feedback": feedback,
         "POST /api/brain/grow": grow_now,
         "POST /api/brain/fact/restore": lambda r: (memory.touch([str(body(r).get("id"))]), state())[1],
         "POST /api/brain/import": lambda r: {**memory.import_(r.read_json()), "state": state()},
