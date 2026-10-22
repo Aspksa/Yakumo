@@ -17,6 +17,7 @@ class Paths:
     cache: Path      # кэш
     temp: Path       # временные файлы
     workspace: Path  # рабочая папка пользователя (что открывать по умолчанию)
+    modules: Path    # модули пользователя (в дополнение к <программа>/modules)
     web: Path        # статические файлы веб-версии
 
     @property
@@ -24,7 +25,7 @@ class Paths:
         return self.config / "yakumo.json"
 
     def ensure(self) -> "Paths":
-        for path in (self.data, self.config, self.logs, self.cache, self.temp, self.workspace):
+        for path in (self.data, self.config, self.logs, self.cache, self.temp, self.workspace, self.modules):
             path.mkdir(parents=True, exist_ok=True)
         return self
 
@@ -43,5 +44,6 @@ def build_paths(storage: StorageChoice, workspace: str | None = None) -> Paths:
         cache=root / "cache",
         temp=root / "temp",
         workspace=Path(workspace).expanduser().resolve() if workspace else root / "workspace",
+        modules=root / "modules",
         web=Path(__file__).resolve().parents[1] / "web" / "static",
     )

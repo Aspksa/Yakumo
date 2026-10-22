@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
 
@@ -14,6 +14,8 @@ class Config:
     lan: bool = False                # открыть доступ из локальной сети
     open_browser: bool = True        # открыть браузер после запуска
     workspace: str | None = None     # папка, которая открывается по умолчанию
+    tray: bool = True                # значок в трее, если установлены pystray и Pillow
+    disabled_modules: list[str] = field(default_factory=list)  # модули, которые не загружать
 
     @classmethod
     def load(cls, path: Path) -> "Config":

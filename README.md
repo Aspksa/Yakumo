@@ -8,7 +8,48 @@
 - Любая ОС: `python -m yakumo`.
 
 `Yakumo.bat` ищет Python по порядку: `python\python.exe` рядом с программой,
-`.venv`, `py -3`, `python` из PATH.
+`.venv`, `py -3`, `python` из PATH. `Yakumo.bat --hidden` запускает без окна
+консоли (управление через значок в трее).
+
+Запускается только один экземпляр: повторный запуск не поднимает второй сервер,
+а открывает в браузере уже работающий.
+
+## Значок в трее
+
+Нужны `pystray` и `Pillow`: `pip install -r requirements.txt` (в портативной
+сборке уже есть). Меню: «Открыть», «Папка данных», «Рабочая папка», «Модули»,
+«Выход». Без этих библиотек Yakumo работает в консоли, как раньше.
+Отключить: `--no-tray` или `"tray": false` в настройках.
+
+## Портативная сборка
+
+```
+python tools/build_portable.py
+```
+
+Скачивает встроенный Python для Windows (по умолчанию 3.12.10), кладёт его в
+`python\`, ставит библиотеки для трея, добавляет маркер `portable` и собирает
+`dist/Yakumo-portable-win64.zip`. Архив можно распаковать на флешку и запускать
+`Yakumo.bat` без установки Python; данные хранятся рядом в `YakumoData`.
+
+## Модули
+
+Модули подхватываются из `<программа>/modules` и `<данные>/modules`. Модуль —
+файл `имя.py` или папка `имя/` с `__init__.py` и функцией `setup(ctx)`:
+
+```python
+NAME = "Привет"
+VERSION = "1.0"
+
+def setup(ctx):
+    ctx.route("/api/hello", lambda request: {"hello": "мир"})
+    ctx.status(lambda: {"ok": True})   # попадёт в /api/status
+    ctx.on_stop(lambda: None)          # вызовется при выходе
+```
+
+В `ctx` есть `paths`, `config` и `log`. Ошибка в модуле не ломает запуск,
+она видна в `/api/modules`. Отключить модуль: `"disabled_modules": ["имя"]`
+в настройках. Пример: `modules/hello.py`.
 
 ## Параметры
 
@@ -21,6 +62,7 @@
 | `--port ПОРТ` | желаемый порт (по умолчанию 8765); если занят, берётся следующий свободный |
 | `--lan` | открыть веб-версию для локальной сети |
 | `--no-browser` | не открывать браузер |
+| `--no-tray` | без значка в трее |
 
 ## Как выбирается носитель
 
@@ -33,7 +75,7 @@
    На системном диске данные кладутся в `%LOCALAPPDATA%\Yakumo`.
 4. Резервный вариант: папка пользователя или временная папка.
 
-Внутри папки данных: `config/yakumo.json`, `logs/`, `cache/`, `temp/`, `workspace/`.
+Внутри папки данных: `config/yakumo.json`, `logs/`, `cache/`, `temp/`, `workspace/`, `modules/`.
 
 ## Структура
 
@@ -44,8 +86,13 @@ yakumo/
   core/paths.py     рабочие пути
   core/network.py   адреса машины и поиск свободного порта
   core/config.py    настройки
+  core/instance.py  один экземпляр
+  core/modules.py   загрузка модулей
+  tray.py           значок в трее
   web/server.py     веб-сервер (/api/status и статика)
   web/static/       страницы веб-версии
+modules/            модули (пример: hello.py)
+tools/build_portable.py  портативная сборка для Windows
 ```
 
 ## Тесты
