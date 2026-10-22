@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from pathlib import Path
 
 from . import learn
 from .activity import Activity
@@ -807,11 +808,16 @@ def setup(ctx):
         "POST /api/brain/improvement": improvement,
         "POST /api/brain/improvements/copy": improvements_copy,
         "POST /api/brain/fact/restore": lambda r: (memory.touch([str(body(r).get("id"))]), state())[1],
+        # Звезда из «чёрной дыры» на главной: все её факты возвращаются из архива.
+        "POST /api/brain/recall": lambda r: (memory.touch([f["id"] for f in memory.data["facts"]
+                                                           if str(body(r).get("id")) in f.get("about", [])]), state())[1],
+        "/modules/brain/vendor/three.min.js": lambda _req: (200, "text/javascript; charset=utf-8",
+                                                           (Path(__file__).parent / "vendor" / "three.min.js").read_bytes()),
         "POST /api/brain/import": lambda r: {**memory.import_(r.read_json()), "state": state()},
     }
     for path, handler in routes.items():
         ctx.route(path, handler)
-    ctx.web("brain.css", "universe.css", "universe.js", "brain.js")
+    ctx.web("brain.css", "universe.css", "universe.js", "galaxy.css", "galaxy.js", "brain.js")
     ctx.status(lambda: {"facts": len(memory.data["facts"]), "talks": len(memory.data["talks"]),
                         "enabled": memory.enabled, "mode": mind.mode()})
     ctx.log.info("Память: %s фактов, %s бесед", len(memory.data["facts"]), len(memory.data["talks"]))

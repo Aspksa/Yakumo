@@ -534,6 +534,19 @@ class BrainTest(BrainBase):
         self.assertEqual(docs[oleg["id"]], ["Отчёты/май.txt"])
         self.assertEqual(len(docs), 2)
 
+    def test_home_galaxy_recall_and_three(self):
+        mem = self.memory()
+        fact = mem.add("Костя жил в Самаре", about=[{"name": "Костя", "type": "person", "relation": "друг"}])
+        fact["archived"] = True
+        kostya = fact["about"][0]
+        state = self.post("/api/brain/recall", {"id": kostya})
+        self.assertFalse(next(f for f in state["facts"] if f["id"] == fact["id"]).get("archived"))
+        with urllib.request.urlopen(self.base + "/modules/brain/vendor/three.min.js") as r:
+            self.assertIn(b"THREE", r.read(4000))
+        web = self.ctx.web_files["brain"]
+        self.assertIn("/modules/brain/galaxy.js", web)
+        self.assertNotIn("/modules/brain/vendor/three.min.js", web)  # тяжёлое грузится только на главной
+
     # --- Контекст компьютера ---
 
     def test_activity_only_with_consent(self):
