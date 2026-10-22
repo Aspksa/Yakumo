@@ -119,7 +119,7 @@
 .list .dk-size { text-align: right; }
 
 .dk-foot { color: var(--muted); font-size: 12px; padding: 0 4px 24px; }
-.dk-empty { margin-top: 8px; }
+.dk-empty { margin-top: 8px; padding-top: 24px; }
 .dk-empty span { max-width: 420px; }
 .dk-error { color: var(--bad); }
 .dk-warn { color: #e6a35c; }
@@ -241,6 +241,31 @@
 .dk-nav-next { right: 8px; }
 .dk-nav svg { width: 28px; height: 28px; }
 
+/* Векторные значки файлов и папок, сцены пустых экранов */
+.dk-art { display: grid; place-items: center; flex: none; width: 24px; height: 24px; }
+.dk-art svg, .dk-thumb .dk-art svg { width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .35)); }
+.tiles .dk-thumb .dk-art { width: 76px; height: 76px; transition: transform .18s ease-out; }
+.tiles .dk-item:hover .dk-art { transform: translateY(-2px) scale(1.04); }
+.list .dk-thumb .dk-art { width: 30px; height: 30px; }
+.list .dk-art text, .dk-side-file .dk-art text, .dk-plan .dk-art text, .dk-name-row .dk-art text,
+.dk-picker-item .dk-art text { display: none; }
+.dk-strip-item .dk-art { width: 30px; height: 30px; }
+.dk-side-file .dk-art { width: 26px; height: 26px; }
+.dk-picker-item .dk-art { width: 22px; height: 22px; }
+.dk-nopreview .dk-art { width: 96px; height: 96px; }
+.dk-scene { display: block; width: min(300px, 80vw); margin-bottom: 4px; }
+.dk-empty .dk-scene svg, .dk-scene svg { display: block; width: 100%; height: auto; }
+.dk-nopreview .dk-art svg { width: 100%; height: 100%; }
+.dk-twinkle > * { animation: dk-twinkle 2.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.dk-twinkle > :nth-child(2) { animation-delay: .7s; }
+.dk-twinkle > :nth-child(3) { animation-delay: 1.4s; }
+.dk-twinkle > :nth-child(4) { animation-delay: 2s; }
+@keyframes dk-twinkle { 0%, 100% { opacity: .25; transform: scale(.7); } 50% { opacity: 1; transform: scale(1.1); } }
+.dk-zzz { animation: dk-zzz 3s ease-in-out infinite; }
+@keyframes dk-zzz { 0%, 100% { opacity: .2; transform: translateY(2px); } 50% { opacity: 1; transform: translateY(-3px); } }
+.dk-dash { animation: dk-dash 1.6s linear infinite; }
+@keyframes dk-dash { to { stroke-dashoffset: -18; } }
+
 /* Кицунэ: картинка, бег с файлом, «нюх» при поиске */
 .dk-fox-pic { display: inline-grid; flex: none; }
 .dk-fox-pic svg { width: 100%; height: 100%; overflow: visible; }
@@ -343,6 +368,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .dk-slide-next > *, .dk-slide-prev > *, .dk-sniff .dk-item, .dk-proposal, .dk-found-title svg,
-  .dk-fox-mini .dk-fox-tails { animation: none; }
+  .dk-fox-mini .dk-fox-tails, .dk-twinkle > *, .dk-zzz, .dk-dash { animation: none; }
   .dk-zoomable { transition: none; }
 }
