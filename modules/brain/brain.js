@@ -84,11 +84,14 @@
       impStatus1: { new: "новая", given: "отдана", done: "сделана", rejected: "отклонена" },
       impSources: { wish: "не смогла", thumbs: "👎", error: "ошибка", idea: "идея Yakumo", manual: "вы" },
       impPrio: { high: "важно", normal: "обычно", low: "мелочь" },
-      impFields: { problem: "Что не так", steps: "Как воспроизвести", want: "Что хочется", detail: "Подробности" },
+      impFields: { problem: "Что не так", steps: "Как воспроизвести", want: "Что хочется", fix: "Где поправить", detail: "Подробности" },
       impCopy: "Скопировать для Claude", impCopyAll: (n) => `Скопировать новые для Claude (${n})`, impCopied: "Скопировано. Вставьте в проект с Claude.",
       impIdeas: "Придумать идеи", impAdd: "Своя задача: что улучшить", impAddBtn: "Добавить", impTimes: (n) => `${n} раз`,
       impReopened: "вернулась", impEmpty: "Пока нечего улучшать", impEmptyHint: "Сюда попадут ошибки программы, ответы с 👎, то, что Yakumo не смогла, и её идеи.",
       impStatusLabel: "Статус",
+      selfMap: "Карта меня", selfMapHint: "Yakumo читает свой код (только читает, не меняет): ищет в нём, когда вы спрашиваете, как она что-то делает, и смотрит нужный файл, когда пишет задачу в «Улучшения».",
+      selfStat: (c) => `файлов: ${c.files}, кусочков кода: ${c.chunks}` + (c.vectors ? `, по смыслу: ${c.vectors}` : ""),
+      core: "Ядро и веб-версия", linesN: (n) => `${n} строк`,
       versions: "История меня", versionKinds: { install: "Обновление", rollback: "Возврат", seen: "Версия" },
       versionsHint: "Когда Yakumo обновили или вернули к прошлой версии и что в ней нового. Она помнит это и может рассказать в чате.",
       changesN: (n) => `изменений: ${n}`,
@@ -172,11 +175,14 @@
       impStatus1: { new: "new", given: "given", done: "done", rejected: "rejected" },
       impSources: { wish: "couldn't", thumbs: "👎", error: "error", idea: "Yakumo's idea", manual: "you" },
       impPrio: { high: "important", normal: "normal", low: "minor" },
-      impFields: { problem: "What is wrong", steps: "Steps to reproduce", want: "Desired result", detail: "Details" },
+      impFields: { problem: "What is wrong", steps: "Steps to reproduce", want: "Desired result", fix: "Where to fix", detail: "Details" },
       impCopy: "Copy for Claude", impCopyAll: (n) => `Copy new for Claude (${n})`, impCopied: "Copied. Paste it into your Claude project.",
       impIdeas: "Come up with ideas", impAdd: "Your own task: what to improve", impAddBtn: "Add", impTimes: (n) => `${n} times`,
       impReopened: "came back", impEmpty: "Nothing to improve yet", impEmptyHint: "Program errors, 👎 answers, things Yakumo couldn't do and her ideas will appear here.",
       impStatusLabel: "Status",
+      selfMap: "My map", selfMapHint: "Yakumo reads her own code (read only, never changes it): she searches it when you ask how she does something and looks at the right file when writing a task in Improvements.",
+      selfStat: (c) => `files: ${c.files}, code chunks: ${c.chunks}` + (c.vectors ? `, by meaning: ${c.vectors}` : ""),
+      core: "Core and web app", linesN: (n) => `${n} lines`,
       versions: "My history", versionKinds: { install: "Update", rollback: "Rollback", seen: "Version" },
       versionsHint: "When Yakumo was updated or rolled back and what was new. She remembers it and can tell you in chat.",
       changesN: (n) => `changes: ${n}`,
@@ -712,6 +718,7 @@
         h("p", { class: "row-hint" }, k.available ? L.knowledge(k) : L.noDisk)),
       brainCard(),
       versionsCard(),
+      selfMapCard(),
       h("section", { class: "br-kind" }, h("h2", {}, L.thoughts, h("span", {}, String(thoughts.length))),
         thoughts.length ? h("ul", { class: "br-list" }, thoughts.map((t) => {
           const open = state.open === t.id;
@@ -728,6 +735,26 @@
             h("div", { class: "br-tools" }, live ? tool("■", L.stop, () => send("thought/cancel", { id: t.id }).then(load), "danger") : ""));
         })) : empty(L.noThoughts, L.noThoughtsHint)),
     ];
+  }
+
+  function selfMapCard() {
+    const c = state.data.code;
+    if (!c?.map?.modules?.length) return "";
+    const files = (list) => h("ul", { class: "br-quote br-changes" }, list.map((f) =>
+      h("li", {}, h("code", {}, f.path), f.lines ? ` · ${L.linesN(f.lines)}` : "", f.about ? ` — ${f.about}` : "")));
+    const groups = [...c.map.modules.map((m) => ({ id: "map:" + m.id, name: m.name + (m.version ? ` ${m.version}` : ""),
+                                                  about: m.about, files: m.files })),
+                    { id: "map:core", name: L.core, about: "", files: c.map.core || [] }];
+    return h("section", { class: "br-kind br-versions" }, h("h2", {}, L.selfMap, h("span", {}, String(c.map.modules.length))),
+      h("p", { class: "row-hint" }, `${L.selfMapHint} ${L.selfStat(c)}.`),
+      h("ul", { class: "br-list" }, groups.map((g) => {
+        const open = state.open === g.id;
+        return h("li", { class: "br-fact" }, h("div", { class: "br-fact-body" },
+          h("button", { type: "button", class: "br-link br-fact-text", "aria-expanded": String(open),
+                        onclick: () => { state.open = open ? null : g.id; draw(); } }, g.name),
+          g.about ? h("div", { class: "br-meta" }, g.about) : "",
+          open ? files(g.files) : ""));
+      })));
   }
 
   function versionsCard() {
@@ -821,7 +848,7 @@
                           onclick: () => { state.open = open ? null : x.id; draw(); } }, x.title),
             h("div", { class: "br-meta" }, [x.module, x.priority ? L.impPrio[x.priority] : "", date(x.last || x.created),
               (x.count || 1) > 1 ? L.impTimes(x.count) : "", x.reopened && x.status === "new" ? L.impReopened : ""].filter(Boolean).join(" · ")),
-            open ? h("div", { class: "br-quote br-imp-body" }, ["problem", "steps", "want"].filter((k) => x[k]).map((k) =>
+            open ? h("div", { class: "br-quote br-imp-body" }, ["problem", "steps", "want", "fix"].filter((k) => x[k]).map((k) =>
               h("p", {}, h("b", {}, `${L.impFields[k]}: `), x[k])),
               x.detail ? [h("b", {}, L.impFields.detail), h("pre", { class: "br-code" }, x.detail)] : "") : "",
             open ? h("div", { class: "br-add br-imp-actions" }, status,

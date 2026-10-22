@@ -465,6 +465,35 @@ class BrainTest(BrainBase):
         self.post("/api/brain/improvement", {"title": "Тёмная тема для Диска"})
         self.assertIn("manual", {x["source"] for x in self.get("/api/brain")["improvements"]})
 
+    def test_reads_own_code_map_and_uses_it_for_tasks(self):
+        app = Path(self.ctx.paths.app)
+        (app / "modules" / "tips").mkdir(parents=True)
+        (app / "modules" / "tips" / "__init__.py").write_text(
+            '"""Чаевые: считает, сколько оставить."""\n\nNAME = "Чаевые"\nVERSION = "0.1"\n\n\n'
+            'def tip_amount(total):\n    return total * 0.1  # процент чаевых\n', encoding="utf-8")
+        self.tick("Code").sync(vectors=False)
+        FakeCloud.replies = ['<tool>{"name": "code_search", "args": {"query": "tip amount"}}</tool>'
+                             '<tool>{"name": "code_read", "args": {"path": "config/secrets.json"}}</tool>', "Вот как."]
+        self.chat([{"role": "user", "content": "Как ты считаешь чаевые?"}])
+        self.assertIn("Чаевые 0.1 — Чаевые: считает, сколько оставить.", self.system_prompt())
+        report = FakeCloud.requests[-1]["messages"][-1]["content"]
+        self.assertIn("modules/tips/__init__.py:7-8", report)
+        self.assertIn("Такого файла в моём коде нет", report)  # настройки и ключи не читаются
+        state = self.get("/api/brain")["code"]
+        self.assertEqual(state["map"]["modules"][0]["name"], "Чаевые")
+        # Задача в «Улучшениях» оформляется с кодом места сбоя.
+        self.memory().improvement({"key": "error:x", "source": "error", "title": "Чаевые считаются неверно",
+                                   "detail": "ValueError\nmodules/tips/__init__.py:8 (tip_amount)"})
+        FakeCloud.completions = [json.dumps({"title": "Неверный процент чаевых",
+                                             "fix": "modules/tips/__init__.py, tip_amount: брать процент из настроек"},
+                                            ensure_ascii=False)]
+        self.assertEqual(self.tick("Improvements").refine(), 1)
+        prompt = [r for r in FakeCloud.requests if not r.get("stream")][-1]["messages"][0]["content"]
+        self.assertIn("8:     return total * 0.1", prompt)
+        item = self.get("/api/brain")["improvements"][0]
+        self.assertIn("tip_amount", item["fix"])
+        self.assertIn("**Где поправить:**", self.post("/api/brain/improvements/copy", {})["text"])
+
     # --- Контекст компьютера ---
 
     def test_activity_only_with_consent(self):
