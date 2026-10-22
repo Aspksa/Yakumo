@@ -15,6 +15,7 @@ from yakumo.core.instance import InstanceLock
 from yakumo.core.modules import Context, load_all
 from yakumo.core.network import choose_endpoint, local_addresses
 from yakumo.core.paths import Paths, build_paths
+from yakumo.core.settings import SettingsService
 from yakumo.core.storage import StorageChoice, choose_storage, list_media
 
 log = logging.getLogger("yakumo")
@@ -132,7 +133,13 @@ def serve(args, storage: StorageChoice, paths: Paths, config: Config,
             "modules_status": extra,
         }
 
-    routes = {"/api/status": status, "/api/modules": lambda _req: [m.as_dict() for m in modules], **ctx.routes}
+    from yakumo import tray
+
+    use_tray = config.tray and not args.no_tray and tray.available()
+    settings = SettingsService(config, paths.config_file, tray_running=use_tray,
+                               tray_available=tray.available())
+    routes = {"/api/status": status, "/api/modules": lambda _req: [m.as_dict() for m in modules],
+              **settings.routes(), **ctx.routes}
 
     # Порт мог заняться между проверкой и запуском: пробуем следующий.
     for _ in range(5):
@@ -151,17 +158,13 @@ def serve(args, storage: StorageChoice, paths: Paths, config: Config,
     if open_browser:
         threading.Timer(0.5, webbrowser.open, args=(endpoint.url,)).start()
 
-    from yakumo import tray
-
-    use_tray = config.tray and not args.no_tray and tray.available()
     try:
         if use_tray:
             web = threading.Thread(target=server.serve_forever, name="web", daemon=True)
             web.start()
-            folders = {"Папка данных": paths.data, "Рабочая папка": paths.workspace,
-                       "Модули": paths.modules}
+            folders = {"data": paths.data, "workspace": paths.workspace, "modules": paths.modules}
             try:
-                tray.run(endpoint.url, folders, on_exit=server.shutdown)
+                tray.run(endpoint.url, folders, on_exit=server.shutdown, language=config.language)
             except Exception:  # noqa: BLE001
                 log.exception("Значок в трее не запустился, работаю без него")
                 while web.is_alive():

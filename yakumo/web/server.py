@@ -41,6 +41,44 @@ class Handler(SimpleHTTPRequestHandler):
             log.exception("Ошибка обработчика %s", self.path)
             self._send(500, "application/json; charset=utf-8", b'{"error": "internal"}')
 
+    def do_POST(self) -> None:  # noqa: N802
+        """POST-маршруты регистрируются с ключом "POST /путь"."""
+        handler = self.routes.get("POST " + self.route_path)
+        if handler is None:
+            self._send(404, "application/json; charset=utf-8", b'{"error": "not found"}')
+            return
+        if not self._same_origin():
+            self._send(403, "application/json; charset=utf-8", b'{"error": "forbidden"}')
+            return
+        try:
+            self._respond(handler(self))
+        except ValueError as exc:
+            body = json.dumps({"error": str(exc)}, ensure_ascii=False).encode("utf-8")
+            self._send(400, "application/json; charset=utf-8", body)
+        except Exception:  # noqa: BLE001
+            log.exception("Ошибка обработчика %s", self.path)
+            self._send(500, "application/json; charset=utf-8", b'{"error": "internal"}')
+
+    def _same_origin(self) -> bool:
+        """Защита от чужих сайтов: только JSON и только со своей страницы.
+
+        Страница с другого сайта не может отправить application/json без
+        предварительного запроса OPTIONS, а на него мы не отвечаем разрешением.
+        """
+        if not self.headers.get("Content-Type", "").startswith("application/json"):
+            return False
+        origin = self.headers.get("Origin")
+        return origin is None or urlsplit(origin).netloc == self.headers.get("Host")
+
+    def read_json(self) -> Any:
+        length = int(self.headers.get("Content-Length") or 0)
+        if length > 1_000_000:
+            raise ValueError("Слишком большой запрос")
+        try:
+            return json.loads(self.rfile.read(length).decode("utf-8") or "null")
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("Неверный JSON") from exc
+
     def _respond(self, result: Any) -> None:
         if isinstance(result, tuple):
             code, ctype, body = result
