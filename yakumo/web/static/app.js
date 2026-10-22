@@ -520,7 +520,7 @@ function restartNote(key) {
 }
 
 const PAGES = {
-  home: () => [],  // пока пустая
+  home: () => [],  // пока пустая; модуль может занять её через Yakumo.setHome
   files: () => [h("h1", {}, T.files), placeholder(SECTIONS[1], T.filesSoon)],
   modules: () => [h("h1", {}, T.modules), placeholder(SECTIONS[2], T.modulesSoon)],
   log: () => [h("h1", {}, T.log), placeholder(SECTIONS[3], T.logSoon)],
@@ -584,6 +584,11 @@ window.Yakumo = {
   addMessageAction(fn) {
     messageActions.push(fn);
     showMessages();
+  },
+  // Модуль может занять главную страницу (её рисует «Мозг»: космос на весь экран).
+  setHome(draw) {
+    PAGES.home = draw;
+    if (currentPage() === "home") render();
   },
   addPage({ id, icon: svg, title, render: draw }) {
     if (PAGES[id]) return;
