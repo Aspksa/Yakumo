@@ -99,11 +99,20 @@ class RussianTest(unittest.TestCase):
     def test_bat_is_ascii_and_messages_are_utf8(self):
         root = Path(__file__).resolve().parents[1]
         (root / "Yakumo.bat").read_bytes().decode("ascii")
-        for name in ("no_python.txt", "failed.txt"):
+        for name in ("no_python.txt", "offer_python.txt", "download_failed.txt", "failed.txt"):
             text = (root / "launcher" / name).read_bytes().decode("utf-8")
             self.assertRegex(text, "[а-яА-Я]")
             self.assertFalse(text.startswith("\ufeff"))
             self.assertIn(name, (root / "Yakumo.bat").read_text(encoding="ascii"))
+
+    def test_python_download_script(self):
+        root = Path(__file__).resolve().parents[1]
+        raw = (root / "launcher" / "get_python.ps1").read_bytes()
+        # Windows PowerShell 5.1 читает файл без BOM в ANSI и портит кириллицу.
+        self.assertTrue(raw.startswith(b"\xef\xbb\xbf"))
+        text = raw.decode("utf-8-sig")
+        self.assertIn("Lib\\site-packages", text)
+        self.assertIn("get_python.ps1", (root / "Yakumo.bat").read_text(encoding="ascii"))
 
     def test_config_with_bom_from_notepad(self):
         from yakumo.core.config import Config
