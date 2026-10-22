@@ -21,7 +21,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PYTHON = "3.12.10"
-COPY = ["Yakumo.bat", "yakumo", "modules", "README.md", "requirements.txt"]
+COPY = ["Yakumo.bat", "launcher", "yakumo", "modules", "README.md", "requirements.txt"]
 
 
 def download(url: str, dest: Path) -> Path:
@@ -40,9 +40,9 @@ def download(url: str, dest: Path) -> Path:
 def configure_pth(python_dir: Path) -> None:
     """Встроенный Python игнорирует PYTHONPATH: пути задаются в ._pth."""
     pth = next(python_dir.glob("python*._pth"))
-    zip_line = next(line for line in pth.read_text().splitlines() if line.endswith(".zip"))
+    zip_line = next(line for line in pth.read_text(encoding="utf-8").splitlines() if line.endswith(".zip"))
     # ".." — папка программы, чтобы работал `python -m yakumo`.
-    pth.write_text("\n".join([zip_line, ".", "Lib\\site-packages", "..", "import site", ""]))
+    pth.write_text("\n".join([zip_line, ".", "Lib\\site-packages", "..", "import site", ""]), encoding="utf-8")
 
 
 def install_requirements(python_dir: Path, version: str, arch: str) -> None:

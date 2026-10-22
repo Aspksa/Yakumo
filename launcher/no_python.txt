@@ -1,0 +1,3 @@
+Python 3.10+ не найден.
+Установите его с https://www.python.org/downloads/ и отметьте "Add python.exe to PATH",
+либо скачайте портативную сборку Yakumo со встроенным Python.

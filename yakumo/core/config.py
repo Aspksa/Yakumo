@@ -22,7 +22,8 @@ class Config:
         if not path.exists():
             return cls()
         try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
+            # utf-8-sig: Блокнот Windows сохраняет UTF-8 с BOM.
+            raw = json.loads(path.read_text(encoding="utf-8-sig"))
         except (OSError, ValueError):
             return cls()
         known = {f.name for f in fields(cls)}

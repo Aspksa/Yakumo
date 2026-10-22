@@ -7,15 +7,31 @@ import logging
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
+from urllib.parse import unquote, urlsplit
 
 log = logging.getLogger(__name__)
 
 
+TEXT_TYPES = {
+    ".html": "text/html", ".htm": "text/html", ".css": "text/css", ".js": "text/javascript",
+    ".json": "application/json", ".txt": "text/plain", ".md": "text/markdown",
+    ".svg": "image/svg+xml", ".xml": "application/xml", ".csv": "text/csv",
+}
+
+
 class Handler(SimpleHTTPRequestHandler):
     routes: dict[str, Callable[[Any], Any]] = {}
+    # Явный charset, чтобы браузер не угадывал кодировку русских текстов.
+    extensions_map = {**SimpleHTTPRequestHandler.extensions_map,
+                      **{ext: f"{ctype}; charset=utf-8" for ext, ctype in TEXT_TYPES.items()}}
+
+    @property
+    def route_path(self) -> str:
+        """Путь без параметров, с раскодированной кириллицей (/api/%D0%BF -> /api/п)."""
+        return unquote(urlsplit(self.path).path, encoding="utf-8", errors="replace")
 
     def do_GET(self) -> None:  # noqa: N802
-        handler = self.routes.get(self.path.split("?")[0])
+        handler = self.routes.get(self.route_path)
         if handler is None:
             super().do_GET()
             return

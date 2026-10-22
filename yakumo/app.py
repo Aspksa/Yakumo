@@ -72,7 +72,15 @@ def open_running(lock: InstanceLock, open_browser: bool) -> int:
     return 0
 
 
+def safe_console() -> None:
+    """Русский текст не должен ронять вывод ни в какой кодировке консоли."""
+    for stream in (sys.stdout, sys.stderr):
+        if stream is not None and hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
+
+
 def main(argv: list[str] | None = None) -> int:
+    safe_console()
     args = parse_args(argv)
 
     storage = choose_storage(args.data_dir)

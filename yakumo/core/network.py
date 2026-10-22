@@ -34,7 +34,7 @@ def local_addresses() -> list[str]:
     try:
         for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
             found.append(info[4][0])
-    except OSError:
+    except (OSError, UnicodeError):  # русское имя компьютера может не пройти IDNA
         pass
     result: list[str] = []
     for addr in found:

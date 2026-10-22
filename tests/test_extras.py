@@ -2,6 +2,7 @@ import json
 import tempfile
 import threading
 import unittest
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -90,3 +91,84 @@ class ServerTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RussianTest(unittest.TestCase):
+    """Русские пути, имена, настройки и адреса."""
+
+    def test_bat_is_ascii_and_messages_are_utf8(self):
+        root = Path(__file__).resolve().parents[1]
+        (root / "Yakumo.bat").read_bytes().decode("ascii")
+        for name in ("no_python.txt", "old_python.txt", "failed.txt"):
+            text = (root / "launcher" / name).read_bytes().decode("utf-8")
+            self.assertRegex(text, "[а-яА-Я]")
+            self.assertFalse(text.startswith("\ufeff"))
+            self.assertIn(name, (root / "Yakumo.bat").read_text(encoding="ascii"))
+
+    def test_config_with_bom_from_notepad(self):
+        from yakumo.core.config import Config
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "yakumo.json"
+            path.write_bytes('\ufeff{"workspace": "D:\\\\Документы", "port": 9001}'.encode("utf-8"))
+            cfg = Config.load(path)
+            self.assertEqual((cfg.workspace, cfg.port), ("D:\\Документы", 9001))
+            cfg.save(path)
+            self.assertIn("Документы", path.read_text(encoding="utf-8"))
+
+    def test_cyrillic_data_dir_and_workspace(self):
+        from yakumo.core.paths import build_paths
+        from yakumo.core.storage import choose_storage
+        with tempfile.TemporaryDirectory() as tmp:
+            choice = choose_storage(Path(tmp) / "Мои данные")
+            paths = build_paths(choice, str(Path(tmp) / "Рабочая папка")).ensure()
+            self.assertTrue(paths.workspace.is_dir())
+            self.assertTrue((Path(tmp) / "Мои данные" / "logs").is_dir())
+
+    def test_module_in_cyrillic_folder_with_cyrillic_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp) / "модули"
+            folder.mkdir()
+            (folder / "привет.py").write_text(
+                "NAME = 'Привет'\ndef setup(ctx):\n    ctx.route('/api/привет', lambda r: {'текст': 'мир'})\n",
+                encoding="utf-8")
+            ctx = Context(paths=None, config=None)
+            infos = load_all(ctx, [folder])
+            self.assertIsNone(infos[0].error)
+            self.assertIn("/api/привет", ctx.routes)
+
+    def test_cyrillic_route_and_static_charset(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "заметка.txt").write_text("Привет", encoding="utf-8")
+            routes = {"/api/привет": lambda r: {"текст": "мир"}}
+            server = create_server("127.0.0.1", 0, tmp, routes)
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+            base = f"http://127.0.0.1:{server.server_address[1]}"
+            quote = urllib.parse.quote
+            try:
+                with urllib.request.urlopen(base + quote("/api/привет")) as resp:
+                    self.assertEqual(json.loads(resp.read().decode("utf-8")), {"текст": "мир"})
+                with urllib.request.urlopen(base + quote("/заметка.txt")) as resp:
+                    self.assertIn("charset=utf-8", resp.headers["Content-Type"])
+                    self.assertEqual(resp.read().decode("utf-8"), "Привет")
+            finally:
+                server.shutdown()
+                server.server_close()
+
+    def test_cyrillic_hostname_does_not_crash(self):
+        from unittest import mock
+        from yakumo.core import network
+        with mock.patch("socket.gethostname", return_value="ИВАН-ПК"), \
+             mock.patch("socket.getaddrinfo", side_effect=UnicodeError("idna")):
+            self.assertIn("127.0.0.1", network.local_addresses())
+
+    def test_non_utf8_console_does_not_crash(self):
+        import os
+        import subprocess
+        import sys
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {**os.environ, "PYTHONIOENCODING": "ascii", "PYTHONUTF8": "0"}
+            out = subprocess.run([sys.executable, "-m", "yakumo", "--info", "--data-dir", str(Path(tmp) / "Данные")],
+                                 cwd=root, env=env, capture_output=True)
+            self.assertEqual(out.returncode, 0, out.stderr.decode("utf-8", "replace"))
+            self.assertIn(b"Yakumo", out.stdout)
