@@ -65,6 +65,24 @@ def safe_target(root: Path, rel: str, protected: list[str] | None = None) -> Pat
     return target
 
 
+def same_app(a, b) -> bool:
+    """Одна и та же папка, даже если переносной диск получил другую букву."""
+    if not a or not b:
+        return False
+    tail = lambda p: os.path.normcase(os.path.splitdrive(os.path.abspath(str(p)))[1]).rstrip("\\/")
+    return tail(a) == tail(b)
+
+
+def relocate(job: dict, job_path: Path, app: Path | None = None) -> dict:
+    """Пути задания после смены буквы диска: данные рядом с заданием, программа — где запущена."""
+    job_path = job_path.resolve()
+    if job_path.parent.parent.name == "jobs":
+        job["root"] = str(job_path.parents[2])
+    if app is not None and same_app(job.get("app"), app):
+        job["app"] = str(Path(app).resolve())
+    return job
+
+
 def read_json(path: Path, default=None):
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -228,7 +246,7 @@ def make_backup(job: dict, app: Path, root: Path) -> dict:
 
 
 def restore_backup(backup: dict, root: Path, app: Path, selected: set[str] | None = None) -> None:
-    if backup.get("app") != str(app) or not re.fullmatch(r"[a-f0-9]{32}", backup.get("id", "")):
+    if not same_app(backup.get("app"), app) or not re.fullmatch(r"[a-f0-9]{32}", backup.get("id", "")):
         raise ValueError("Резервная копия относится к другой папке программы")
     folder = root / "backups" / backup["id"] / "files"
     # Проверяем все копии до первого изменения программы.
@@ -322,8 +340,10 @@ def stop_child(process) -> None:
             process.wait(timeout=5)
 
 
-def run(job_path: Path, recover: bool = False) -> int:
+def run(job_path: Path, recover: bool = False, app_override: Path | None = None) -> int:
     job = read_json(job_path)
+    if recover:
+        relocate(job, job_path, app_override)
     app, root = Path(job["app"]).resolve(), Path(job["root"]).resolve()
     marker = app / MARKER
     with FileLock(root / "install.lock"):
@@ -382,16 +402,16 @@ def run(job_path: Path, recover: bool = False) -> int:
             return 1
 
 
-def recover_if_needed(job_path: Path) -> int:
+def recover_if_needed(job_path: Path, app: Path | None = None) -> int:
     deadline = time.monotonic() + 60
     while True:
-        job = read_json(job_path)
+        job = relocate(read_json(job_path), job_path, app)
         phase = job.get("phase")
         if phase in ("done", "rolled_back", "failed"):
             (Path(job["app"]) / MARKER).unlink(missing_ok=True)
             return 0
         if not pid_alive(job.get("worker_pid", 0)):
-            return run(job_path, recover=True)
+            return run(job_path, recover=True, app_override=app)
         if phase == "verifying":
             return 0  # установщик уже заменил все файлы и запускает именно этот процесс
         if time.monotonic() >= deadline:
@@ -401,9 +421,10 @@ def recover_if_needed(job_path: Path) -> int:
 
 if __name__ == "__main__":
     try:
-        path = Path(sys.argv[1])
-        raise SystemExit(recover_if_needed(path) if "--recover-if-needed" in sys.argv[2:] else
-                         run(path, "--recover" in sys.argv[2:]))
+        path, flags = Path(sys.argv[1]), sys.argv[2:]
+        app = Path(flags[flags.index("--app") + 1]) if "--app" in flags[:-1] else None
+        raise SystemExit(recover_if_needed(path, app) if "--recover-if-needed" in flags else
+                         run(path, "--recover" in flags, app))
     except Exception as exc:
         print(f"Yakumo update: {exc}", file=sys.stderr)
         raise SystemExit(1)

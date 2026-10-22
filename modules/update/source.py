@@ -22,6 +22,7 @@ MAX_ARCHIVE = 256 * 1024**2
 MAX_UNPACKED = 512 * 1024**2
 MAX_FILES = 10_000
 MAX_FILE = 64 * 1024**2
+MAX_TEXT = 8 * 1024**2  # предел для сверки текста с переводом строк CRLF
 REQUIRED = {"Yakumo.bat", "Yakumo.pyw", "yakumo/__init__.py", "yakumo/__main__.py", "yakumo/app.py"}
 
 
@@ -157,10 +158,10 @@ def matches(path: Path, expected: dict) -> bool:
     amount = path.stat().st_size
     if amount == expected["size"] and git_digest(path) == expected["git_sha"]:
         return True
-    if amount > expected["size"] * 2 or amount > 8 * 1024**2:
+    if amount > expected["size"] * 2 or amount > MAX_TEXT:
         return False
-    # Git for Windows применяет eol=crlf из .gitattributes.
-    return (path.suffix.lower() in (".bat", ".ps1") or (path.parent.name == "launcher" and path.suffix == ".txt")) and git_digest(path, True) == expected["git_sha"]
+    # Git for Windows применяет eol=crlf из .gitattributes (и core.autocrlf).
+    return git_digest(path, True) == expected["git_sha"]
 
 
 def unpack(archive: Path, stage: Path, expected: dict, progress) -> dict:
@@ -191,27 +192,36 @@ def unpack(archive: Path, stage: Path, expected: dict, progress) -> dict:
             seen.add(rel.casefold())
             info = expected[rel]
             expanded += item.file_size
-            if item.file_size != info["size"] or expanded > MAX_UNPACKED:
-                raise ValueError("Размер файла не совпадает с каталогом GitHub")
+            # Архив GitHub собирается git archive и применяет eol=crlf из .gitattributes,
+            # поэтому текстовый файл может быть длиннее blob из каталога.
+            crlf = info["size"] < item.file_size <= min(info["size"] * 2, MAX_TEXT)
+            if (item.file_size != info["size"] and not crlf) or expanded > MAX_UNPACKED:
+                raise ValueError(f"Размер файла не совпадает с каталогом GitHub: {rel}")
             target = safe_target(stage, rel)
             target.parent.mkdir(parents=True, exist_ok=True)
             git_hash = hashlib.sha1(f"blob {info['size']}\0".encode())
             sha256 = hashlib.sha256()
-            amount = 0
+            amount, text = 0, []
             with zf.open(item) as source, target.open("wb") as out:
                 while True:
                     block = source.read(1024 * 1024)
                     if not block:
                         break
                     amount += len(block)
-                    if amount > info["size"]:
+                    if amount > item.file_size:
                         raise ValueError("Файл распаковался сверх заявленного размера")
                     out.write(block)
-                    git_hash.update(block)
                     sha256.update(block)
-            if amount != info["size"] or git_hash.hexdigest() != info["git_sha"]:
+                    if crlf:
+                        text.append(block)
+                    else:
+                        git_hash.update(block)
+            if crlf:
+                raw = b"".join(text).replace(b"\r\n", b"\n")
+                git_hash = hashlib.sha1(f"blob {len(raw)}\0".encode() + raw)
+            if amount != item.file_size or git_hash.hexdigest() != info["git_sha"]:
                 raise ValueError(f"Контрольная сумма не совпала: {rel}")
-            result[rel] = {**info, "sha256": sha256.hexdigest()}
+            result[rel] = {**info, "size": amount, "sha256": sha256.hexdigest()}
             progress(len(result), len(expected))
     if result.keys() != expected.keys():
         raise ValueError("В архиве не хватает файлов")
