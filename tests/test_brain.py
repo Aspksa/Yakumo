@@ -675,6 +675,54 @@ class GrowthTest(BrainBase):
         self.assertIn("task", kinds)
         self.assertEqual(self.tick("Growth").foresee(), [])  # раз в день
 
+    # --- Мозг и Диск ---
+
+    def test_new_documents_are_read_remembered_and_sorted(self):
+        docs = [("Учёба/конспект.txt", 1, "Старый конспект " * 20)]
+        self.ctx.services["disk"] = SimpleNamespace(documents=lambda: docs)
+        reader = self.tick("Docs")
+        self.assertEqual(reader.scan(), 0)  # первый заход: что уже лежало, не читаем
+        contract = "Договор аренды № 15. Арендодатель Иван Петров. Плата 35 000 ₽ до 15 ноября. " * 3
+        docs.append(("договор.pdf", 2, contract))
+        FakeCloud.completions = [json.dumps({
+            "summary": "Договор аренды квартиры",
+            "facts": [{"text": "По договору аренды № 15 платит 35 000 ₽ в месяц", "kind": "work",
+                       "about": [{"name": "Иван Петров", "type": "person", "relation": "арендодатель"}]}],
+            "dates": [{"text": "Оплата аренды", "date": "2099-11-15", "yearly": False}],
+            "message": "Срок оплаты аренды — 15 ноября, 35 000 ₽.", "folder": "Документы/Аренда"},
+            ensure_ascii=False)]
+        self.assertEqual(reader.scan(), 1)
+        prompt = [r for r in FakeCloud.requests if not r.get("stream")][-1]["messages"][0]["content"]
+        self.assertIn("Учёба", prompt)  # знает существующие папки
+        fact = next(f for f in self.memory().facts() if f["source"] == "doc")
+        self.assertEqual(fact["files"], ["договор.pdf"])
+        self.assertEqual(self.memory().data["events"][0]["text"], "Оплата аренды (договор.pdf)")
+        inbox = self.get("/api/brain/inbox")["messages"]
+        self.assertEqual([m["kind"] for m in inbox], ["doc", "sort"])
+        self.assertIn("(disk:договор.pdf)", inbox[0]["text"])
+        plan = self.ctx.chat_tools["disk_sort_plan"].run({})
+        self.assertEqual(plan["files"][0]["to"], "Документы/Аренда")
+        # Перенесли файл — второй раз не читает, а из плана раскладки он уходит.
+        docs[1] = ("Документы/Аренда/договор.pdf", 3, contract)
+        self.assertEqual(reader.scan(), 0)
+        self.assertEqual(self.ctx.chat_tools["disk_sort_plan"].run({})["files"], [])
+        self.post("/api/brain/settings", {"docs": False})
+        docs.append(("новый.txt", 4, "Совсем новый документ " * 10))
+        self.assertEqual(reader.scan(), 0)
+
+    def test_folder_brief(self):
+        docs = [("Учёба/билеты.txt", 1, "Билет 1. Баухаус."), ("Учёба/сроки.txt", 1, "Экзамен 20 мая."),
+                ("Дом/кот.txt", 1, "Кормить кота.")]
+        self.ctx.services["disk"] = SimpleNamespace(documents=lambda: docs)
+        FakeCloud.completions = ["В папке билеты и сроки: экзамен 20 мая."]
+        res = self.ctx.chat_tools["folder_brief"].run({"path": "Учёба", "question": "когда экзамен?"})
+        self.assertEqual(res["documents"], 2)
+        self.assertIn("экзамен 20 мая", res["brief"])
+        prompt = [r for r in FakeCloud.requests if not r.get("stream")][-1]["messages"][0]["content"]
+        self.assertIn("[Учёба/сроки.txt]", prompt)
+        self.assertNotIn("кота", prompt)
+        self.assertIn("когда экзамен?", prompt)
+
 
 class BrainWithDiskTest(BrainBase):
     """Память и Диск вместе: ctx.memory для модулей и ссылки на файлы."""
@@ -714,6 +762,36 @@ class BrainWithDiskTest(BrainBase):
             self.assertIn("+Иван, привет!", prompt)
         finally:
             grow.EDIT_SETTLE = 600
+
+    def test_tables_and_comparing_versions(self):
+        import zipfile
+        root = self.data / "disk"
+        (root / "Счета").mkdir(parents=True, exist_ok=True)
+        (root / "Счета" / "расходы.csv").write_text(
+            "Месяц;Услуга;Сумма\nЯнварь;Свет;1 200,50\nЯнварь;Вода;800\nФевраль;Свет;1 100\n", encoding="utf-8")
+        cells = lambda r, vals: "".join(  # noqa: E731
+            f'<c r="{c}{r}" t="inlineStr"><is><t>{v}</t></is></c>' if isinstance(v, str) else f'<c r="{c}{r}"><v>{v}</v></c>'
+            for c, v in zip("ABC", vals))
+        sheet = ('<worksheet><sheetData>' + "".join(f'<row r="{i}">{cells(i, row)}</row>' for i, row in enumerate(
+            [("Товар", "Цена"), ("Молоко", 89), ("Хлеб", 45.5)], 1)) + '</sheetData></worksheet>')
+        with zipfile.ZipFile(root / "Счета" / "цены.xlsx", "w") as zf:
+            zf.writestr("xl/workbook.xml", '<workbook><sheets><sheet name="Май" sheetId="1"/></sheets></workbook>')
+            zf.writestr("xl/worksheets/sheet1.xml", sheet)
+        table = self.ctx.chat_tools["disk_table"].run
+        res = table({"path": "Счета/расходы.csv", "where": {"услуга": "свет"}, "sum": ["Сумма"]})
+        self.assertEqual((res["rows"], res["sum"]), (2, {"Сумма": 2300.5}))
+        res = table({"path": "Счета/расходы.csv", "sum": "Сумма", "group_by": "Месяц"})
+        self.assertEqual(res["groups"]["Январь"], {"rows": 2, "Сумма": 2000.5})
+        res = table({"path": "Счета/цены.xlsx", "sum": ["цена"]})
+        self.assertEqual((res["sheet"], res["columns"], res["sum"]), ("Май", ["Товар", "Цена"], {"Цена": 134.5}))
+        with self.assertRaises(Exception):
+            table({"path": "Счета/расходы.csv", "sum": ["Нет такой"]})
+        (root / "старый.txt").write_text("Плата 30 000\nСрок 1 год\n", encoding="utf-8")
+        (root / "новый.txt").write_text("Плата 35 000\nСрок 1 год\n", encoding="utf-8")
+        diff = self.ctx.chat_tools["disk_compare"].run({"a": "старый.txt", "b": "новый.txt"})
+        self.assertIn("-Плата 30 000", diff["diff"])
+        self.assertIn("+Плата 35 000", diff["diff"])
+        self.assertEqual((diff["added_lines"], diff["removed_lines"]), (1, 1))
 
 
 if __name__ == "__main__":

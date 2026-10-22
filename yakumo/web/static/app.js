@@ -573,6 +573,13 @@ window.Yakumo = {
     addMessage("bot", text, { from_memory: true });
     if (chatBox.hidden) avatarBtn.classList.add("news");
   },
+  // Открыть чат и сразу спросить Yakumo (например, «Спросить Yakumo» о файле на Диске).
+  ask(text) {
+    setChatOpen(true);
+    if (sending || !text?.trim()) return;
+    addMessage("me", text.trim());
+    ask();
+  },
   // fn(m, { question, chatId, save }) → элемент или null; m — реплика Yakumo, в ней можно хранить своё (m.rated).
   addMessageAction(fn) {
     messageActions.push(fn);

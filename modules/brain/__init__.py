@@ -11,7 +11,8 @@ Yakumo сама выписывает из разговоров факты о п�
 учится по документам Диска (knowledge.py), сдаёт себе ночные экзамены и
 улучшает стиль (grow.py), выполняет длинные задачи в фоне (tasks.py) и пишет
 себе инструменты в песочнице (usertools.py). Для сложных задач думает в несколько
-голов (think.py), учится на 👍/👎 в чате и сама задаёт вопросы. Всё видно на
+голов (think.py), учится на 👍/👎 в чате и сама задаёт вопросы. Новые документы
+Диска читает сама: факты, сроки и сообщение в чат (docs.py). Всё видно на
 вкладках «Разум» и «Рост».
 """
 
@@ -22,6 +23,7 @@ import time
 
 from . import learn
 from .activity import Activity
+from .docs import Docs
 from .grow import Growth
 from .knowledge import Knowledge
 from .learn import Learner
@@ -34,7 +36,7 @@ from .think import DeepThink
 from .usertools import NAME as TOOL_NAME, ToolError, calc, check, sandbox
 
 NAME = "Мозг"
-VERSION = "3.1"
+VERSION = "3.2"
 
 PROMPT_FACTS = 30     # самые важные факты — в каждую подсказку
 PROMPT_RELEVANT = 10  # и ещё столько подходящих к последней реплике (по словам и по смыслу)
@@ -161,6 +163,7 @@ def setup(ctx):
     tasks = Tasks(memory, mind, ctx.chat_tools, lang)
     growth = Growth(memory, mind, lang, ctx.services, tasks)
     deep = DeepThink(memory, cloud, lang)
+    docs = Docs(ctx.paths.data / "brain" / "docs.json", memory, mind, ctx.services, cloud, lang)
 
     def growing(fn):
         """Саморазвитие во сне — только если оно включено."""
@@ -174,6 +177,7 @@ def setup(ctx):
     mind.every("activity", "any", 60, activity.tick)
     mind.every("vectors", "any", 60, semantic.sync)
     mind.every("knowledge", "rest", 5 * 60, knowledge.sync)
+    mind.every("docs", "any", 2 * 60, docs.scan)
     mind.every("sleep", "rest", 60, sleep.tick)
     mind.every("study", "asleep", 30 * 60, growing(study))
     mind.every("exam", "asleep", 30 * 60, growing(growth.exam))
@@ -409,6 +413,12 @@ def setup(ctx):
             return {"error": "Нужна задача" if ru() else "Task required"}
         return deep.run(task, str(args.get("context", "")))
 
+    def brief_tool(args):
+        return docs.brief(str(args.get("path", "")), str(args.get("question", "")))
+
+    def sort_tool(_args):
+        return docs.sort_plan()
+
     def register_tool(t) -> None:
         from yakumo.core.cloud import ChatTool
 
@@ -474,6 +484,11 @@ def setup(ctx):
         ("deep_think", 'подумать сильно над сложной задачей: три внутренних голоса решают независимо, критик собирает '
          'лучший ответ. args: {"task": "задача полностью", "context": "что известно (факты, числа, условия)"}',
          deep_tool, False, lambda a: "Думаю глубоко…" if ru() else "Thinking deeply…"),
+        ("folder_brief", 'пересказать целую папку Диска: что в ней важного, сроки, суммы; можно с вопросом. '
+         'args: {"path": "папка (\"\" — весь Диск)", "question": "вопрос или пусто"}', brief_tool, False,
+         lambda a: f"Читаю папку {short(a, 'path') or 'Диск'}" if ru() else f"Reading folder {short(a, 'path') or 'Drive'}"),
+        ("disk_sort_plan", 'какие новые файлы и в какие папки стоит разложить (дальше — disk_move по кнопке). '
+         'args: {}', sort_tool, False, lambda a: "Смотрю, что разложить" if ru() else "Checking what to sort"),
         ("knowledge_search", 'найти ответ в документах пользователя на Диске (по смыслу, с цитатой и ссылкой). '
          'args: {"query": "вопрос"}', knowledge_tool, False,
          lambda a: f"Ищу в документах: {short(a, 'query')}" if ru() else f"Searching documents: {short(a, 'query')}"),
@@ -516,7 +531,7 @@ def setup(ctx):
                 "wishes": sorted(m["wishes"], key=lambda x: -x.get("count", 1)),
                 "suggestions": [x for x in m["suggestions"] if x.get("status") == "new"],
                 "user_tools": m["user_tools"], "notes": sorted(m["notes"], key=lambda x: -x["created"]),
-                "links": memory.links(), "best": len(m["best"]), "brain": growth.history(), "style": {"versions": m["style"].get("versions", []),
+                "links": memory.links(), "best": len(m["best"]), "sort": docs.sort, "brain": growth.history(), "style": {"versions": m["style"].get("versions", []),
                                                    "active": m["style"].get("active")},
                 "mood_days": [{"date": k, "mood": round(sum(v["mood"]) / len(v["mood"]), 2)}
                          for k, v in sorted(m["days"].items())[-30:] if v.get("mood")]}

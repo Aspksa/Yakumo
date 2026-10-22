@@ -27,7 +27,7 @@
       search: "Поиск по памяти", nothing: "Ничего не нашлось",
       kinds: { person: "О вас", likes: "Вкусы и привычки", work: "Дела и планы", other: "Разное", self: "О Yakumo и вас" },
       types: { person: "Человек", pet: "Питомец", place: "Место", project: "Проект", org: "Организация", thing: "Прочее" },
-      you: "Вы", sources: { auto: "запомнила сама", chat: "вы попросили", manual: "добавлено вручную", module: "из модуля" },
+      you: "Вы", sources: { auto: "запомнила сама", chat: "вы попросили", manual: "добавлено вручную", module: "из модуля", doc: "из документа" },
       from: "Откуда", quote: (q) => `«${q}»`,
       emptyFacts: "Пока ничего не запомнено", emptyFactsHint: "Поговорите с Yakumo или добавьте факт сами.",
       emptyMap: "Карта пуста", emptyMapHint: "Когда Yakumo узнает о ваших близких, питомцах, местах и проектах, они появятся здесь.",
@@ -75,7 +75,8 @@
       notes: "Конспекты по вашим темам", links: "Ассоциации",
       linksHint: "Связи между фактами, которые Yakumo нашла во сне. На карте — пунктиром.",
       good: "Хороший ответ", bad: "Плохой ответ", whyBad: "Что было не так? (можно пропустить)",
-      kindsT2: { feedback: "Разбор 👎", curious: "Любопытство", consolidate: "Уроки", think: "Мысль", edit: "Правки", foresee: "Наперёд" },
+      kindsT2: { feedback: "Разбор 👎", curious: "Любопытство", consolidate: "Уроки", think: "Мысль", edit: "Правки", foresee: "Наперёд", doc: "Документ" },
+      docs: "Читать новые документы", docsHint: "Положили файл на Диск — Yakumo сама прочитает его: суммы, стороны и номера запомнит со ссылкой на файл, сроки добавит в напоминания, о важном напишет в чат и предложит, в какую папку его положить. Тратит фоновые запросы.",
       brain: "Рост мозга", neurons: (n) => `${n} ${plural(n, "нейрон", "нейрона", "нейронов")}`,
       linksN: (n) => `${n} ${plural(n, "связь", "связи", "связей")}`,
       brainHint: "Нейроны — всё, что Yakumo знает: факты, люди и места, уроки, конспекты, навыки, разговоры, фрагменты документов. Связи — ассоциации и ссылки между ними.",
@@ -101,7 +102,7 @@
       search: "Search memory", nothing: "Nothing found",
       kinds: { person: "About you", likes: "Tastes and habits", work: "Work and plans", other: "Other", self: "Yakumo and you" },
       types: { person: "Person", pet: "Pet", place: "Place", project: "Project", org: "Organization", thing: "Other" },
-      you: "You", sources: { auto: "learned herself", chat: "you asked", manual: "added by hand", module: "from a module" },
+      you: "You", sources: { auto: "learned herself", chat: "you asked", manual: "added by hand", module: "from a module", doc: "from a document" },
       from: "Source", quote: (q) => `“${q}”`,
       emptyFacts: "Nothing remembered yet", emptyFactsHint: "Chat with Yakumo or add a fact yourself.",
       emptyMap: "The map is empty", emptyMapHint: "People, pets, places and projects Yakumo learns about will appear here.",
@@ -149,7 +150,8 @@
       notes: "Notes on your topics", links: "Associations",
       linksHint: "Connections between facts Yakumo found while sleeping. Dashed on the map.",
       good: "Good answer", bad: "Bad answer", whyBad: "What was wrong? (optional)",
-      kindsT2: { feedback: "👎 review", curious: "Curiosity", consolidate: "Lessons", think: "Thought", edit: "Edits", foresee: "Ahead" },
+      kindsT2: { feedback: "👎 review", curious: "Curiosity", consolidate: "Lessons", think: "Thought", edit: "Edits", foresee: "Ahead", doc: "Document" },
+      docs: "Read new documents", docsHint: "Put a file on the Drive and Yakumo reads it herself: remembers amounts, parties and numbers with a link to the file, adds deadlines to reminders, writes to the chat about anything important and suggests a folder. Uses background requests.",
       brain: "Brain growth", neurons: (n) => `${n} ${n === 1 ? "neuron" : "neurons"}`,
       linksN: (n) => `${n} ${n === 1 ? "link" : "links"}`,
       brainHint: "Neurons are everything Yakumo knows: facts, people and places, lessons, notes, skills, conversations, document chunks. Links are associations and references between them.",
@@ -338,6 +340,7 @@
       switchRow("auto", L.auto, L.autoHint, off || !d.cloud),
       switchRow("sleep", L.sleep, L.sleepHint, off),
       switchRow("grow", L.grow, L.growHint, off || !d.cloud),
+      switchRow("docs", L.docs, L.docsHint, off || !d.cloud),
       switchRow("mood", L.mood, L.moodHint, off),
       switchRow("activity", L.activity, d.activity_available ? L.activityHint : L.activityNo, off || !d.activity_available),
       note,
@@ -482,6 +485,22 @@
         if (!pairs.has(key)) { pairs.add(key); links.push({ a: byId[ids[i]], b: byId[ids[j]], len: 110, side: true }); }
       }
     }
+    // Документы: файлы из фактов о людях и проектах — маленькие узлы рядом с ними.
+    const docs = {};
+    for (const f of state.data.facts) {
+      for (const p of f.files || []) {
+        for (const id of (f.about || []).filter((x) => byId[x])) {
+          if (!docs[p] && Object.keys(docs).length >= 25) continue;
+          (docs[p] ||= new Set()).add(id);
+        }
+      }
+    }
+    for (const [p, owners] of Object.entries(docs)) {
+      const n = { id: "d:" + p, name: p.split("/").pop(), type: "doc", path: p, r: 5 };
+      nodes.push(n);
+      byId[n.id] = n;
+      for (const id of owners) links.push({ a: byId[id], b: n, len: 70, doc: true });
+    }
     // Ассоциации из сна: факты связаны — пунктир между людьми и местами, о которых они.
     const factById = Object.fromEntries(state.data.facts.map((f) => [f.id, f]));
     for (const a of state.data.links || []) {
@@ -505,7 +524,7 @@
       return x;
     };
     for (const l of links) {
-      const line = el("line", { x1: l.a.x, y1: l.a.y, x2: l.b.x, y2: l.b.y, class: l.assoc ? "assoc" : l.side ? "side" : "" });
+      const line = el("line", { x1: l.a.x, y1: l.a.y, x2: l.b.x, y2: l.b.y, class: l.assoc ? "assoc" : l.doc ? "doc" : l.side ? "side" : "" });
       if (l.assoc) el("title", {}, line).textContent = l.assoc;
     }
     for (const n of nodes) {
@@ -518,7 +537,12 @@
         const sub = el("text", { y: n.r + 28, class: "sub" }, g);
         sub.textContent = n.relation;
       }
-      if (!n.fixed) {
+      if (n.path) {
+        const openDoc = () => window.open(`/api/disk/file?path=${encodeURIComponent(n.path)}`, "_blank");
+        el("title", {}, g).textContent = n.path;
+        g.addEventListener("click", openDoc);
+        g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDoc(); } });
+      } else if (!n.fixed) {
         const pick = () => { state.node = state.node === n.id ? null : n.id; draw(); };
         g.addEventListener("click", pick);
         g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } });

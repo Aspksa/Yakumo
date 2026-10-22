@@ -13,6 +13,8 @@
       moveHere: "Переместить сюда", copyHere: "Копировать сюда", chooseFolder: "Выберите папку",
       download: "Скачать", share: "Поделиться", del: "Удалить", restore: "Восстановить",
       purge: "Удалить навсегда", emptyTrash: "Очистить корзину", open: "Открыть", clear: "Снять выделение",
+      askYakumo: "Спросить Yakumo", askFile: (p) => `Расскажи, что в файле [${p.split("/").pop()}](disk:${p}): главное, сроки и суммы.`,
+      askFolder: (p) => `Что важного в папке «${p}»?`, askCompare: (a, b) => `Чем отличаются ${a} и ${b}?`,
       selected: (n) => `Выбрано: ${n}`, search: "Поиск по Диску", searchFound: (n, more) =>
         `Найдено: ${n}${more ? "+" : ""}`, nothingFound: "Ничего не найдено",
       sortBy: "Сортировка", sorts: { name: "По имени", mtime: "По дате", size: "По размеру", kind: "По типу" },
@@ -53,6 +55,8 @@
       moveHere: "Move here", copyHere: "Copy here", chooseFolder: "Choose a folder",
       download: "Download", share: "Share", del: "Delete", restore: "Restore",
       purge: "Delete forever", emptyTrash: "Empty trash", open: "Open", clear: "Clear selection",
+      askYakumo: "Ask Yakumo", askFile: (p) => `What's in [${p.split("/").pop()}](disk:${p})? Key points, deadlines and amounts.`,
+      askFolder: (p) => `What's important in the folder “${p}”?`, askCompare: (a, b) => `How do ${a} and ${b} differ?`,
       selected: (n) => `${n} selected`, search: "Search Drive", searchFound: (n, more) =>
         `Found: ${n}${more ? "+" : ""}`, nothingFound: "Nothing found",
       sortBy: "Sort", sorts: { name: "Name", mtime: "Date", size: "Size", kind: "Type" },
@@ -99,6 +103,7 @@
   const ICONS = {
     "dk-folder": '<path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5v10a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/>',
     "dk-file": '<path d="M6 3h8l5 5v13H6z"/><path d="M14 3v5h5"/>',
+    "dk-ask": '<path d="M4 5h16v11H9l-5 4z"/><path d="M9 9.5h6M9 12.5h4"/>',
     "dk-image": '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="9.5" r="1.8"/><path d="m21 16-5-5-9 9"/>',
     "dk-video": '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m10 9 5 3-5 3z"/>',
     "dk-audio": '<path d="M9 18V6l11-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>',
@@ -406,6 +411,7 @@
     }
     return [
       ...(one && !one.dir ? [{ icon: "dk-file", label: L.open, run: () => open(one) }] : []),
+      ...(askable(sel) ? [{ icon: "dk-ask", label: L.askYakumo, run: () => askYakumo(sel) }] : []),
       { icon: "dk-download", label: L.download, run: () => download(sel) },
       ...(one ? [{ icon: "dk-share", label: L.share, run: () => share(one) },
                  { icon: "dk-rename", label: L.rename, run: () => rename(one) }] : []),
@@ -593,6 +599,16 @@
   async function newFolder() {
     const name = await ask(L.newFolder, L.folderName, L.newFolder, L.create);
     if (name) act(() => post("mkdir", { path: state.path, name }));
+  }
+
+  // «Спросить Yakumo»: чат открывается с вопросом о файле, папке или о разнице двух файлов.
+  function askable(sel) {
+    return !!window.Yakumo.ask && (sel.length === 1 || (sel.length === 2 && !sel[0].dir && !sel[1].dir));
+  }
+
+  function askYakumo(sel) {
+    if (sel.length === 2) return window.Yakumo.ask(L.askCompare(sel[0].path, sel[1].path));
+    window.Yakumo.ask(sel[0].dir ? L.askFolder(sel[0].path) : L.askFile(sel[0].path));
   }
 
   async function rename(item) {
@@ -909,6 +925,7 @@
       h("div", { class: "dk-viewer-top" },
         h("div", { class: "dk-viewer-title" }, h("strong", {}, item.name),
           h("small", {}, `${list.length > 1 ? `${index + 1} / ${list.length} · ` : ""}${size(item.size)}`)),
+        state.view === "files" && window.Yakumo.ask ? tool("dk-ask", L.askYakumo, () => { closeViewer(); askYakumo([item]); }) : "",
         tool("dk-download", L.download, () => download([item])),
         state.view === "files" ? tool("dk-share", L.share, () => share(item)) : "",
         state.view === "files" ? tool("dk-trash", L.del, () => { closeViewer(); remove([item]); }) : "",
