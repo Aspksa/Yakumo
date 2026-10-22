@@ -5,7 +5,8 @@
   --text: #1d2129;
   --muted: #6b7280;
   --accent: #5846a0;
-  --accent-soft: #eeebf8;
+  --accent-soft: #eae6f7;
+  --hover: #eceef2;
   --ok: #1f9d55;
   --bad: #d64545;
   --top: 56px;
@@ -29,7 +30,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .topbar {
   position: fixed; inset: 0 0 auto 0; height: var(--top); z-index: 10;
   display: flex; align-items: center; gap: 16px; padding: 0 16px;
-  background: var(--surface); border-bottom: 1px solid var(--border);
+  background: var(--bg);
 }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 17px;
          width: calc(var(--rail) + 96px); }
@@ -46,7 +47,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
   width: 44px; height: 40px; border-radius: 8px; color: var(--muted);
   transition: background .15s, color .15s;
 }
-.icon-btn:hover { background: var(--bg); color: var(--text); }
+.icon-btn:hover { background: var(--hover); color: var(--text); }
 .icon-btn.active { background: var(--accent-soft); color: var(--accent); }
 .icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
@@ -64,7 +65,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .rail {
   position: fixed; top: var(--top); bottom: 0; left: 0; width: var(--rail); z-index: 5;
   display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
-  padding: 12px 0; background: var(--surface); border-right: 1px solid var(--border);
+  padding: 12px 0; background: var(--bg);
 }
 
 /* Содержимое */
