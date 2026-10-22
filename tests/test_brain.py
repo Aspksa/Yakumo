@@ -1,4 +1,5 @@
 import json
+import logging
 import sys
 import tempfile
 import threading
@@ -409,6 +410,60 @@ class BrainTest(BrainBase):
         self.assertIn("Чат: кнопка повтора", FakeCloud.requests[-1]["messages"][-1]["content"])
         self.post("/api/brain/clear", {"all": True})
         self.assertEqual(len(api.versions()), 1)  # очистка памяти о пользователе не стирает историю версий
+
+    def test_improvements_collect_failures_errors_and_ideas(self):
+        improve = self.tick("Improvements")
+        self.memory().wish("Читать PDF со сканами")
+        improve.scan()
+        improve.scan()  # повторный просмотр не плодит пункты
+        self.post("/api/brain/feedback", {"question": "Сколько 2+2?", "answer": "5", "good": False, "note": "ошибка в счёте"})
+        log = logging.getLogger("yakumo.modules.disk")
+        for _ in range(2):
+            try:
+                {}["нет"]
+            except KeyError:
+                log.exception("Не удалось разобрать файл")
+        items = {x["source"]: x for x in self.get("/api/brain")["improvements"]}
+        self.assertEqual(set(items), {"wish", "thumbs", "error"})
+        self.assertEqual(items["thumbs"]["title"], "ошибка в счёте")
+        self.assertEqual((items["error"]["module"], items["error"]["count"]), ("Диск", 2))
+        self.assertIn("KeyError", items["error"]["detail"])
+        self.assertIn("test_brain.py", items["error"]["detail"])
+        # Оформление задачей в простое.
+        FakeCloud.completions = [json.dumps({"title": "Распознавать сканы PDF", "problem": "Не читает сканы",
+                                             "want": "Текст из сканов ищется", "module": "Диск", "priority": "high"},
+                                            ensure_ascii=False)] + ["{}"] * 2
+        self.assertEqual(improve.refine(), 3)
+        state = self.get("/api/brain")
+        wish = next(x for x in state["improvements"] if x["source"] == "wish")
+        self.assertEqual((wish["title"], wish["priority"]), ("Распознавать сканы PDF", "high"))
+        self.assertEqual(state["improvements"][0]["id"], wish["id"])  # важное выше
+        # Свои идеи раз в день.
+        FakeCloud.completions = [json.dumps({"ideas": [{"title": "Напоминания по времени", "problem": "Нет таймеров",
+                                                        "want": "Напомнить через час", "module": "Чат"}]},
+                                            ensure_ascii=False)]
+        self.assertEqual(improve.ideas(), 1)
+        self.assertEqual(improve.ideas(), 0)
+        # Копирование для Claude: все новые → текст задачи, статус «отдана».
+        res = self.post("/api/brain/improvements/copy", {})
+        self.assertIn("## 1. Распознавать сканы PDF", res["text"])
+        self.assertIn("**Что хочется:** Текст из сканов ищется", res["text"])
+        self.assertIn("Напоминания по времени", res["text"])
+        self.assertTrue(all(x["status"] == "given" for x in res["state"]["improvements"]))
+        # Удалённое желание не возвращается, сделанная ошибка при повторе снова новая.
+        self.post("/api/brain/item/delete", {"type": "improvements", "ids": [wish["id"]]})
+        improve.scan()
+        error = next(x for x in self.get("/api/brain")["improvements"] if x["source"] == "error")
+        self.post("/api/brain/improvement", {"id": error["id"], "status": "done"})
+        try:
+            {}["нет"]
+        except KeyError:
+            log.exception("Не удалось разобрать файл")
+        state = self.get("/api/brain")["improvements"]
+        self.assertNotIn("wish", {x["source"] for x in state})
+        self.assertEqual(next(x for x in state if x["source"] == "error")["status"], "new")
+        self.post("/api/brain/improvement", {"title": "Тёмная тема для Диска"})
+        self.assertIn("manual", {x["source"] for x in self.get("/api/brain")["improvements"]})
 
     # --- Контекст компьютера ---
 

@@ -19,12 +19,14 @@ Yakumo сама выписывает из разговоров факты о п�
 from __future__ import annotations
 
 import json
+import logging
 import time
 
 from . import learn
 from .activity import Activity
 from .docs import Docs
 from .grow import Growth
+from .improve import ErrorCatcher, Improvements
 from .knowledge import Knowledge
 from .learn import Learner
 from .mind import Mind
@@ -186,6 +188,10 @@ def setup(ctx):
     growth = Growth(memory, mind, lang, ctx.services, tasks)
     deep = DeepThink(memory, cloud, lang)
     docs = Docs(ctx.paths.data / "brain" / "docs.json", memory, mind, ctx.services, cloud, lang)
+    improve = Improvements(memory, mind, lang, lambda: next((v["revision"][:7] for v in memory.versions()), ""))
+    catcher = ErrorCatcher(improve, getattr(ctx.paths, "app", ""))
+    logging.getLogger("yakumo").addHandler(catcher)
+    ctx.on_stop(lambda: logging.getLogger("yakumo").removeHandler(catcher))
 
     def growing(fn):
         """Саморазвитие во сне — только если оно включено."""
@@ -210,6 +216,9 @@ def setup(ctx):
     mind.every("edits", "rest", 10 * 60, growing(growth.edits))
     mind.every("foresee", "rest", 30 * 60, growing(growth.foresee))
     mind.every("census", "any", 60 * 60, lambda: growth.census(len(knowledge.items)))
+    mind.every("improve", "any", 5 * 60, improve.scan)
+    mind.every("improve_refine", "rest", 10 * 60, improve.refine)
+    mind.every("ideas", "rest", 30 * 60, growing(improve.ideas))
     learner.ticks = [mind.tick]
     learner.start()
     tasks.resume()
@@ -566,6 +575,7 @@ def setup(ctx):
                 "promises": sorted(m["promises"], key=lambda p: (p.get("done", False), p.get("due") or "9999")),
                 "events": sorted(m["events"], key=lambda e: e["date"][5:] if e.get("yearly") else e["date"]),
                 "skills": m["skills"], "upcoming": memory.upcoming(7), "versions": memory.versions(),
+                "improvements": memory.improvements(),
                 "mind": mind.status(), "knowledge": knowledge.status(),
                 "lessons": sorted(m["lessons"], key=lambda x: -x.get("seen", 1)),
                 "wishes": sorted(m["wishes"], key=lambda x: -x.get("count", 1)),
@@ -613,7 +623,7 @@ def setup(ctx):
         kind = d.get("type")
         if kind == "entity":
             memory.delete_entities(d.get("ids"))
-        elif kind in ("promises", "events", "skills", "lessons", "wishes", "notes", "links"):
+        elif kind in ("promises", "events", "skills", "lessons", "wishes", "notes", "links", "improvements"):
             memory.delete_items(kind, d.get("ids"))
         else:
             raise BrainError("Неизвестный тип записи")
@@ -676,7 +686,27 @@ def setup(ctx):
             growth.rate(d.get("question") or "", d.get("answer") or "", d.get("good") is True, d.get("note") or "")
         except ValueError as exc:
             raise BrainError(str(exc)) from exc
+        if d.get("good") is not True:
+            improve.thumbs(str(d.get("question") or ""), str(d.get("answer") or ""),
+                           " ".join(str(d.get("note") or "").split())[:500])
         return {"ok": True}
+
+    def improvement(req):
+        d = body(req)
+        if d.get("id"):
+            memory.edit_improvement(str(d["id"]), **{k: v for k, v in d.items() if k != "id"})
+        elif not memory.improvement({**d, "key": "manual:" + str(time.time_ns()), "source": "manual", "refined": True}):
+            raise BrainError("Нужен заголовок")
+        return state()
+
+    def improvements_copy(req):
+        ids = body(req).get("ids")
+        ids = [str(x) for x in ids] if isinstance(ids, list) else None
+        text = improve.markdown(ids)
+        for x in memory.improvements():
+            if (x["id"] in ids if ids else True) and x["status"] == "new":
+                memory.edit_improvement(x["id"], status="given")
+        return {"text": text, "state": state()}
 
     def style(req):
         version = body(req).get("id")
@@ -685,8 +715,8 @@ def setup(ctx):
 
     def grow_now(req):
         what = body(req).get("what")
-        if what not in ("exam", "style", "study", "curious", "consolidate", "foresee"):
-            raise BrainError("what: exam, style, study, curious, consolidate или foresee")
+        if what not in ("exam", "style", "study", "curious", "consolidate", "foresee", "ideas"):
+            raise BrainError("what: exam, style, study, curious, consolidate, foresee или ideas")
         if not mind.can_think():
             raise BrainError("Нет ключа Cloud.ru или исчерпан дневной бюджет")
         if what == "exam":
@@ -700,6 +730,8 @@ def setup(ctx):
             growth.consolidate(force=True)
         elif what == "foresee":
             growth.foresee(force=True)
+        elif what == "ideas":
+            improve.ideas(force=True)
         else:
             knowledge.sync()
             knowledge.study(lang())
@@ -725,6 +757,8 @@ def setup(ctx):
         "POST /api/brain/style": style,
         "POST /api/brain/feedback": feedback,
         "POST /api/brain/grow": grow_now,
+        "POST /api/brain/improvement": improvement,
+        "POST /api/brain/improvements/copy": improvements_copy,
         "POST /api/brain/fact/restore": lambda r: (memory.touch([str(body(r).get("id"))]), state())[1],
         "POST /api/brain/import": lambda r: {**memory.import_(r.read_json()), "state": state()},
     }
