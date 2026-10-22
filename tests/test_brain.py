@@ -590,6 +590,91 @@ class GrowthTest(BrainBase):
         state = self.post("/api/brain/grow", {"what": "study"})
         self.assertEqual(state["notes"][0]["sources"], ["Учёба/конспект.txt"])
 
+    # --- Эволюция из чата и сильное мышление ---
+
+    def test_deep_think_several_voices_and_critic(self):
+        FakeCloud.completions = ["Черновик: 120", "Черновик: 125, учёл комиссию", "Черновик: 120",
+                                 json.dumps({"answer": "Итого **125** ₽ с комиссией", "confidence": 4,
+                                             "disagreements": "Скептик учёл комиссию",
+                                             "lesson": "Не забывать про комиссии в расчётах"}, ensure_ascii=False)]
+        res = self.ctx.chat_tools["deep_think"].run({"task": "Сколько заплачу за 100 ₽ с комиссией?",
+                                                     "context": "Комиссия 5 ₽, НДС 20 ₽"})
+        self.assertEqual(res["answer"], "Итого **125** ₽ с комиссией")
+        self.assertEqual(res["voices"], 3)
+        self.assertEqual(self.memory().data["lessons"][0]["source"], "think")
+        critic = [r for r in FakeCloud.requests if not r.get("stream")][-1]["messages"][0]["content"]
+        self.assertIn("Черновик: 125, учёл комиссию", critic)
+        FakeCloud.replies = ["Привет!"]
+        self.chat([{"role": "user", "content": "Привет"}])
+        self.assertIn("deep_think", self.system_prompt())
+
+    def test_thumbs_up_and_down_from_chat(self):
+        growth = self.tick("Growth")
+        self.post("/api/brain/feedback", {"question": "Как сварить кофе?", "answer": "Вот так.", "good": True})
+        self.post("/api/brain/feedback", {"question": "Сколько 2+2?", "answer": "5", "good": False,
+                                          "note": "ошибка в счёте"})
+        self.assertEqual(self.get("/api/brain")["best"], 1)
+        FakeCloud.completions = [json.dumps({"why": "Неверно посчитала", "lesson": "Считать через calc"},
+                                            ensure_ascii=False)]
+        self.assertEqual(growth.digest(), 1)
+        state = self.get("/api/brain")
+        self.assertEqual(state["lessons"][0]["text"], "Считать через calc")
+        self.assertEqual(state["lessons"][0]["source"], "feedback")
+        self.assertEqual(self.memory().data["feedback"], [])
+        prompt = [r for r in FakeCloud.requests if not r.get("stream")][-1]["messages"][0]["content"]
+        self.assertIn("ошибка в счёте", prompt)
+        # Образцы с 👍 идут в экзамен и улучшение стиля первыми.
+        self.assertIn("Как сварить кофе?", growth._samples(4))
+
+    def test_curiosity_asks_one_question_a_day(self):
+        for text in ("Зовут Аня", "Учится на дизайнера", "Есть кот Персик"):
+            self.memory().add(text, "person")
+        FakeCloud.completions = [json.dumps({"question": "Как зовут твоего научного руководителя?",
+                                             "why": "Не знаю руководителя"}, ensure_ascii=False)]
+        res = self.post("/api/brain/grow", {"what": "curious"})
+        self.assertEqual(res["question"], "Как зовут твоего научного руководителя?")
+        inbox = self.get("/api/brain/inbox")["messages"]
+        self.assertEqual(inbox[-1]["kind"], "question")
+        self.assertIsNone(self.tick("Growth").curious())  # сегодня уже спрашивала
+
+    def test_lessons_consolidate_in_sleep(self):
+        a = self.memory().lesson("Отвечать короче", "chat")
+        b = self.memory().lesson("Не писать длинные списки", "exam")
+        self.memory().lesson("Проверять расчёты через calc", "exam")
+        a["seen"] = 3
+        FakeCloud.completions = [json.dumps({"lessons": [
+            {"text": "Отвечать коротко, без длинных списков", "from": [a["id"], b["id"]]},
+            {"text": "Проверять расчёты через calc", "from": ["чужой"]}]}, ensure_ascii=False)]
+        state = self.post("/api/brain/grow", {"what": "consolidate"})
+        self.assertEqual([(x["text"], x["seen"]) for x in state["lessons"]],
+                         [("Отвечать коротко, без длинных списков", 4), ("Проверять расчёты через calc", 1)])
+
+    def test_brain_growth_census(self):
+        self.memory().add("Зовут Аня", "person", about=["Аня"])
+        snap = self.tick("Growth").census(5)
+        self.assertEqual(snap["parts"]["documents"], 5)
+        self.assertEqual(snap["links"], 1)
+        brain = self.get("/api/brain")["brain"]
+        self.assertEqual(brain[-1]["neurons"], snap["neurons"])
+
+    def test_foresee_prepares_in_advance(self):
+        self.memory().promise("Сдать отчёт по практике", due=time.strftime("%Y-%m-%d"))
+        FakeCloud.completions = [
+            json.dumps({"needs": [{"what": "Черновик отчёта по практике", "why": "срок сегодня",
+                                   "task": "Собери черновик отчёта по практике из документов"},
+                                  {"what": "Взять зонт", "why": "", "task": None}]}, ensure_ascii=False),
+            "Черновик готов: три раздела."]
+        state = self.post("/api/brain/grow", {"what": "foresee"})
+        prompt = [r for r in FakeCloud.requests if not r.get("stream")][0]["messages"][0]["content"]
+        self.assertIn("Сдать отчёт по практике", prompt)
+        task = next(t for t in state["mind"]["thoughts"] if t["kind"] == "task")
+        self.assertEqual(task["title"], "Заранее: Черновик отчёта по практике")
+        self.wait_for(lambda: self.memory().item("thoughts", task["id"])["status"] == "done")
+        kinds = [m["kind"] for m in self.get("/api/brain/inbox")["messages"]]
+        self.assertIn("foresee", kinds)
+        self.assertIn("task", kinds)
+        self.assertEqual(self.tick("Growth").foresee(), [])  # раз в день
+
 
 class BrainWithDiskTest(BrainBase):
     """Память и Диск вместе: ctx.memory для модулей и ссылки на файлы."""
@@ -606,6 +691,29 @@ class BrainWithDiskTest(BrainBase):
         self.assertEqual(self.memory().fact(fact["id"])["files"], ["Бумаги/договор.pdf"])
         result = self.ctx.chat_tools["disk_search"].run({"query": "аренда квартиры"})
         self.assertEqual(result["from_memory"][0]["files"], ["Бумаги/договор.pdf"])
+
+    def test_learns_from_user_edits_of_her_files(self):
+        grow = sys.modules["yakumo_modules.brain.grow"]
+        grow.EDIT_SETTLE = 0
+        try:
+            res = self.ctx.chat_tools["disk_write"].run({"path": "Письма/письмо.md",
+                                                         "text": "Уважаемый Иван Петрович!\n\nНастоящим сообщаю, что отчёт готов."})
+            draft = self.memory().data["drafts"][0]
+            self.assertEqual(draft["path"], res["path"])
+            growth = self.tick("Growth")
+            self.assertEqual(growth.edits(), 0)  # пока не правили
+            draft["at"] -= 100
+            (self.data / "disk" / "Письма" / "письмо.md").write_text("Иван, привет!\n\nОтчёт готов.", encoding="utf-8")
+            FakeCloud.completions = [json.dumps({"changes": "Убрал официоз",
+                                                 "lessons": ["Писать письма просто, без канцелярита"]},
+                                                ensure_ascii=False)]
+            self.assertEqual(growth.edits(), 1)
+            self.assertEqual(self.memory().data["lessons"][0]["source"], "edit")
+            self.assertEqual(self.memory().data["drafts"], [])
+            prompt = [r for r in FakeCloud.requests if not r.get("stream")][-1]["messages"][0]["content"]
+            self.assertIn("+Иван, привет!", prompt)
+        finally:
+            grow.EDIT_SETTLE = 600
 
 
 if __name__ == "__main__":

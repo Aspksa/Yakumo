@@ -190,3 +190,18 @@
   .br-z i:nth-child(3) { transform: translate(-16px, -26px); }
   .br-mind-dot { animation: none; }
 }
+
+/* 👍/👎 под ответами в чате */
+.br-rates { display: inline-flex; gap: 2px; }
+.msg-meta .br-rate.on { opacity: 1; color: var(--accent); }
+.msg-meta .br-rate:disabled { cursor: default; }
+
+/* Рост мозга */
+.br-brain { margin-bottom: 8px; }
+.br-brain-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.br-brain-num { font-size: 20px; font-weight: 600; color: var(--accent); }
+.br-brain-up { font-size: 13px; color: var(--ok, var(--accent)); }
+.br-brain-bars { display: flex; align-items: flex-end; gap: 3px; height: 68px; margin: 12px 0 6px; }
+.br-brain-bars i { flex: 1 1 0; max-width: 18px; border-radius: 3px 3px 0 0; background: var(--accent);
+                   opacity: .75; box-shadow: 0 0 8px rgba(var(--accent-rgb), .35); }
+.br-brain-bars i:last-child { opacity: 1; }

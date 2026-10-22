@@ -173,6 +173,8 @@ const SETTINGS = { id: "settings", icon: "i-settings" };
 
 const content = document.getElementById("content");
 const avatarBtn = document.getElementById("avatar");
+// Кнопки модулей под ответами Yakumo (Yakumo.addMessageAction), например 👍/👎 «Мозга».
+const messageActions = [];
 const avatarImg = avatarBtn.querySelector(".av-img");
 const avatarBlink = avatarBtn.querySelector(".av-blink");
 // Картинки аватара лежат в avatars/: <образ>-<ширина>.webp. Моргание есть только у образов с открытыми глазами,
@@ -571,6 +573,11 @@ window.Yakumo = {
     addMessage("bot", text, { from_memory: true });
     if (chatBox.hidden) avatarBtn.classList.add("news");
   },
+  // fn(m, { question, chatId, save }) → элемент или null; m — реплика Yakumo, в ней можно хранить своё (m.rated).
+  addMessageAction(fn) {
+    messageActions.push(fn);
+    showMessages();
+  },
   addPage({ id, icon: svg, title, render: draw }) {
     if (PAGES[id]) return;
     const sym = document.createElementNS("http://www.w3.org/2000/svg", "symbol");
@@ -912,6 +919,14 @@ function messageEl(m) {
     meta.lastChild.style.opacity = 1;
   } else if (!m.pending && !m.error && text) {
     meta.append(iconButton("i-copy", T.copy, (e) => copyText(text, e.currentTarget)));
+    if (m.from === "bot" && !m.local && !m.from_memory) {
+      const i = messages.indexOf(m);
+      const question = messages.slice(0, i).reverse().find((x) => x.from === "me")?.text || "";
+      const save = () => { saveMessages(); showMessages(); };
+      for (const action of messageActions) {
+        try { const el = action(m, { question, chatId, save }); if (el) meta.append(el); } catch { /* модуль ошибся — без кнопки */ }
+      }
+    }
   }
   const col = h("div", { class: "msg-col" }, bubble, (m.cards || []).map((c) => cardEl(c, m)), meta);
   if (m.from === "me") return h("div", { class: "msg-row me" }, col);

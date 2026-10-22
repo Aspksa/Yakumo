@@ -68,12 +68,19 @@
       tools: "Инструменты, которые Yakumo написала себе", toolPending: "ждёт вашего решения", toolOn: "включён", toolOff: "выключен",
       enable: "Включить", disable: "Выключить", code: "Код", test: "Проверка",
       toolsHint: "Код выполняется в отдельном процессе: без файлов, сети и программ, не дольше 5 секунд.",
-      lessonFrom: { chat: "из разговора", exam: "ночной экзамен" }, lessons: "Уроки", lessonsHint: "Правила, которые Yakumo вывела сама из ошибок и ваших поправок. Она видит их в каждом разговоре.",
+      lessonFrom: { chat: "из разговора", exam: "ночной экзамен", feedback: "после 👎", think: "глубокое размышление", edit: "по вашим правкам", sleep: "укреплён во сне" }, lessons: "Уроки", lessonsHint: "Правила, которые Yakumo вывела сама из ошибок и ваших поправок. Она видит их в каждом разговоре.",
       style: "Стиль ответов", styleHint: "Раз в неделю Yakumo переписывает свою инструкцию «как отвечать». Можно вернуть любую версию.",
       styleOff: "Стиль выключен", turnOff: "Выключить", use: "Вернуть", active: "сейчас",
       wishes: "Чему Yakumo хочет научиться", times: (n) => `×${n}`,
       notes: "Конспекты по вашим темам", links: "Ассоциации",
       linksHint: "Связи между фактами, которые Yakumo нашла во сне. На карте — пунктиром.",
+      good: "Хороший ответ", bad: "Плохой ответ", whyBad: "Что было не так? (можно пропустить)",
+      kindsT2: { feedback: "Разбор 👎", curious: "Любопытство", consolidate: "Уроки", think: "Мысль", edit: "Правки", foresee: "Наперёд" },
+      brain: "Рост мозга", neurons: (n) => `${n} ${plural(n, "нейрон", "нейрона", "нейронов")}`,
+      linksN: (n) => `${n} ${plural(n, "связь", "связи", "связей")}`,
+      brainHint: "Нейроны — всё, что Yakumo знает: факты, люди и места, уроки, конспекты, навыки, разговоры, фрагменты документов. Связи — ассоциации и ссылки между ними.",
+      best: (n) => `Ответов с 👍 (образцы для стиля): ${n}`,
+      curiousNow: "Задать мне вопрос", consolidateNow: "Укрепить уроки", foreseeNow: "Подумать наперёд",
       emptyGrow: "Yakumo только начинает расти", emptyGrowHint: "Уроки, стиль, желания и конспекты появятся после разговоров и первых ночей.",
     },
     en: {
@@ -135,12 +142,19 @@
       tools: "Tools Yakumo wrote for herself", toolPending: "awaiting your decision", toolOn: "on", toolOff: "off",
       enable: "Enable", disable: "Disable", code: "Code", test: "Test",
       toolsHint: "Code runs in a separate process: no files, network or programs, at most 5 seconds.",
-      lessonFrom: { chat: "from a conversation", exam: "night exam" }, lessons: "Lessons", lessonsHint: "Rules Yakumo derived herself from mistakes and your corrections. She sees them in every conversation.",
+      lessonFrom: { chat: "from a conversation", exam: "night exam", feedback: "after a 👎", think: "deep thinking", edit: "from your edits", sleep: "strengthened in sleep" }, lessons: "Lessons", lessonsHint: "Rules Yakumo derived herself from mistakes and your corrections. She sees them in every conversation.",
       style: "Answer style", styleHint: "Once a week Yakumo rewrites her “how to answer” instruction. Any version can be restored.",
       styleOff: "Style is off", turnOff: "Turn off", use: "Restore", active: "current",
       wishes: "What Yakumo wants to learn", times: (n) => `×${n}`,
       notes: "Notes on your topics", links: "Associations",
       linksHint: "Connections between facts Yakumo found while sleeping. Dashed on the map.",
+      good: "Good answer", bad: "Bad answer", whyBad: "What was wrong? (optional)",
+      kindsT2: { feedback: "👎 review", curious: "Curiosity", consolidate: "Lessons", think: "Thought", edit: "Edits", foresee: "Ahead" },
+      brain: "Brain growth", neurons: (n) => `${n} ${n === 1 ? "neuron" : "neurons"}`,
+      linksN: (n) => `${n} ${n === 1 ? "link" : "links"}`,
+      brainHint: "Neurons are everything Yakumo knows: facts, people and places, lessons, notes, skills, conversations, document chunks. Links are associations and references between them.",
+      best: (n) => `Answers with 👍 (style examples): ${n}`,
+      curiousNow: "Ask me a question", consolidateNow: "Strengthen lessons", foreseeNow: "Think ahead",
       emptyGrow: "Yakumo is just starting to grow", emptyGrowHint: "Lessons, style, wishes and notes appear after conversations and the first nights.",
     },
   };
@@ -193,6 +207,47 @@
   }
   setTimeout(mindPoll, 1000);
   setInterval(mindPoll, 30000);
+
+  // --- 👍/👎 под ответами Yakumo: хорошие становятся образцами, по плохим она выводит урок ---
+
+  const THUMB = "M7 10v11H3V10h4zm2 11h8.5a2 2 0 0 0 2-1.6l1.4-7A2 2 0 0 0 19 10h-5l.8-4.2a1.6 1.6 0 0 0-2.9-1.2L9 9.5V21z";
+
+  function thumb(down) {
+    const svg = document.createElementNS(SVG, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    if (down) svg.style.transform = "scaleY(-1)";
+    const path = document.createElementNS(SVG, "path");
+    path.setAttribute("d", THUMB);
+    path.setAttribute("fill", "currentColor");
+    svg.append(path);
+    return svg;
+  }
+
+  window.Yakumo.addMessageAction?.((m, { question, chatId, save }) => {
+    if (!question) return null;
+    const rate = async (good) => {
+      if (m.rated) return;
+      let note = "";
+      if (!good) {
+        note = prompt(L.whyBad, "");
+        if (note === null) return;
+      }
+      try {
+        await postJSON("/api/brain/feedback", { question, answer: m.text, good, note, chat_id: chatId });
+        m.rated = good ? "up" : "down";
+        save();
+      } catch { /* память выключена или сервер недоступен — без оценки */ }
+    };
+    const btn = (good) => {
+      const b = h("button", { type: "button", class: "br-rate" + (m.rated === (good ? "up" : "down") ? " on" : ""),
+                              title: good ? L.good : L.bad, "aria-label": good ? L.good : L.bad,
+                              disabled: !!m.rated, onclick: () => rate(good) });
+      b.append(thumb(!good));
+      return b;
+    };
+    if (m.rated) return btn(m.rated === "up");
+    return h("span", { class: "br-rates" }, btn(true), btn(false));
+  });
 
   // --- Запросы ---
 
@@ -605,12 +660,13 @@
             h("span", { class: "row-hint" }, `${L.budgetUsed(m.used, m.budget)}. ${L.budgetHint}`)),
           budget),
         h("p", { class: "row-hint" }, k.available ? L.knowledge(k) : L.noDisk)),
+      brainCard(),
       h("section", { class: "br-kind" }, h("h2", {}, L.thoughts, h("span", {}, String(thoughts.length))),
         thoughts.length ? h("ul", { class: "br-list" }, thoughts.map((t) => {
           const open = state.open === t.id;
           const live = t.status === "queued" || t.status === "running";
           return h("li", { class: `br-fact br-thought s-${t.status}` },
-            h("span", { class: "br-thought-kind" }, L.kindsT[t.kind] || t.kind),
+            h("span", { class: "br-thought-kind" }, L.kindsT[t.kind] || L.kindsT2[t.kind] || t.kind),
             h("div", { class: "br-fact-body" },
               t.result ? h("button", { type: "button", class: "br-link br-fact-text", "aria-expanded": String(open),
                                        onclick: () => { state.open = open ? null : t.id; draw(); } }, t.title)
@@ -623,13 +679,30 @@
     ];
   }
 
+  function brainCard() {
+    const days = state.data.brain || [];
+    if (!days.length) return "";
+    const last = days[days.length - 1];
+    const max = Math.max(...days.map((d) => d.neurons), 1);
+    const grew = days.length > 1 ? last.neurons - days[0].neurons : 0;
+    return h("section", { class: "card br-brain" },
+      h("div", { class: "br-brain-head" }, h("strong", {}, L.brain),
+        h("span", { class: "br-brain-num" }, L.neurons(last.neurons)), h("span", { class: "row-hint" }, L.linksN(last.links)),
+        grew > 0 ? h("span", { class: "br-brain-up" }, `+${grew}`) : ""),
+      h("div", { class: "br-brain-bars" }, days.map((d) => h("i", {
+        style: `height:${Math.max(4, Math.round(d.neurons / max * 64))}px`,
+        title: `${day(d.date)}: ${L.neurons(d.neurons)}, ${L.linksN(d.links)}` }))),
+      h("p", { class: "row-hint" }, L.brainHint));
+  }
+
   // --- Рост: предложения, свои инструменты, уроки, стиль, желания, конспекты, ассоциации ---
 
   async function growNow(what) {
     state.growing = what;
     draw();
-    await send("grow", { what });
+    const res = await send("grow", { what });
     state.growing = null;
+    if (what === "curious" || what === "foresee") await inbox();
     draw();
   }
 
@@ -650,7 +723,9 @@
     const anything = d.suggestions.length + d.user_tools.length + d.lessons.length + styleVersions.length
       + d.wishes.length + d.notes.length + d.links.length;
     return [
-      h("div", { class: "br-grow-actions" }, btn("exam", L.examNow), btn("style", L.styleNow), btn("study", L.studyNow)),
+      h("div", { class: "br-grow-actions" }, btn("exam", L.examNow), btn("style", L.styleNow), btn("study", L.studyNow),
+        btn("curious", L.curiousNow), btn("consolidate", L.consolidateNow), btn("foresee", L.foreseeNow)),
+      d.best ? h("p", { class: "row-hint" }, L.best(d.best)) : "",
       !anything ? empty(L.emptyGrow, L.emptyGrowHint) : "",
       d.suggestions.length ? section(L.suggestions, d.suggestions.length, "", h("ul", { class: "br-list" }, d.suggestions.map((s) => {
         const name = h("input", { class: "text-input", value: s.name, maxlength: 60, "aria-label": L.rename });

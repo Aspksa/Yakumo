@@ -37,8 +37,10 @@ FORGET_DAYS = 180   # мелкие факты, которые не вспоми�
 MAX_LESSONS = 40   # правил, которые Yakumo вывела сама
 ARCHIVE_SCORE = 0  # факты слабее этого во сне уходят в архив: не в подсказке, но находятся поиском
 # Списки «роста»: уроки, желания, предложенные навыки, свои инструменты, конспекты, ассоциации,
-# примеры разговоров (для улучшения подсказки), мысли фонового разума.
-GROWTH = ("lessons", "wishes", "suggestions", "user_tools", "notes", "links", "samples", "thoughts")
+# примеры разговоров (для улучшения подсказки), мысли фонового разума, ответы с 👍 (образцы) и
+# ответы с 👎, которые ещё не разобраны, файлы, которые Yakumo написала (ждут ваших правок).
+GROWTH = ("lessons", "wishes", "suggestions", "user_tools", "notes", "links", "samples", "thoughts", "best",
+          "feedback", "drafts")
 
 WORD = re.compile(r"\w{3,}", re.U)
 DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
@@ -413,6 +415,10 @@ class Memory:
                 if fixed != files:
                     f["files"] = fixed
                     count += 1
+            for d in self.data["drafts"]:
+                if d["path"] == old or d["path"].startswith(old + "/"):
+                    d["path"] = new + d["path"][len(old):]
+                    count += 1
             if count:
                 self.save()
         return count
@@ -668,6 +674,15 @@ class Memory:
                 self.save()
                 return same
             return self.add_item("lessons", {"text": text, "source": source, "seen": 1}, MAX_LESSONS)
+
+    def replace_lessons(self, items: list[tuple[str, int]]) -> None:
+        """После консолидации во сне: новый, сжатый список уроков (текст, сколько раз подтверждался)."""
+        with self.lock:
+            now = int(time.time())
+            self.data["lessons"] = [{"id": _id(), "created": now, "text": _clean(t, 300), "source": "sleep",
+                                     "seen": max(1, seen)} for t, seen in items if isinstance(t, str) and t.strip()]
+            del self.data["lessons"][:-MAX_LESSONS]
+            self.save()
 
     def wish(self, text: str) -> dict:
         """Чему Yakumo хочет научиться: её просили, а она не умеет."""
