@@ -1,20 +1,21 @@
 :root {
-  /* Палитра аватара: кремово-белый, золото, чёрно-коричневые акценты */
-  --bg: #faf5ea;
-  --surface: #fffcf5;
-  --border: #ecdfc4;
-  --text: #2a1f17;
-  --muted: #7b6a56;
-  --accent: #96660f;
-  --gold: #d9ad4b;
-  --accent-soft: #f6e8c6;
-  --hover: #f2e8d3;
-  --ok: #3d8a4f;
-  --bad: #c0392b;
+  /* Палитра аватара: чёрный фон, золото и кремово-белый как акценты */
+  color-scheme: dark;
+  --bg: #0d0b09;
+  --surface: #17130f;
+  --border: #2e261c;
+  --text: #f4ead7;
+  --muted: #a3927a;
+  --accent: #dcb04f;
+  --gold: #dcb04f;
+  --accent-soft: rgba(220, 176, 79, .16);
+  --hover: #221c15;
+  --ok: #5cb874;
+  --bad: #e5675a;
   --top: 56px;
   --rail: 64px;
   --radius: 10px;
-  --shadow: 0 1px 2px rgba(66, 44, 14, .07);
+  --shadow: 0 1px 3px rgba(0, 0, 0, .4);
   font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
   color: var(--text);
 }
@@ -56,7 +57,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 /* Подсказка при наведении */
 .icon-btn[data-label]::after {
   content: attr(data-label); position: absolute; pointer-events: none; opacity: 0;
-  background: var(--text); color: #fff; font-size: 12px; padding: 4px 8px; border-radius: 6px;
+  background: var(--text); color: var(--bg); font-size: 12px; padding: 4px 8px; border-radius: 6px;
   white-space: nowrap; transition: opacity .12s; z-index: 20;
 }
 .topnav .icon-btn::after { top: calc(100% + 6px); left: 50%; transform: translateX(-50%); }
@@ -103,12 +104,12 @@ div.row { cursor: default; }
 .row-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .row-title { font-size: 15px; }
 .row-hint { color: var(--muted); font-size: 13px; }
-.row-warn { color: #a3520a; font-size: 13px; }
+.row-warn { color: #f0a35a; font-size: 13px; }
 
 /* Переключатель */
 .switch { position: relative; flex: none; width: 42px; height: 24px; }
 .switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: inherit; }
-.knob { position: absolute; inset: 0; border-radius: 12px; background: #dccfb6; transition: background .15s;
+.knob { position: absolute; inset: 0; border-radius: 12px; background: #3a3126; transition: background .15s;
         pointer-events: none; }
 .knob::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px;
                border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.2);
@@ -133,11 +134,11 @@ div.row { cursor: default; }
 
 /* Аватар */
 .avatar {
-  --size: 132px;
+  --size: 176px;
   position: fixed; left: 0; top: 0; z-index: 30; width: var(--size); height: var(--size);
   padding: 0; border: 0; background: none; cursor: grab; touch-action: none; user-select: none;
   -webkit-tap-highlight-color: transparent; border-radius: 50%;
-  filter: drop-shadow(0 6px 14px rgba(150, 102, 15, .28));
+  filter: drop-shadow(0 6px 16px rgba(220, 176, 79, .25));
   transition: filter .2s, transform .2s;
 }
 .avatar img { width: 100%; height: 100%; display: block; pointer-events: none; }
@@ -151,11 +152,12 @@ div.row { cursor: default; }
   position: fixed; z-index: 29; width: 340px; height: 440px;
   display: flex; flex-direction: column; overflow: hidden;
   background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
-  box-shadow: 0 12px 32px rgba(66, 44, 14, .18);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, .6);
 }
 .chat[hidden] { display: none; }
 .chat-head { display: flex; align-items: center; gap: 10px; padding: 10px 8px 10px 12px;
-             background: linear-gradient(135deg, #2a1f17, #4a3522); color: #fbf3e0; }
+             background: linear-gradient(135deg, #241a11, #3d2c1b); color: #fbf3e0;
+             border-bottom: 1px solid var(--border); }
 .chat-head img { width: 40px; height: 40px; border-radius: 50%; border: 2px solid var(--gold); flex: none; }
 .chat-title { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .chat-title strong { font-size: 15px; color: var(--gold); }
@@ -168,7 +170,7 @@ div.row { cursor: default; }
        white-space: pre-wrap; overflow-wrap: anywhere; }
 .msg.bot { align-self: flex-start; background: var(--surface); border: 1px solid var(--border);
            border-bottom-left-radius: 4px; }
-.msg.me { align-self: flex-end; background: var(--accent-soft); border: 1px solid #ead4a0;
+.msg.me { align-self: flex-end; background: var(--accent-soft); border: 1px solid rgba(220, 176, 79, .35);
           border-bottom-right-radius: 4px; }
 .chat-form { display: flex; align-items: flex-end; gap: 8px; padding: 10px; border-top: 1px solid var(--border); }
 .chat-form textarea { flex: 1; resize: none; font: inherit; font-size: 14px; color: var(--text);
@@ -176,8 +178,8 @@ div.row { cursor: default; }
                       padding: 8px 10px; max-height: 120px; outline: none; }
 .chat-form textarea:focus { border-color: var(--gold); }
 .chat-send { display: grid; place-items: center; width: 38px; height: 38px; flex: none; border: 0;
-             border-radius: 10px; background: var(--accent); color: #fff; cursor: pointer; }
-.chat-send:hover { background: #7d540b; }
+             border-radius: 10px; background: var(--accent); color: var(--bg); cursor: pointer; }
+.chat-send:hover { background: #ecc46a; }
 .chat-send:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .chat-send svg { width: 18px; height: 18px; }
 
@@ -191,12 +193,12 @@ body.compact .row { padding: 9px 0; }
 body.compact .icon-btn { height: 34px; width: 38px; }
 body.compact h1 { font-size: 19px; }
 body.compact .subtitle { margin-bottom: 14px; }
-body.compact .avatar { --size: 104px; }
+body.compact .avatar { --size: 144px; }
 
 /* Узкий экран: прячем подписи, левая полоса уже */
 @media (max-width: 720px) {
   :root { --rail: 52px; }
-  .avatar, body.compact .avatar { --size: 88px; }
+  .avatar, body.compact .avatar { --size: 116px; }
 
   .brand span { display: none; }
   /* Текст состояния скрыт визуально, но доступен экранным чтецам */
