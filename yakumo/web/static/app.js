@@ -14,7 +14,7 @@ const TEXTS = {
     avatarSection: "Аватар", avatarShow: "Показывать аватар",
     avatarShowHint: "Кицунэ на всех страницах; по нажатию на неё открывается чат.",
     avatarSize: "Размер", px: "точек", avatarMotion: "Движение", avatarGlow: "Сияние", avatarSpeed: "Скорость анимации",
-    motions: { none: "Нет", float: "Парение", sway: "Покачивание", breathe: "Дыхание", bounce: "Прыжки", drift: "Плавание" },
+    motions: { none: "Нет", float: "Парение", glide: "Мягкое парение", alive: "Живая" },
     glows: { off: "Нет", soft: "Мягкое", bright: "Яркое", pulse: "Мерцание" },
     speeds: { slow: "Медленно", normal: "Обычно", fast: "Быстро" },
     openBrowser: "Открывать браузер при старте",
@@ -61,7 +61,7 @@ const TEXTS = {
     avatarSection: "Avatar", avatarShow: "Show avatar",
     avatarShowHint: "The kitsune on every page; click her to open the chat.",
     avatarSize: "Size", px: "px", avatarMotion: "Motion", avatarGlow: "Glow", avatarSpeed: "Animation speed",
-    motions: { none: "None", float: "Float", sway: "Sway", breathe: "Breathe", bounce: "Bounce", drift: "Drift" },
+    motions: { none: "None", float: "Float", glide: "Gentle float", alive: "Alive" },
     glows: { off: "None", soft: "Soft", bright: "Bright", pulse: "Pulse" },
     speeds: { slow: "Slow", normal: "Normal", fast: "Fast" },
     openBrowser: "Open browser on start",
@@ -369,6 +369,7 @@ function render() {
     if (active) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
   }
   document.title = `${T[page]} · Yakumo`;
+  document.body.dataset.page = page;
   content.replaceChildren(...PAGES[page]());
 }
 
@@ -704,6 +705,29 @@ avatarBtn.addEventListener("click", () => {
   if (justDragged) { justDragged = false; return; }
   setChatOpen(chatBox.hidden);
 });
+
+// «Живая»: аватар слегка поворачивается в сторону курсора.
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+let lookFrame = 0;
+function lookAt(x, y) {
+  if (avatarBtn.dataset.motion !== "alive" || drag || reducedMotion.matches) return;
+  cancelAnimationFrame(lookFrame);
+  lookFrame = requestAnimationFrame(() => {
+    const r = avatarBtn.getBoundingClientRect();
+    const reach = Math.max(innerWidth, innerHeight) / 2;
+    const dx = Math.max(-1, Math.min(1, (x - (r.left + r.width / 2)) / reach));
+    const dy = Math.max(-1, Math.min(1, (y - (r.top + r.height / 2)) / reach));
+    avatarBtn.style.setProperty("--ry", (dx * 9).toFixed(2) + "deg");
+    avatarBtn.style.setProperty("--rx", (-dy * 6).toFixed(2) + "deg");
+  });
+}
+function lookAway() {
+  avatarBtn.style.removeProperty("--rx");
+  avatarBtn.style.removeProperty("--ry");
+}
+window.addEventListener("pointermove", (e) => { if (e.pointerType === "mouse") lookAt(e.clientX, e.clientY); });
+document.documentElement.addEventListener("pointerleave", lookAway);
+window.addEventListener("blur", lookAway);
 
 window.addEventListener("resize", placeAvatar);
 window.addEventListener("hashchange", render);
