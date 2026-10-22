@@ -11,6 +11,8 @@ from urllib.parse import unquote, urlsplit
 
 log = logging.getLogger(__name__)
 
+# Обработчик вернул SENT: ответ он отправил сам (файлы с докачкой, архивы).
+SENT = object()
 
 TEXT_TYPES = {
     ".html": "text/html", ".htm": "text/html", ".css": "text/css", ".js": "text/javascript",
@@ -21,6 +23,7 @@ TEXT_TYPES = {
 
 class Handler(SimpleHTTPRequestHandler):
     routes: dict[str, Callable[[Any], Any]] = {}
+    SENT = SENT
     # Явный charset, чтобы браузер не угадывал кодировку русских текстов.
     extensions_map = {**SimpleHTTPRequestHandler.extensions_map,
                       **{ext: f"{ctype}; charset=utf-8" for ext, ctype in TEXT_TYPES.items()},
@@ -36,11 +39,7 @@ class Handler(SimpleHTTPRequestHandler):
         if handler is None:
             super().do_GET()
             return
-        try:
-            self._respond(handler(self))
-        except Exception:  # noqa: BLE001
-            log.exception("Ошибка обработчика %s", self.path)
-            self._send(500, "application/json; charset=utf-8", b'{"error": "internal"}')
+        self._call(handler)
 
     def do_POST(self) -> None:  # noqa: N802
         """POST-маршруты регистрируются с ключом "POST /путь"."""
@@ -49,13 +48,21 @@ class Handler(SimpleHTTPRequestHandler):
             self._send(404, "application/json; charset=utf-8", b'{"error": "not found"}')
             return
         if not self._same_origin():
+            self.close_connection = True  # тело запроса не прочитано
             self._send(403, "application/json; charset=utf-8", b'{"error": "forbidden"}')
             return
+        self._call(handler)
+
+    def _call(self, handler: Callable[[Any], Any]) -> None:
+        """ValueError в обработчике — ошибка запроса (400), FileNotFoundError — 404."""
         try:
             self._respond(handler(self))
-        except ValueError as exc:
-            body = json.dumps({"error": str(exc)}, ensure_ascii=False).encode("utf-8")
-            self._send(400, "application/json; charset=utf-8", body)
+        except (ValueError, FileNotFoundError) as exc:
+            code = 404 if isinstance(exc, FileNotFoundError) else 400
+            text = str(exc) if isinstance(exc, ValueError) else "Не найдено"
+            body = json.dumps({"error": text}, ensure_ascii=False).encode("utf-8")
+            self.close_connection = True  # тело запроса могло остаться непрочитанным
+            self._send(code, "application/json; charset=utf-8", body)
         except Exception:  # noqa: BLE001
             log.exception("Ошибка обработчика %s", self.path)
             self._send(500, "application/json; charset=utf-8", b'{"error": "internal"}')
@@ -63,10 +70,12 @@ class Handler(SimpleHTTPRequestHandler):
     def _same_origin(self) -> bool:
         """Защита от чужих сайтов: только JSON и только со своей страницы.
 
-        Страница с другого сайта не может отправить application/json без
-        предварительного запроса OPTIONS, а на него мы не отвечаем разрешением.
+        Страница с другого сайта не может отправить application/json или свой
+        заголовок X-Yakumo без предварительного запроса OPTIONS, а на него мы не
+        отвечаем разрешением. С X-Yakumo тело может быть любым (загрузка файлов).
         """
-        if not self.headers.get("Content-Type", "").startswith("application/json"):
+        if (not self.headers.get("Content-Type", "").startswith("application/json")
+                and self.headers.get("X-Yakumo") != "1"):
             return False
         origin = self.headers.get("Origin")
         return origin is None or urlsplit(origin).netloc == self.headers.get("Host")
@@ -81,6 +90,8 @@ class Handler(SimpleHTTPRequestHandler):
             raise ValueError("Неверный JSON") from exc
 
     def _respond(self, result: Any) -> None:
+        if result is SENT:
+            return
         if isinstance(result, Iterator):
             self._stream(result)
         elif isinstance(result, tuple):

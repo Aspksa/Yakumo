@@ -1,0 +1,208 @@
+/* «Диск»: тот же стиль, что у веб-версии — чёрный фон, акцентный цвет из настроек */
+
+.disk { position: relative; min-height: calc(100vh - var(--top) - 64px); }
+.dk-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px 32px;
+           flex-wrap: wrap; margin-bottom: 18px; }
+.dk-head h1 { margin: 0; }
+
+/* Место на носителе: доля «Диска» акцентом, остальное занятое — приглушённо */
+.dk-usage { flex: 0 1 380px; min-width: 220px; font-size: 13px; color: var(--muted); }
+.dk-meter { display: flex; height: 6px; border-radius: 3px; background: var(--border); overflow: hidden;
+            margin-bottom: 6px; }
+.dk-meter-disk { background: var(--accent); transition: width .3s; }
+.dk-meter-other { background: rgba(var(--accent-rgb), .3); }
+.dk-usage-text strong { color: var(--text); font-weight: 600; }
+.dk-root { margin-top: 2px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Разделы и поиск */
+.dk-tabs { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+           border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+.dk-tablist { display: flex; gap: 4px; }
+.dk-tablist button { display: flex; align-items: center; gap: 8px; font: inherit; font-size: 14px;
+                     padding: 10px 12px; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px;
+                     background: none; color: var(--muted); cursor: pointer; }
+.dk-tablist button svg { width: 18px; height: 18px; }
+.dk-tablist button:hover { color: var(--text); }
+.dk-tablist button.on { color: var(--accent); border-bottom-color: var(--accent); }
+.dk-tablist button:focus-visible { outline: 2px solid var(--accent); }
+.dk-search { position: relative; display: flex; align-items: center; flex: 0 1 300px; margin-bottom: 8px; }
+.dk-search svg { position: absolute; left: 10px; width: 17px; height: 17px; color: var(--muted); pointer-events: none; }
+.dk-search .text-input { width: 100%; padding-left: 34px; }
+
+/* Путь и кнопки */
+.dk-bar { position: sticky; top: var(--top); z-index: 3; display: flex; align-items: center;
+          justify-content: space-between; gap: 10px; flex-wrap: wrap; min-height: 52px; padding: 6px 0;
+          margin-bottom: 8px; background: var(--bg); }
+.dk-bar-title { font-weight: 600; }
+.dk-crumbs { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; min-width: 0; font-size: 15px; }
+.dk-crumb { font: inherit; border: 0; background: none; color: var(--muted); padding: 4px 6px; border-radius: 6px;
+            cursor: pointer; overflow-wrap: anywhere; text-align: left; }
+.dk-crumb:hover { color: var(--text); background: var(--hover); }
+.dk-crumb.cur { color: var(--text); font-weight: 600; cursor: default; }
+.dk-sep { color: var(--border); }
+.dk-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.dk-btn { display: inline-flex; align-items: center; gap: 6px; }
+.dk-btn svg { width: 17px; height: 17px; }
+.dk-btn.danger:hover, .dk-menu .danger:hover { color: var(--bad); border-color: var(--bad); }
+.btn.danger.primary { background: var(--bad); border-color: var(--bad); color: #fff; }
+.dk-upload { display: inline-flex; }
+.dk-upload > .btn:first-child { border-radius: 8px 0 0 8px; }
+.dk-upload-more { border-radius: 0 8px 8px 0; padding: 7px 6px; border-left-color: rgba(0, 0, 0, .25); display: grid; }
+.dk-upload-more svg { width: 15px; height: 15px; }
+.dk-sort { padding: 6px 8px; font-size: 13px; }
+
+/* Выделение */
+.dk-selbar { justify-content: flex-start; gap: 6px; padding: 6px 10px; border-radius: var(--radius);
+             background: var(--surface); box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), .45); }
+.dk-selcount { font-weight: 600; margin-right: 8px; color: var(--accent); }
+.dk-selbar .dk-btn:last-child { margin-left: auto; }
+
+/* Плитка */
+.dk-list.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px;
+                 padding-bottom: 24px; }
+.dk-item { position: relative; border-radius: var(--radius); cursor: default; user-select: none; outline: none;
+           border: 1px solid transparent; transition: background .12s, border-color .12s; }
+.tiles .dk-item { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 10px 10px;
+                  text-align: center; }
+.dk-item:hover { background: var(--hover); }
+.dk-item:focus-visible { border-color: var(--accent); }
+.dk-item.on { background: var(--accent-soft); border-color: rgba(var(--accent-rgb), .55); }
+.dk-item.dk-over { border-color: var(--accent); background: var(--accent-soft); border-style: dashed; }
+.dk-thumb { display: grid; place-items: center; flex: none; color: var(--muted); }
+.tiles .dk-thumb { width: 100%; aspect-ratio: 4 / 3; border-radius: calc(var(--radius) - 2px); overflow: hidden; }
+.tiles .dk-thumb svg { width: 56px; height: 56px; stroke-width: 1.2; }
+.tiles .dk-thumb img { width: 100%; height: 100%; object-fit: cover; background: var(--surface); }
+.dk-thumb[data-kind="folder"] { color: var(--accent); }
+.dk-thumb[data-kind="folder"] svg { fill: rgba(var(--accent-rgb), .18); }
+.dk-thumb[data-kind="image"] { color: #7fb7e6; }
+.dk-thumb[data-kind="video"] { color: #d98bd0; }
+.dk-thumb[data-kind="audio"] { color: #e6a35c; }
+.dk-thumb[data-kind="pdf"] { color: #e5675a; }
+.dk-thumb[data-kind="doc"] { color: #6f9ce8; }
+.dk-thumb[data-kind="sheet"] { color: #5cb874; }
+.dk-thumb[data-kind="slides"] { color: #e8875c; }
+.dk-thumb[data-kind="archive"], .dk-thumb[data-kind="book"] { color: #c8a26a; }
+.dk-name { min-width: 0; max-width: 100%; font-size: 14px; overflow-wrap: anywhere; }
+.tiles .dk-name { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+                  line-height: 1.3; }
+.dk-meta { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+           max-width: 100%; }
+.tiles .dk-meta:not(.dk-size) { display: none; }
+
+/* Галочка выделения: видна при наведении, у выбранных и на сенсорных экранах */
+.dk-check { position: absolute; top: 8px; left: 8px; z-index: 1; width: 22px; height: 22px; border-radius: 50%;
+            display: grid; place-items: center; background: rgba(13, 11, 9, .75); border: 1.5px solid var(--muted);
+            color: transparent; opacity: 0; cursor: pointer; transition: opacity .12s; }
+.dk-check svg { width: 14px; height: 14px; stroke-width: 2.6; }
+.dk-item:hover .dk-check, .dk-item.on .dk-check, .dk-item:focus-visible .dk-check { opacity: 1; }
+.dk-item.on .dk-check { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+@media (pointer: coarse) { .dk-check { opacity: 1; } }
+
+/* Список */
+.dk-list.list { display: flex; flex-direction: column; padding-bottom: 24px; }
+.list .dk-item, .dk-listhead { display: grid; grid-template-columns: 30px 30px minmax(0, 1fr) 180px 160px;
+                               align-items: center; gap: 10px; padding: 7px 10px; }
+.dk-listhead { color: var(--muted); font-size: 12px; border-bottom: 1px solid var(--border); padding-top: 0; }
+.list .dk-item { border-radius: 8px; }
+.list .dk-check { position: static; opacity: 1; background: none; }
+.list .dk-item:not(.on):not(:hover) .dk-check { border-color: var(--border); }
+.list .dk-thumb svg { width: 24px; height: 24px; }
+.list .dk-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.list .dk-size { text-align: right; }
+
+.dk-foot { color: var(--muted); font-size: 12px; padding: 0 4px 24px; }
+.dk-empty { margin-top: 8px; }
+.dk-empty span { max-width: 420px; }
+.dk-error { color: var(--bad); }
+.dk-warn { color: #e6a35c; }
+
+/* Перетаскивание файлов с компьютера */
+.dk-drop { display: none; }
+.disk.dropping .dk-drop { position: absolute; inset: 0; z-index: 5; display: grid; place-items: center;
+                          border: 2px dashed var(--accent); border-radius: var(--radius);
+                          background: rgba(13, 11, 9, .8); pointer-events: none; }
+.dk-drop span { font-size: 18px; font-weight: 600; color: var(--accent); padding: 16px; text-align: center; }
+
+/* Окна */
+.dk-dialog { width: min(460px, calc(100vw - 32px)); color: var(--text); padding: 20px; background: var(--surface); }
+.dk-dialog::backdrop { background: rgba(0, 0, 0, .6); }
+.dk-dialog h2 { font-size: 17px; color: var(--text); margin: 0 0 14px; overflow-wrap: anywhere; }
+.dk-dialog .text-input { width: 100%; flex: 1; }
+.dk-dialog p { overflow-wrap: anywhere; }
+.dk-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; flex-wrap: wrap; }
+.dk-picker-path { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; margin-bottom: 8px; font-size: 14px; }
+.dk-picker { display: flex; flex-direction: column; max-height: 300px; min-height: 120px; overflow-y: auto;
+             border: 1px solid var(--border); border-radius: 8px; padding: 4px; }
+.dk-picker .row-hint { padding: 10px; }
+.dk-picker-item { display: flex; align-items: center; gap: 10px; font: inherit; font-size: 14px; text-align: left;
+                  padding: 8px 10px; border: 0; border-radius: 6px; background: none; color: var(--text); cursor: pointer; }
+.dk-picker-item svg { width: 19px; height: 19px; color: var(--accent); }
+.dk-picker-item:hover { background: var(--hover); }
+
+/* Меню по правой кнопке */
+.dk-menu { position: fixed; z-index: 42; display: flex; flex-direction: column; min-width: 190px; padding: 6px;
+           background: var(--surface); }
+.dk-menu button { display: flex; align-items: center; gap: 10px; font: inherit; font-size: 14px; padding: 8px 10px;
+                  border: 0; border-radius: 6px; background: none; color: var(--text); cursor: pointer; text-align: left; }
+.dk-menu button svg { width: 18px; height: 18px; color: var(--muted); }
+.dk-menu button:hover, .dk-menu button:focus-visible { background: var(--hover); outline: none; }
+
+/* Загрузки */
+.dk-uploads { position: fixed; left: calc(var(--rail) + 16px); bottom: 16px; z-index: 35;
+              width: min(360px, calc(100vw - var(--rail) - 32px)); padding: 12px 14px; border-radius: var(--radius);
+              background: var(--surface); border: 1px solid var(--border); box-shadow: 0 8px 30px rgba(0, 0, 0, .5); }
+.dk-up-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; font-size: 14px; }
+.dk-up-head .icon-btn { width: 30px; height: 30px; border: 0; background: none; cursor: pointer; }
+.dk-up-head .icon-btn svg { width: 17px; height: 17px; }
+.dk-up-list { list-style: none; margin: 6px 0 0; padding: 0; font-size: 12px; }
+.dk-up-list li { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; color: var(--muted); }
+.dk-up-list li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-up-list li.run { color: var(--text); }
+.dk-up-list li.error small { color: var(--bad); }
+
+/* Просмотр файлов */
+.dk-viewer { position: fixed; inset: 0; z-index: 40; display: flex; flex-direction: column;
+             background: rgba(5, 4, 3, .96); }
+.dk-viewer[hidden] { display: none; }
+.dk-viewer-top { display: flex; align-items: center; gap: 4px; padding: 8px 12px; }
+.dk-viewer-top .icon-btn { border: 0; background: none; cursor: pointer; }
+.dk-viewer-title { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.dk-viewer-title strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dk-viewer-title small { color: var(--muted); }
+.dk-stage { flex: 1; min-height: 0; display: grid; place-items: center; padding: 8px 64px 24px; overflow: auto; }
+.dk-stage img, .dk-stage video { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px; }
+.dk-viewer[data-kind="image"] .dk-stage, .dk-viewer[data-kind="video"] .dk-stage { overflow: hidden; }
+.dk-stage audio { width: min(520px, 100%); }
+.dk-stage iframe { width: 100%; height: 100%; border: 0; border-radius: 4px; background: #fff; }
+.dk-text { align-self: stretch; justify-self: stretch; margin: 0; padding: 18px; overflow: auto; max-height: 100%;
+           white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.5 Consolas, "Cascadia Mono", monospace;
+           background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.dk-viewer[data-kind="text"] .dk-stage { display: flex; flex-direction: column; }
+.dk-cut { text-align: center; }
+.dk-nopreview { min-width: min(360px, 90vw); }
+.dk-nopreview svg { width: 64px; height: 64px; }
+.dk-nav { position: absolute; top: 50%; width: 48px; height: 64px; border: 0; background: rgba(255, 255, 255, .06);
+          cursor: pointer; }
+.dk-nav-prev { left: 8px; }
+.dk-nav-next { right: 8px; }
+.dk-nav svg { width: 28px; height: 28px; }
+
+/* Уведомления */
+.dk-toasts { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 41;
+             display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
+.dk-toast { background: var(--text); color: var(--bg); padding: 9px 16px; border-radius: 8px; font-size: 14px;
+            box-shadow: var(--shadow); max-width: calc(100vw - 32px); }
+.dk-toast.bad { background: var(--bad); color: #fff; }
+
+@media (max-width: 720px) {
+  .dk-list.tiles { grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 6px; }
+  .tiles .dk-item { padding: 8px 6px; }
+  .list .dk-item, .dk-listhead { grid-template-columns: 26px 26px minmax(0, 1fr) auto; gap: 8px; }
+  .list .dk-item > .dk-meta:not(.dk-size), .dk-listhead > span:nth-child(4) { display: none; }
+  .dk-search { flex: 1 1 100%; }
+  .dk-tablist button span { display: none; }
+  .dk-btn:not(.primary) span { display: none; }
+  .dk-stage { padding: 4px 4px 16px; }
+  .dk-nav { display: none; }
+  .dk-uploads { left: 8px; bottom: 8px; width: calc(100vw - 16px); }
+}

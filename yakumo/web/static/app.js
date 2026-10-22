@@ -504,6 +504,39 @@ const PAGES = {
   },
 };
 
+// --- Страницы модулей ---
+// Модуль подключает свой скрипт (ctx.web в Python), а скрипт добавляет раздел в верхнее меню:
+//   Yakumo.addPage({ id, icon: "<path …/>", title: { ru, en }, render: () => [элементы] })
+
+window.Yakumo = {
+  h, icon, getJSON, postJSON,
+  lang: () => settings?.values.language || "ru",
+  status: () => status,
+  rerender: () => render(),
+  addPage({ id, icon: svg, title, render: draw }) {
+    if (PAGES[id]) return;
+    const sym = document.createElementNS("http://www.w3.org/2000/svg", "symbol");
+    sym.id = "i-" + id;
+    sym.setAttribute("viewBox", "0 0 24 24");
+    sym.innerHTML = svg;
+    document.querySelector("svg symbol").parentNode.append(sym);
+    for (const [lang, texts] of Object.entries(TEXTS)) texts[id] = title[lang] || title.ru;
+    SECTIONS.push({ id, icon: sym.id });
+    PAGES[id] = draw;
+    buildMenu();
+    render();
+  },
+};
+
+async function loadModulePages() {
+  let modules = [];
+  try { modules = await getJSON("/api/modules"); } catch { return; }
+  for (const url of modules.flatMap((m) => m.web || [])) {
+    if (url.endsWith(".css")) document.head.append(h("link", { rel: "stylesheet", href: url }));
+    else document.body.append(h("script", { src: url }));
+  }
+}
+
 function currentPage() {
   const id = location.hash.replace(/^#\/?/, "") || "home";
   return PAGES[id] ? id : "home";
@@ -575,6 +608,7 @@ async function start() {
   } catch { /* без настроек работаем со значениями по умолчанию */ }
   avatarBtn.classList.add("ready");
   placeAvatar();
+  loadModulePages();
   try {
     cloud = await getJSON("/api/cloud");
     showChatSub();
@@ -846,7 +880,7 @@ function addMessage(from, text, extra = {}) {
 }
 
 // Что отправить модели: настоящие реплики, без приветствия и ошибок.
-function history() {
+function chatHistory() {
   const list = messages.filter((m) => !m.error && !m.local && !m.pending && visible(m.text))
     .map((m) => ({ role: m.from === "me" ? "user" : "assistant", content: m.from === "me" ? m.text : visible(m.text) }));
   const first = list.findIndex((m) => m.role === "user");  // разговор начинается с пользователя
@@ -882,7 +916,7 @@ async function ask() {
   try {
     const r = await fetch("/api/chat", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: history() }), signal: controller.signal,
+      body: JSON.stringify({ messages: chatHistory() }), signal: controller.signal,
     });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
     const reader = r.body.getReader();
