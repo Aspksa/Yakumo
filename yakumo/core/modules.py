@@ -10,6 +10,7 @@
     def setup(ctx):            # обязательно
         ctx.route("/api/hello", lambda req: {"hello": "мир"})
         ctx.on_stop(lambda: ...)
+        ctx.web("page.js", "page.css")   # своя страница в веб-версии
 
 Ошибка в одном модуле не мешает запуску остальных и ядра.
 """
@@ -38,10 +39,11 @@ class ModuleInfo:
     version: str
     path: Path
     error: str | None = None
+    web: list[str] = field(default_factory=list)  # адреса скриптов и стилей страницы модуля
 
     def as_dict(self) -> dict:
         return {"name": self.name, "title": self.title, "version": self.version,
-                "path": str(self.path), "error": self.error}
+                "path": str(self.path), "error": self.error, "web": self.web}
 
 
 @dataclass
@@ -54,6 +56,8 @@ class Context:
     stop_hooks: list[Callable[[], None]] = field(default_factory=list)
     status_hooks: dict[str, Callable[[], Any]] = field(default_factory=dict)
     current: str = ""
+    current_dir: Path | None = None
+    web_files: dict[str, list[str]] = field(default_factory=dict)
 
     @property
     def log(self) -> logging.Logger:
@@ -63,6 +67,23 @@ class Context:
         if path in self.routes:
             raise ValueError(f"Маршрут {path} уже занят")
         self.routes[path] = handler
+
+    def web(self, *files: str) -> None:
+        """Подключить к веб-версии файлы .js/.css из папки модуля.
+
+        Они отдаются по адресу /modules/<модуль>/<файл> и загружаются на
+        каждой странице; скрипт может добавить свой раздел через Yakumo.addPage.
+        """
+        types = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8"}
+        for name in files:
+            path = self.current_dir / name
+            ctype = types.get(path.suffix)
+            if ctype is None or not path.is_file():
+                raise ValueError(f"Нет файла {name} (нужен .js или .css)")
+            url = f"/modules/{self.current}/{name}"
+            # Читаем при каждом запросе: правки видны после обновления страницы.
+            self.route(url, lambda _req, p=path, t=ctype: (200, t, p.read_bytes()))
+            self.web_files.setdefault(self.current, []).append(url)
 
     def on_stop(self, hook: Callable[[], None]) -> None:
         self.stop_hooks.append(hook)
@@ -122,13 +143,14 @@ def load_all(ctx: Context, dirs: list[Path], disabled: list[str] | None = None) 
             setup = getattr(module, "setup", None)
             if not callable(setup):
                 raise AttributeError("нет функции setup(ctx)")
-            ctx.current = name
+            ctx.current, ctx.current_dir = name, path.parent
             setup(ctx)
+            info.web = ctx.web_files.get(name, [])
             log.info("Модуль загружен: %s %s", info.title, info.version)
         except Exception as exc:  # noqa: BLE001
             info.error = f"{type(exc).__name__}: {exc}"
             log.exception("Модуль %s не загружен", name)
         finally:
-            ctx.current = ""
+            ctx.current, ctx.current_dir = "", None
         infos.append(info)
     return infos

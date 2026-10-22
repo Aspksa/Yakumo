@@ -5,6 +5,7 @@ import unittest
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from types import SimpleNamespace
 
 from yakumo.core.instance import InstanceLock
 from yakumo.core.modules import Context, discover, load_all
@@ -61,11 +62,23 @@ class ModulesTest(unittest.TestCase):
         self.assertEqual(discover([self.dir, other]), [("m", self.dir / "m.py")])
 
     def test_example_module(self):
-        ctx = Context(paths=None, config=None)
+        paths = SimpleNamespace(app=self.dir, data=self.dir / "data", workspace=self.dir)
+        ctx = Context(paths=paths, config=SimpleNamespace(lan=False))
         root = Path(__file__).resolve().parents[1] / "modules"
         infos = load_all(ctx, [root])
-        self.assertTrue(all(i.error is None for i in infos))
+        self.assertTrue(all(i.error is None for i in infos), [i.error for i in infos])
         self.assertIn("/api/hello", ctx.routes)
+
+    def test_module_web_files(self):
+        (self.dir / "page").mkdir()
+        (self.dir / "page" / "__init__.py").write_text(
+            "def setup(ctx):\n    ctx.web('страница.js')\n", encoding="utf-8")
+        (self.dir / "page" / "страница.js").write_text("// привет", encoding="utf-8")
+        ctx = Context(paths=None, config=None)
+        info, = load_all(ctx, [self.dir])
+        self.assertEqual(info.web, ["/modules/page/страница.js"])
+        code, ctype, body = ctx.routes["/modules/page/страница.js"](None)
+        self.assertEqual((code, ctype, body.decode("utf-8")), (200, "text/javascript; charset=utf-8", "// привет"))
 
 
 class ServerTest(unittest.TestCase):
