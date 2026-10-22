@@ -301,11 +301,19 @@ class UpdaterTest(unittest.TestCase):
             access.sessions["test-session"] = time.monotonic() + 100
             access.password = {"configured": True}
             with mock.patch.object(access, "is_local", return_value=False):
-                req = urllib.request.Request(f"http://127.0.0.1:{server.server_port}/api/update/check", data=b"{}",
-                    headers={"Content-Type": "application/json", "Cookie": "yakumo_session=test-session"})
-                with self.assertRaises(urllib.error.HTTPError) as exc:
-                    urllib.request.urlopen(req)
-                self.assertEqual(exc.exception.code, 403)
+                for action in ("check", "changes", "diff", "history"):
+                    req = urllib.request.Request(f"http://127.0.0.1:{server.server_port}/api/update/" + action, data=b"{}",
+                        headers={"Content-Type": "application/json", "Cookie": "yakumo_session=test-session"})
+                    with self.assertRaises(urllib.error.HTTPError) as exc:
+                        urllib.request.urlopen(req)
+                    self.assertEqual(exc.exception.code, 403)
+            req = urllib.request.Request(f"http://127.0.0.1:{server.server_port}/api/update/diff", data=b"{}",
+                                         headers={"Content-Type": "application/json"})
+            with self.assertRaises(urllib.error.HTTPError) as exc:
+                urllib.request.urlopen(req)
+            error = json.load(exc.exception)
+            self.assertEqual(exc.exception.code, 400)
+            self.assertTrue(error["error_detail"]["action"])
         finally:
             server.shutdown()
             server.server_close()
@@ -332,7 +340,7 @@ class RestartIntegrationTest(unittest.TestCase):
         self.process = subprocess.Popen([sys.executable, "-m", "yakumo", "--data-dir", str(data), "--no-browser", "--no-tray", "--port", str(self.port)],
             cwd=self.app, stdout=self.output, stderr=subprocess.STDOUT)
         self.wait(lambda: self.get("/api/update"))
-        key = hashlib.sha256(str(self.app.resolve()).encode()).hexdigest()[:16]
+        key = hashlib.sha256(os.path.normcase(os.path.splitdrive(str(self.app.resolve()))[1]).encode()).hexdigest()[:16]
         self.updates = data / "updates" / key
 
     def tearDown(self):
@@ -400,6 +408,11 @@ class RestartIntegrationTest(unittest.TestCase):
         self.post("rollback")
         self.wait(lambda: self.get("/api/update").get("phase") == "done" and (self.app / "modules" / "hello.py").read_bytes() == old)
         self.assertFalse((self.app / installer.MARKER).exists())
+        history = self.post("history")
+        self.assertEqual(len(history["items"]), 2)
+        self.assertEqual({item["kind"] for item in history["items"]}, {"install", "rollback"})
+        self.assertTrue(all(item["phase"] == "done" for item in history["items"]))
+        self.assertTrue(all(item["finished"] >= item["started"] for item in history["items"]))
 
     def test_real_bad_module_is_automatically_rolled_back(self):
         old = (self.app / "modules" / "hello.py").read_bytes()
@@ -409,6 +422,9 @@ class RestartIntegrationTest(unittest.TestCase):
         self.wait(lambda: self.get("/api/update").get("phase") == "rolled_back")
         self.assertEqual((self.app / "modules" / "hello.py").read_bytes(), old)
         self.assertTrue(all(not m["error"] for m in self.get("/api/modules")))
+        history = self.post("history")["items"]
+        self.assertEqual(history[0]["phase"], "rolled_back")
+        self.assertTrue(history[0]["error_detail"]["action"])
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import errno
 import json
 import os
 import re
@@ -13,12 +14,61 @@ import tempfile
 import time
 import urllib.request
 import webbrowser
+import zipfile
 from pathlib import Path, PurePosixPath
 
 MARKER = ".yakumo-update.json"
 PROTECTED = {".git", ".venv", "python", "yakumodata", "yakumodisk", "config", "logs", "cache",
              "temp", "workspace", "updates", "disk", "dist", "node_modules", MARKER}
 RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
+
+
+class UpdateError(ValueError):
+    def __init__(self, code, message, action, retry_at=None):
+        super().__init__(message)
+        self.code, self.action, self.retry_at = code, action, retry_at
+
+
+def error_info(exc: Exception) -> dict:
+    """Сообщения для интерфейса без traceback, заголовков и сетевых секретов."""
+    if isinstance(exc, UpdateError):
+        return {"code": exc.code, "message": str(exc), "action": exc.action, "retry_at": exc.retry_at}
+    if (isinstance(exc, PermissionError) or getattr(exc, "winerror", None) in (5, 32, 33)
+            or isinstance(exc, OSError) and exc.errno in (errno.EACCES, errno.EPERM, errno.EROFS, errno.EBUSY, errno.ETXTBSY)):
+        return {"code": "file_access", "message": "Не удалось получить доступ к файлу программы.",
+                "action": "Закройте редакторы и другие копии Yakumo. Проверьте право записи в папку программы и повторите операцию."}
+    if isinstance(exc, OSError) and exc.errno == errno.ENOSPC:
+        return {"code": "disk_full", "message": "На диске закончилось свободное место.",
+                "action": "Освободите место на дисках программы и данных, затем повторите подготовку обновления."}
+    if isinstance(exc, (TimeoutError, ConnectionError)):
+        return {"code": "network", "message": "Соединение прервано или истекло время ожидания.",
+                "action": "Проверьте интернет и повторите операцию. Незавершённый архив будет загружен заново."}
+    if isinstance(exc, SyntaxError):
+        return {"code": "syntax", "message": "В новой версии обнаружена ошибка синтаксиса Python.",
+                "action": "Выберите другой выпуск или дождитесь исправления в репозитории. Подготовленные файлы не устанавливайте."}
+    if isinstance(exc, zipfile.BadZipFile):
+        return {"code": "integrity", "message": "Архив обновления повреждён или загружен не полностью.",
+                "action": "Повторите загрузку. Если ошибка повторяется, проверьте подключение и выберите другой выпуск."}
+    if isinstance(exc, FileNotFoundError):
+        return {"code": "missing_file", "message": "Не найден файл, необходимый для операции.",
+                "action": "Повторите проверку и подготовку. Если нужна резервная копия, проверьте, что её папка не была удалена."}
+    if isinstance(exc, ValueError):
+        message = str(exc)[:600]
+        if any(word in message.lower() for word in ("контрольн", "поврежд", "сумма", "архив", "каталог")):
+            action = "Повторите проверку и загрузку. Если ошибка повторяется, выберите другой выпуск и сохраните код ошибки."
+            code = "integrity"
+        elif any(word in message.lower() for word in ("запуск", "модули", "закрылась")):
+            action = "Проверьте результат восстановления и журнал запуска. При необходимости перезапустите Yakumo вручную."
+            code = "startup"
+        elif "места" in message.lower():
+            action = "Освободите место на дисках программы и данных и повторите операцию."
+            code = "disk_full"
+        else:
+            action = "Выполните указанное действие и повторите операцию. Если ошибка остаётся, заново проверьте обновления."
+            code = "update_request"
+        return {"code": code, "message": message, "action": action}
+    return {"code": "unexpected", "message": "Не удалось завершить операцию обновления.",
+            "action": "Перезапустите Yakumo и повторите операцию. При повторной ошибке сохраните код ошибки и журнал установщика."}
 
 
 def safe_rel(value: str) -> str:
@@ -201,7 +251,7 @@ def wait_parent(pid: int, timeout: float = 30) -> None:
         time.sleep(.2)
 
 
-def validate_plan(job: dict) -> tuple[Path, Path]:
+def validate_plan(job: dict, journal: Path | None = None) -> tuple[Path, Path]:
     app, root = Path(job["app"]).resolve(), Path(job["root"]).resolve()
     if not re.fullmatch(r"[a-f0-9]{32}", job.get("id", "")):
         raise ValueError("Повреждён план обновления")
@@ -217,19 +267,28 @@ def validate_plan(job: dict) -> tuple[Path, Path]:
         if rel.casefold() in seen or not source.is_file() or digest(source) != info["sha256"]:
             raise ValueError(f"Подготовленный файл повреждён: {rel}")
         seen.add(rel.casefold())
+        report_file(job, journal, len(seen), len(job["files"]) + len(job["remove"]), rel)
     for rel in job["remove"]:
         safe_target(app, rel, job.get("protected"))
         if rel.casefold() in seen:
             raise ValueError("Файл одновременно устанавливается и удаляется")
         seen.add(rel.casefold())
+        report_file(job, journal, len(seen), len(job["files"]) + len(job["remove"]), rel)
     return app, root
 
 
-def make_backup(job: dict, app: Path, root: Path) -> dict:
+def report_file(job: dict, journal: Path | None, done: int, total: int, rel: str) -> None:
+    job.update(done=done, total=total, unit="files", current_file=rel)
+    if journal:
+        atomic_json(journal, job)
+
+
+def make_backup(job: dict, app: Path, root: Path, journal: Path | None = None) -> dict:
     folder = root / "backups" / job["id"]
     folder.mkdir(parents=True, exist_ok=False)
     entries = {}
-    for rel in sorted(set(job["files"]) | set(job["remove"])):
+    paths = sorted(set(job["files"]) | set(job["remove"]))
+    for number, rel in enumerate(paths, 1):
         target = safe_target(app, rel, job.get("protected"))
         if target.exists() and not target.is_file():
             raise ValueError(f"На месте файла находится папка: {rel}")
@@ -239,6 +298,7 @@ def make_backup(job: dict, app: Path, root: Path) -> dict:
             atomic_copy(target, safe_target(folder / "files", rel), mode)
             record.update(sha256=digest(safe_target(folder / "files", rel)), mode=mode)
         entries[rel] = record
+        report_file(job, journal, number, len(paths), rel)
     backup = {"id": job["id"], "app": str(app), "created": time.time(), "files": entries,
               "installed": read_json(root / "installed.json"), "protected": job.get("protected", [])}
     atomic_json(folder / "backup.json", backup)
@@ -287,8 +347,7 @@ def apply_files(job: dict, app: Path, root: Path, journal: Path | None = None) -
             raise
         job["applied"].append(rel)
         job["pending"] = None
-        if journal:
-            atomic_json(journal, job)
+        report_file(job, journal, len(job["applied"]), len(job["files"]) + len(job["remove"]), rel)
     installed = dict(job["installed"])
     if installed:
         installed["installed_at"] = time.time()
@@ -348,7 +407,9 @@ def run(job_path: Path, recover: bool = False, app_override: Path | None = None)
     marker = app / MARKER
     with FileLock(root / "install.lock"):
         def state(phase, message="", **extra):
-            job.update(phase=phase, message=message, worker_pid=os.getpid(), **extra)
+            job.update(phase=phase, message=message, worker_pid=os.getpid(),
+                       done=0, total=0, unit="steps", current_file="", speed=0, phase_started=time.time())
+            job.update(extra)
             atomic_json(job_path, job)
 
         if recover:
@@ -356,7 +417,7 @@ def run(job_path: Path, recover: bool = False, app_override: Path | None = None)
             if backup:
                 selected = set(job["applied"]) | ({job["pending"]} if job.get("pending") else set()) if "applied" in job else None
                 restore_backup(backup, root, app, selected)
-            state("rolled_back", "Восстановлена предыдущая версия после прерванной установки")
+            state("rolled_back", "Восстановлена предыдущая версия после прерванной установки", finished=time.time())
             marker.unlink(missing_ok=True)
             return 0
 
@@ -364,9 +425,10 @@ def run(job_path: Path, recover: bool = False, app_override: Path | None = None)
         try:
             state("waiting", "Ожидание закрытия Yakumo")
             wait_parent(job["parent_pid"])
-            validate_plan(job)
+            state("validating", "Повторная проверка подготовленных файлов")
+            validate_plan(job, job_path)
             state("backing_up", "Сохранение резервной копии")
-            backup = make_backup(job, app, root)
+            backup = make_backup(job, app, root, job_path)
             atomic_json(marker, {"job": str(job_path), "worker": str(job_path.parent / "worker.py"), "pid": os.getpid()})
             state("installing", "Замена файлов программы")
             apply_files(job, app, root, job_path)
@@ -374,7 +436,7 @@ def run(job_path: Path, recover: bool = False, app_override: Path | None = None)
             process = launch(job)
             healthy(process, job)
             state("done", "Предыдущая версия восстановлена" if job.get("kind") == "rollback" else "Обновление установлено",
-                  finished=time.time())
+                  finished=time.time(), done=1, total=1)
             atomic_json(root / "last-backup.json", {"id": backup["id"]})
             marker.unlink(missing_ok=True)
             if job.get("open_browser_on_change") and job.get("running_url") != job.get("previous_url"):
@@ -382,6 +444,7 @@ def run(job_path: Path, recover: bool = False, app_override: Path | None = None)
             shutil.rmtree(root / "stages" / job["stage"], ignore_errors=True)
             return 0
         except Exception as exc:
+            detail = error_info(exc)
             stop_child(process)
             try:
                 if backup:
@@ -393,12 +456,14 @@ def run(job_path: Path, recover: bool = False, app_override: Path | None = None)
                     state("verifying", "Запуск предыдущей версии")
                     process = launch(job)
                     healthy(process, job)
-                state("rolled_back" if backup else "failed", str(exc), finished=time.time())
+                state("rolled_back" if backup else "failed", detail["message"], error_detail=detail, finished=time.time())
                 marker.unlink(missing_ok=True)
                 if job.get("open_browser_on_change") and job.get("running_url") != job.get("previous_url"):
                     webbrowser.open(job["running_url"].rstrip("/") + "/#/update")
             except Exception as restore_error:
-                state("recovery_failed", f"{exc}. Восстановление: {restore_error}")
+                recovery = error_info(restore_error)
+                state("recovery_failed", detail["message"] + " Восстановление: " + recovery["message"],
+                      error_detail=recovery, finished=time.time())
             return 1
 
 

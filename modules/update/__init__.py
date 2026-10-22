@@ -16,13 +16,14 @@ from pathlib import Path
 
 from yakumo.core.access import AccessResponse
 
-from .installer import atomic_json, digest, pid_alive, read_json, safe_target, same_app
+from .details import MAX_DIFF_BYTES, file_diff, read_small, version_info
+from .installer import atomic_json, digest, error_info, pid_alive, read_json, safe_target, same_app
 from .source import GitHub, REPOSITORY, matches, unpack
 
 NAME = "Обновление проекта"
-VERSION = "1.0"
+VERSION = "1.1"
 log = logging.getLogger("yakumo.modules.update")
-ACTIVE = {"queued", "waiting", "backing_up", "installing", "verifying", "restoring"}
+ACTIVE = {"queued", "waiting", "validating", "backing_up", "installing", "verifying", "restoring"}
 INTERVALS = {"off": 0, "hourly": 3600, "daily": 86400}
 
 
@@ -52,6 +53,7 @@ class Updater:
         self.thread = None
         self.scheduler = None
         self.action_started = 0
+        self.preview_lock = threading.Lock()
         self.progress = {"phase": "idle", "message": "Готово к проверке", "error": ""}
         self.protected = []
         for name in ("data", "workspace"):
@@ -63,6 +65,28 @@ class Updater:
                         self.protected.append(rel)
                 except ValueError:
                     pass
+
+    def _client(self):
+        client = self.client_factory(self.token())
+        if isinstance(client, GitHub):
+            saved = read_json(self.root / "github-limit.json")
+            client.rate_limit = {k: v for k, v in saved.items()
+                                 if k in ("limit", "remaining", "used", "reset", "retry_at", "observed_at")
+                                 and isinstance(v, (int, float)) and v >= 0}
+            client.on_rate_limit = lambda value: atomic_json(self.root / "github-limit.json", value)
+        return client
+
+    def _error(self, exc):
+        value = error_info(exc)
+        token = self.token()
+        if token:
+            value = {k: v.replace(token, "[скрыто]") if isinstance(v, str) else v for k, v in value.items()}
+        return value
+
+    def _set_progress(self, phase, message, unit="steps", total=0):
+        with self.lock:
+            self.progress.update(phase=phase, message=message, done=0, total=total, unit=unit,
+                                 speed=0, current_file="", phase_started=time.time(), error="", error_detail=None)
 
     def settings(self) -> dict:
         saved = read_json(self.root / "settings.json")
@@ -88,9 +112,9 @@ class Updater:
         job.setdefault("worker_pid", pointer.get("pid", 0))
         return job
 
-    def _busy(self) -> bool:
+    def _busy(self, include_preview=True) -> bool:
         job = self._job()
-        return bool((self.thread and self.thread.is_alive()) or
+        return bool((include_preview and self.preview_lock.locked()) or (self.thread and self.thread.is_alive()) or
                     (job.get("phase") in ACTIVE and pid_alive(job.get("worker_pid", 0))))
 
     def state(self, _request=None) -> dict:
@@ -106,6 +130,8 @@ class Updater:
             progress = dict(self.progress)
             if job and not (self.thread and self.thread.is_alive()) and (job.get("phase") in ACTIVE or job.get("finished", 0) > self.action_started):
                 progress.update(phase=job.get("phase", "idle"), message=job.get("message", ""))
+                for key in ("done", "total", "unit", "speed", "current_file", "phase_started", "error_detail"):
+                    progress[key] = job.get(key)
                 if job.get("phase") in ("rolled_back", "failed", "recovery_failed"):
                     progress["error"] = job.get("message", "")
             available = bool(checked.get("revision") == catalog.get("revision") and checked.get("available"))
@@ -113,10 +139,13 @@ class Updater:
                 available = False
             token = self.token()
             return {**progress, "busy": self._busy(), "repository": REPOSITORY,
-                    "settings": self.settings(), "current": current.get("revision"),
-                    "latest": {k: catalog.get(k) for k in ("revision", "title", "message", "date", "url", "channel")},
+                    "settings": self.settings(), "current": current.get("revision"), "current_info": version_info(current),
+                    "latest": {**version_info(catalog), "url": catalog.get("url")},
+                    "notes": catalog.get("notes", ""), "notes_kind": catalog.get("notes_kind"),
+                    "comparison": checked.get("comparison", {}), "notes_warning": checked.get("notes_warning"),
+                    "rate_limit": read_json(self.root / "github-limit.json"),
                     "last_checked": checked.get("at"), "available": available,
-                    "changes": checked.get("changes", {}),
+                    "changes": {k: v for k, v in checked.get("changes", {}).items() if k != "items"},
                     "prepared": bool(valid_id(ready.get("id")) and ready.get("revision") and ready.get("revision") == catalog.get("revision")
                                      and ready.get("channel") == self.settings()["channel"]
                                      and (self.root / "stages" / ready.get("id", "invalid")).is_dir()),
@@ -131,7 +160,7 @@ class Updater:
         with self.lock:
             if self._busy():
                 raise ValueError("Дождитесь завершения текущей операции")
-            self.progress = {"phase": phase, "message": "Проверка GitHub" if phase == "checking" else "Подготовка обновления", "error": ""}
+            self._set_progress(phase, "Проверка GitHub" if phase == "checking" else "Подготовка обновления")
             self.action_started = time.time()
 
             def run():
@@ -140,21 +169,25 @@ class Updater:
                 except Exception as exc:
                     log.warning("Обновление: %s", type(exc).__name__)
                     with self.lock:
-                        self.progress.update(phase="error", message="Операция не завершена", error=str(exc))
+                        detail = self._error(exc)
+                        self.progress.update(phase="error", message="Операция не завершена", error=detail["message"], error_detail=detail)
 
             self.thread = threading.Thread(target=run, name="yakumo-update", daemon=True)
             self.thread.start()
         return self.state()
 
     def check(self, _request=None) -> dict:
-        return self._start("checking", self._check)
+        self._start("checking", self._check)
+        return self.state(_request)
 
     def _check(self) -> None:
-        catalog = self.client_factory(self.token()).resolve(self.settings()["channel"])
+        client = self._client()
+        catalog = client.resolve(self.settings()["channel"])
         current = self._installed()
         previous = current.get("files", {})
         changed, added, modified = [], [], []
-        for rel, info in catalog["files"].items():
+        self._set_progress("checking", "Сравнение файлов с выбранной версией", "files", len(catalog["files"]))
+        for number, (rel, info) in enumerate(catalog["files"].items(), 1):
             if self.stopping.is_set():
                 return
             target = safe_target(self.app, rel, self.protected)
@@ -164,25 +197,38 @@ class Updater:
                 changed.append(rel)
             if target.is_file() and rel in previous and previous[rel].get("sha256") and digest(target) != previous[rel]["sha256"]:
                 modified.append(rel)
+            with self.lock:
+                self.progress.update(done=number, current_file=rel)
         removed = sorted(set(previous) - set(catalog["files"]))
         for rel in removed:
             safe_target(self.app, rel, self.protected)
         available = bool(changed or added or removed)
         if not available:
-            installed = {"app": str(self.app), "revision": catalog["revision"], "installed_at": time.time(), "files": {
+            installed = {**version_info(catalog), "app": str(self.app), "revision": catalog["revision"], "installed_at": time.time(), "files": {
                 rel: {**info, "sha256": digest(self.app / rel)} for rel, info in catalog["files"].items()}}
             atomic_json(self.root / "installed.json", installed)
+        comparison, notes_warning = {}, None
+        if current.get("revision") and current["revision"] != catalog["revision"]:
+            try:
+                comparison = client.compare(current["revision"], catalog["revision"])
+                if not isinstance(comparison, dict):
+                    comparison = {}
+            except Exception as exc:
+                notes_warning = self._error(exc)
         atomic_json(self.root / "catalog.json", catalog)
         atomic_json(self.root / "checked.json", {"revision": catalog["revision"], "at": time.time(), "available": available,
+                    "comparison": comparison, "notes_warning": notes_warning,
                     "changes": {"changed": len(changed), "added": len(added), "removed": len(removed),
                                 "local_modified": len(modified), "bytes": catalog["size"],
+                                "items": [{"path": p, "status": s} for s, paths in (("added", added), ("changed", changed), ("removed", removed)) for p in sorted(paths)],
                                 "preview": (added + changed + removed)[:30]}})
         with self.lock:
             self.progress.update(phase="available" if available else "current",
-                                 message="Доступно обновление" if available else "Установлена актуальная версия", error="")
+                                 message="Доступно обновление" if available else "Установлена актуальная версия", error="", current_file="")
 
     def prepare(self, _request=None) -> dict:
-        return self._start("preparing", self._prepare)
+        self._start("preparing", self._prepare)
+        return self.state(_request)
 
     def _prepare(self) -> None:
         catalog = read_json(self.root / "catalog.json")
@@ -198,28 +244,32 @@ class Updater:
         stage.mkdir(parents=True)
         archive = self.root / f"{stage_id}.zip"
         try:
-            def progress(done, total):
+            started = time.monotonic()
+
+            def progress(done, total, current_file=""):
                 if self.stopping.is_set():
                     raise ValueError("Подготовка остановлена при закрытии Yakumo")
                 with self.lock:
-                    self.progress.update(done=done, total=total)
+                    self.progress.update(done=done, total=total, current_file=current_file,
+                        speed=done / max(time.monotonic() - started, .01) if self.progress.get("unit") == "bytes" else 0)
 
-            with self.lock:
-                self.progress.update(phase="downloading", message="Загрузка архива", done=0, total=0)
-            self.client_factory(self.token()).download(catalog["revision"], archive, progress)
-            with self.lock:
-                self.progress.update(phase="unpacking", message="Проверка файлов", done=0, total=len(catalog["files"]))
+            self._set_progress("downloading", "Загрузка архива", "bytes")
+            self._client().download(catalog["revision"], archive, progress)
+            archive_size = archive.stat().st_size
+            self._set_progress("unpacking", "Распаковка и проверка файлов", "files", len(catalog["files"]))
             files = unpack(archive, stage, catalog["files"], progress)
             previous = self._installed().get("files", {})
             ready = {"id": stage_id, "revision": catalog["revision"], "channel": catalog["channel"], "files": files,
                      "remove": sorted(set(previous) - set(files)),
-                     "installed": {"app": str(self.app), "revision": catalog["revision"], "files": files}}
+                     "installed": {**version_info(catalog), "app": str(self.app), "revision": catalog["revision"], "files": files}}
             old = read_json(self.root / "ready.json")
             atomic_json(self.root / "ready.json", ready)
+            catalog["archive_size"] = archive_size
+            atomic_json(self.root / "catalog.json", catalog)
             if valid_id(old.get("id")) and old["id"] != stage_id:
                 shutil.rmtree(self.root / "stages" / old["id"], ignore_errors=True)
             with self.lock:
-                self.progress.update(phase="ready", message="Файлы проверены. Можно устанавливать", error="")
+                self.progress.update(phase="ready", message="Файлы проверены. Можно устанавливать", error="", current_file="")
         except Exception:
             shutil.rmtree(stage, ignore_errors=True)
             raise
@@ -239,6 +289,7 @@ class Updater:
         folder.mkdir(parents=True)
         shutil.copy2(Path(__file__).with_name("installer.py"), folder / "worker.py")
         job = {"id": job_id, "kind": kind, "stage": ready["id"], "revision": ready.get("revision"),
+               "started": time.time(), "from_version": version_info(self._installed()), "to_version": version_info(ready["installed"]),
                "files": ready["files"], "remove": ready["remove"], "installed": ready["installed"],
                "app": str(self.app), "root": str(self.root), "protected": self.protected,
                "parent_pid": os.getpid(), "command": list(command), "instance_info": str(info),
@@ -259,6 +310,87 @@ class Updater:
         timer.start()
         return self.state()
 
+    def _preview_body(self, request):
+        body = request.read_json()
+        if not isinstance(body, dict):
+            raise ValueError("Неверный запрос просмотра")
+        return body
+
+    def changes(self, request):
+        body = self._preview_body(request)
+        checked = read_json(self.root / "checked.json")
+        if body.get("revision") != checked.get("revision"):
+            raise ValueError("Список изменений обновился. Откройте его заново")
+        offset = body.get("offset", 0)
+        if type(offset) is not int or offset < 0:
+            raise ValueError("Неверная страница списка")
+        items = checked.get("changes", {}).get("items", [])
+        return {"revision": checked.get("revision"), "items": items[offset:offset + 50], "total": len(items)}
+
+    def diff(self, request):
+        body = self._preview_body(request)
+        # Ограничиваем параллельные построения diff, чтобы длинные файлы не занимали все потоки.
+        if not self.preview_lock.acquire(blocking=False):
+            raise ValueError("Дождитесь открытия предыдущего файла")
+        try:
+            with self.lock:
+                if self._busy(include_preview=False):
+                    raise ValueError("Дождитесь завершения текущей операции")
+                catalog = read_json(self.root / "catalog.json")
+                checked = read_json(self.root / "checked.json")
+                rel = body.get("path")
+                if (not body.get("revision") or body["revision"] != catalog.get("revision")
+                        or checked.get("revision") != catalog.get("revision")):
+                    raise ValueError("Выбранная версия изменилась. Обновите список файлов")
+                allowed = {i["path"] for i in checked.get("changes", {}).get("items", [])}
+                if rel not in allowed:
+                    raise ValueError("Файла нет в списке изменений выбранной версии")
+            before, before_size = read_small(safe_target(self.app, rel, self.protected))
+            expected = catalog["files"].get(rel)
+            after, after_size = b"", 0
+            if expected:
+                after_size = expected["size"]
+                if after_size > MAX_DIFF_BYTES or before is None:
+                    after = None
+                else:
+                    ready = read_json(self.root / "ready.json")
+                    staged = safe_target(self.root / "stages" / ready["id"], rel) if valid_id(ready.get("id")) else None
+                    if ready.get("revision") == catalog["revision"] and staged and staged.is_file():
+                        if not matches(staged, expected):
+                            raise ValueError("Контрольная сумма подготовленного файла не совпала")
+                        after, after_size = read_small(staged)
+                    else:
+                        after = self._client().blob(expected)
+            return {**file_diff(rel, before, after, before_size, after_size), "revision": catalog["revision"]}
+        finally:
+            self.preview_lock.release()
+
+    def history(self, request):
+        body = self._preview_body(request)
+        offset = body.get("offset", 0)
+        if type(offset) is not int or offset < 0:
+            raise ValueError("Неверная страница истории")
+        folders = sorted((p for p in (self.root / "jobs").glob("*") if p.is_dir() and valid_id(p.name)),
+                         key=lambda p: p.stat().st_mtime, reverse=True)
+        items = []
+        for folder in folders[offset:offset + 20]:
+            job = read_json(folder / "job.json")
+            if not same_app(job.get("app"), self.app):
+                continue
+            before = job.get("from_version")
+            if not isinstance(before, dict):
+                before = version_info(read_json(self.root / "backups" / folder.name / "backup.json").get("installed", {}))
+            phase = job.get("phase")
+            pointer = read_json(self.root / "last-job.json")
+            worker_pid = job.get("worker_pid") or (pointer.get("pid", 0) if pointer.get("id") == folder.name else 0)
+            if phase in ACTIVE and not pid_alive(worker_pid):
+                phase = "interrupted"
+            items.append({"id": folder.name, "kind": job.get("kind", "install"), "started": job.get("started", folder.stat().st_ctime),
+                          "finished": job.get("finished"), "from_version": before,
+                          "to_version": job.get("to_version", version_info(job.get("installed", {}))),
+                          "phase": phase, "message": job.get("message"), "error_detail": job.get("error_detail")})
+        return {"items": items, "total": len(folders), "next_offset": min(offset + 20, len(folders))}
+
     def install(self, _request=None) -> dict:
         with self.lock:
             if self._busy():
@@ -268,10 +400,12 @@ class Updater:
             if (not ready.get("id") or ready.get("revision") != catalog.get("revision")
                     or ready.get("channel") != self.settings()["channel"]):
                 raise ValueError("Сначала скачайте и проверьте обновление")
-            return self._launch_installer(ready, "install")
+            self._launch_installer(ready, "install")
+            return self.state(_request)
 
     def rollback(self, _request=None) -> dict:
-        return self._start("preparing", self._prepare_rollback)
+        self._start("preparing", self._prepare_rollback)
+        return self.state(_request)
 
     def _prepare_rollback(self) -> None:
         pointer = read_json(self.root / "last-backup.json")
@@ -334,6 +468,7 @@ class Updater:
             if self._busy():
                 raise ValueError("Дождитесь завершения текущей операции")
             atomic_json(self.root / "secrets.json", {"github_token": token})
+            atomic_json(self.root / "github-limit.json", {})
         return self.state(request)
 
     def start(self) -> None:
@@ -363,12 +498,17 @@ def setup(ctx):
         def run(request):
             if not request.access.is_local(request):
                 return AccessResponse(403, {"error": "Управлять обновлением можно только на компьютере с Yakumo"})
-            return handler(request)
+            try:
+                return handler(request)
+            except Exception as exc:
+                detail = updater._error(exc)
+                return AccessResponse(400, {"error": detail["message"], "error_detail": detail})
         return run
 
     ctx.route("/api/update", updater.state)
     for path, handler in {"check": updater.check, "prepare": updater.prepare, "install": updater.install,
-                          "rollback": updater.rollback, "settings": updater.save_settings, "token": updater.save_token}.items():
+                          "rollback": updater.rollback, "settings": updater.save_settings, "token": updater.save_token,
+                          "changes": updater.changes, "diff": updater.diff, "history": updater.history}.items():
         ctx.route("POST /api/update/" + path, local(handler))
     ctx.web("update.css", "update.js")
     ctx.status(lambda: {"current": updater._installed().get("revision"), "busy": updater._busy()})

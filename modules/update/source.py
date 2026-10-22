@@ -3,18 +3,20 @@
 from __future__ import annotations
 
 import ast
+import base64
 import hashlib
 import json
 import os
 import re
 import stat
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
 from pathlib import Path
 
-from .installer import safe_rel, safe_target
+from .installer import UpdateError, safe_rel, safe_target
 
 REPOSITORY = "Aspksa/Yakumo"
 API = "https://api.github.com/repos/" + REPOSITORY
@@ -27,11 +29,17 @@ REQUIRED = {"Yakumo.bat", "Yakumo.pyw", "yakumo/__init__.py", "yakumo/__main__.p
 
 
 class GitHubRedirect(urllib.request.HTTPRedirectHandler):
+    def __init__(self, observe=None):
+        super().__init__()
+        self.observe = observe
+
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         url = urllib.parse.urlsplit(newurl)
         if (url.scheme != "https" or url.username is not None or url.password is not None
                 or url.hostname not in {"api.github.com", "github.com", "codeload.github.com"}):
             raise ValueError("GitHub перенаправил загрузку на неподдерживаемый адрес")
+        if self.observe and urllib.parse.urlsplit(req.full_url).hostname == "api.github.com":
+            self.observe(headers)
         redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
         if redirected and url.hostname != "api.github.com":
             redirected.remove_header("Authorization")
@@ -41,27 +49,81 @@ class GitHubRedirect(urllib.request.HTTPRedirectHandler):
 class GitHub:
     def __init__(self, token=""):
         self.token = token
-        self.opener = urllib.request.build_opener(GitHubRedirect())
+        self.rate_limit = {}
+        self.on_rate_limit = None
+        self.opener = urllib.request.build_opener(GitHubRedirect(self._observe))
+
+    def _observe(self, headers, limited=False):
+        values = {}
+        for key in ("limit", "remaining", "used", "reset"):
+            try:
+                value = int(headers.get("X-RateLimit-" + key, ""))
+                if 0 <= value < 2**53:
+                    values[key] = value
+            except (ValueError, TypeError):
+                pass
+        try:
+            retry = max(0, int(headers.get("Retry-After", "")))
+            values["retry_at"] = time.time() + min(retry, 86400)
+        except (ValueError, TypeError):
+            pass
+        if not values and not limited:
+            return
+        self.rate_limit.update(values, observed_at=time.time())
+        if limited:
+            until = self.rate_limit.get("reset", 0) if self.rate_limit.get("remaining") == 0 else 0
+            until = max(values.get("retry_at", 0), until)
+            self.rate_limit["retry_at"] = until if until > time.time() else time.time() + 60
+        elif values.get("remaining", 0) > 0:
+            self.rate_limit.pop("retry_at", None)
+        if callable(self.on_rate_limit):
+            self.on_rate_limit(dict(self.rate_limit))
+
+    def _limited(self):
+        until = max(self.rate_limit.get("retry_at", 0),
+                    self.rate_limit.get("reset", 0) if self.rate_limit.get("remaining") == 0 else 0)
+        return UpdateError("github_rate_limit", "GitHub временно ограничил запросы.",
+                           "Дождитесь указанного времени восстановления лимита. Для публичного репозитория можно также настроить собственный токен Contents: read-only.", until)
 
     def open(self, suffix: str):
+        if self._limited().retry_at > time.time():
+            raise self._limited()
         headers = {"User-Agent": "Yakumo-Updater", "Accept": "application/vnd.github+json"}
         if self.token:
             headers["Authorization"] = "Bearer " + self.token
         request = urllib.request.Request(API + suffix, headers=headers)
         try:
-            return self.opener.open(request, timeout=30)
+            response = self.opener.open(request, timeout=30)
+            if urllib.parse.urlsplit(response.geturl()).hostname == "api.github.com":
+                self._observe(response.headers)
+            return response
         except urllib.error.HTTPError as exc:
+            limited = (exc.code == 429 or exc.headers.get("X-RateLimit-Remaining") == "0"
+                       or bool(exc.headers.get("Retry-After")))
+            if exc.code == 403 and not limited:
+                limited = b"rate limit" in exc.read(4096).lower()
+            self._observe(exc.headers, limited=limited)
+            exc.close()
+            if limited:
+                raise self._limited() from None
             if exc.code == 401:
-                text = "GitHub не принял токен. Проверьте его или удалите для публичного репозитория"
-            elif exc.code in (403, 429):
-                text = "GitHub ограничил запросы или доступ. Попробуйте позже либо укажите токен с Contents: read-only"
+                raise UpdateError("github_token", "GitHub не принял токен.",
+                                  "Обновите токен или удалите его для публичного репозитория. Проверьте срок действия и Contents: read-only.") from None
+            elif exc.code == 403:
+                raise UpdateError("github_access", "GitHub запретил доступ к репозиторию.",
+                                  "Проверьте доступ токена к Aspksa/Yakumo и разрешение Contents: read-only.") from None
+            elif exc.code == 404 and suffix.startswith("/releases/latest"):
+                raise UpdateError("github_no_release", "Опубликованный выпуск не найден.",
+                                  "Выберите источник «Основная ветка · main» или опубликуйте выпуск на GitHub. Для закрытого репозитория проверьте доступ токена.") from None
             elif exc.code == 404:
-                text = "Репозиторий, ветка или опубликованный выпуск не найдены. Для закрытого репозитория нужен токен"
+                raise UpdateError("github_not_found", "Репозиторий, коммит или файл не найден на GitHub.",
+                                  "Повторите проверку обновлений. Для закрытого репозитория проверьте токен и его доступ к репозиторию.") from None
             else:
-                text = f"GitHub временно недоступен (HTTP {exc.code})"
-            raise ValueError(text) from None
+                raise UpdateError("github_http", f"GitHub вернул HTTP {exc.code}.",
+                                  "Повторите операцию позже. Если ошибка сохраняется, проверьте доступность GitHub и настройки подключения.") from None
         except (urllib.error.URLError, OSError):
-            raise ValueError("Нет связи с GitHub. Проверьте подключение к интернету") from None
+            raise UpdateError("github_network", "Не удалось соединиться с GitHub.",
+                              "Проверьте интернет, прокси и системную дату, затем повторите операцию.") from None
 
     def json(self, suffix: str) -> dict:
         with self.open(suffix) as response:
@@ -75,6 +137,7 @@ class GitHub:
 
     def resolve(self, channel: str) -> dict:
         ref, title = "main", "Основная ветка main"
+        release = {}
         if channel == "release":
             release = self.json("/releases/latest")
             ref = release.get("tag_name")
@@ -110,9 +173,41 @@ class GitHub:
         if len(files) > MAX_FILES or size > MAX_UNPACKED or not REQUIRED <= files.keys():
             raise ValueError("Снимок не содержит ядро Yakumo или превышает допустимый размер")
         return {"revision": sha, "title": title, "channel": channel, "files": files, "size": size,
+                "version": ref if channel == "release" else sha[:10],
+                "notes": str(release.get("body") or commit.get("commit", {}).get("message", ""))[:16000],
+                "notes_kind": "release" if release.get("body") else "commit",
+                "published_at": release.get("published_at"),
                 "message": str(commit.get("commit", {}).get("message", "")).split("\n")[0][:300],
                 "date": commit.get("commit", {}).get("committer", {}).get("date"),
                 "url": f"https://github.com/{REPOSITORY}/commit/{sha}"}
+
+    def compare(self, base: str, revision: str) -> dict:
+        if not all(isinstance(v, str) and re.fullmatch(r"[a-f0-9]{40}", v) for v in (base, revision)):
+            raise ValueError("Неверные версии для сравнения")
+        data = self.json(f"/compare/{base}...{revision}?per_page=30&page=1")
+        commits = []
+        for item in data.get("commits", [])[:30]:
+            sha = item.get("sha", "")
+            if not re.fullmatch(r"[a-f0-9]{40}", sha):
+                continue
+            commits.append({"revision": sha, "message": str(item.get("commit", {}).get("message", ""))[:2000],
+                            "date": item.get("commit", {}).get("committer", {}).get("date")})
+        return {"commits": commits, "total": data.get("total_commits", len(commits)),
+                "status": data.get("status"), "url": f"https://github.com/{REPOSITORY}/compare/{base}...{revision}"}
+
+    def blob(self, expected: dict) -> bytes:
+        sha, size = expected.get("git_sha", ""), expected.get("size", -1)
+        if not re.fullmatch(r"[a-f0-9]{40}", sha) or type(size) is not int or not 0 <= size <= 65536:
+            raise ValueError("Файл слишком большой для просмотра изменений")
+        data = self.json("/git/blobs/" + sha)
+        try:
+            raw = base64.b64decode("".join(data["content"].split()), validate=True)
+        except (KeyError, ValueError, TypeError):
+            raise ValueError("GitHub вернул повреждённое содержимое файла") from None
+        if (data.get("encoding") != "base64" or len(raw) != size
+                or hashlib.sha1(f"blob {len(raw)}\0".encode() + raw).hexdigest() != sha):
+            raise ValueError("Контрольная сумма файла для просмотра не совпала")
+        return raw
 
     def download(self, revision: str, destination: Path, progress) -> None:
         if not re.fullmatch(r"[a-f0-9]{40}", revision):
@@ -124,7 +219,7 @@ class GitHub:
                 if length > MAX_ARCHIVE:
                     raise ValueError("Архив обновления слишком большой")
                 while True:
-                    block = response.read(1024 * 1024)
+                    block = response.read(128 * 1024)
                     if not block:
                         break
                     total += len(block)
@@ -222,7 +317,7 @@ def unpack(archive: Path, stage: Path, expected: dict, progress) -> dict:
             if amount != item.file_size or git_hash.hexdigest() != info["git_sha"]:
                 raise ValueError(f"Контрольная сумма не совпала: {rel}")
             result[rel] = {**info, "size": amount, "sha256": sha256.hexdigest()}
-            progress(len(result), len(expected))
+            progress(len(result), len(expected), rel)
     if result.keys() != expected.keys():
         raise ValueError("В архиве не хватает файлов")
     for rel in result:
