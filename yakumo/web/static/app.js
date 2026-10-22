@@ -11,6 +11,12 @@ const TEXTS = {
     logSoon: "Здесь будет журнал в реальном времени.",
     settingsHint: "Изменения сохраняются сразу.",
     startup: "Запуск", appearance: "Внешний вид", paths: "Пути",
+    avatarSection: "Аватар", avatarShow: "Показывать аватар",
+    avatarShowHint: "Кицунэ на всех страницах; по нажатию на неё открывается чат.",
+    avatarSize: "Размер", px: "точек", avatarMotion: "Движение", avatarGlow: "Сияние", avatarSpeed: "Скорость анимации",
+    motions: { none: "Нет", float: "Парение", sway: "Покачивание", breathe: "Дыхание", bounce: "Прыжки", drift: "Плавание" },
+    glows: { off: "Нет", soft: "Мягкое", bright: "Яркое", pulse: "Мерцание" },
+    speeds: { slow: "Медленно", normal: "Обычно", fast: "Быстро" },
     openBrowser: "Открывать браузер при старте",
     openBrowserHint: "После запуска Yakumo сразу откроется эта страница.",
     tray: "Значок в трее", trayHint: "Меню у часов: открыть, папки, выход.",
@@ -52,6 +58,12 @@ const TEXTS = {
     logSoon: "A live log will be here.",
     settingsHint: "Changes are saved immediately.",
     startup: "Startup", appearance: "Appearance", paths: "Paths",
+    avatarSection: "Avatar", avatarShow: "Show avatar",
+    avatarShowHint: "The kitsune on every page; click her to open the chat.",
+    avatarSize: "Size", px: "px", avatarMotion: "Motion", avatarGlow: "Glow", avatarSpeed: "Animation speed",
+    motions: { none: "None", float: "Float", sway: "Sway", breathe: "Breathe", bounce: "Bounce", drift: "Drift" },
+    glows: { off: "None", soft: "Soft", bright: "Bright", pulse: "Pulse" },
+    speeds: { slow: "Slow", normal: "Normal", fast: "Fast" },
     openBrowser: "Open browser on start",
     openBrowserHint: "This page opens right after Yakumo starts.",
     tray: "Tray icon", trayHint: "Menu near the clock: open, folders, exit.",
@@ -161,9 +173,17 @@ function applyLook() {
   document.documentElement.lang = v.language;
   document.documentElement.style.setProperty("--scale", v.font_scale / 100);
   document.body.classList.toggle("compact", v.compact);
+  applyAvatarLook(v);
   buildMenu();
   placeAvatar();
   showOnline();
+}
+
+function applyAvatarLook(v) {
+  document.documentElement.style.setProperty("--avatar-size", v.avatar_size + "px");
+  Object.assign(avatarBtn.dataset, { motion: v.avatar_motion, glow: v.avatar_glow, speed: v.avatar_speed });
+  avatarBtn.hidden = !v.avatar_show;
+  if (!v.avatar_show && !chatBox.hidden) setChatOpen(false);
 }
 
 // --- Страницы ---
@@ -195,6 +215,39 @@ function choice(key, title, hint, labels) {
     h("span", { class: "row-text" }, h("span", { class: "row-title" }, title),
       hint ? h("span", { class: "row-hint" }, hint) : "", restartNote(key)),
     group);
+}
+
+function sizeSlider() {
+  const opts = settings.options.avatar_size;
+  const value = settings.values.avatar_size;
+  const out = h("output", {}, `${value} ${T.px}`);
+  const input = h("input", {
+    type: "range", min: opts[0], max: opts[opts.length - 1], step: opts[1] - opts[0], value,
+    "aria-label": T.avatarSize,
+    // Пока тянем ползунок, меняем аватар сразу; сохраняем, когда отпустили.
+    oninput: (e) => {
+      out.textContent = `${e.target.value} ${T.px}`;
+      document.documentElement.style.setProperty("--avatar-size", e.target.value + "px");
+      placeAvatar();
+    },
+    onchange: (e) => save({ avatar_size: Number(e.target.value) }),
+  });
+  return h("div", { class: "row" },
+    h("span", { class: "row-text" }, h("span", { class: "row-title" }, T.avatarSize)),
+    h("span", { class: "slider" }, input, out));
+}
+
+function avatarSection() {
+  const on = settings.values.avatar_show;
+  return h("section", { class: "card group" },
+    h("h2", {}, T.avatarSection),
+    toggle("avatar_show", T.avatarShow, T.avatarShowHint),
+    on ? [
+      sizeSlider(),
+      choice("avatar_motion", T.avatarMotion, null, (v) => T.motions[v]),
+      choice("avatar_glow", T.avatarGlow, null, (v) => T.glows[v]),
+      choice("avatar_speed", T.avatarSpeed, null, (v) => T.speeds[v]),
+    ] : []);
 }
 
 function cloudSection() {
@@ -294,6 +347,7 @@ const PAGES = {
         choice("language", T.language, T.languageHint, (v) => ({ ru: "Русский", en: "English" })[v]),
         choice("font_scale", T.fontSize, null, (v) => `${v}%`),
         toggle("compact", T.compact, T.compactHint)),
+      avatarSection(),
       cloudSection(),
       h("section", { class: "card group" },
         h("h2", {}, T.paths),
@@ -370,6 +424,8 @@ async function start() {
     settings = await getJSON("/api/settings");
     applyLook();
   } catch { /* без настроек работаем со значениями по умолчанию */ }
+  avatarBtn.classList.add("ready");
+  placeAvatar();
   try {
     cloud = await getJSON("/api/cloud");
     showChatSub();

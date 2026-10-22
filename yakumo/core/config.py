@@ -20,6 +20,11 @@ class Config:
     language: str = "ru"             # язык интерфейса: ru или en
     font_scale: int = 100            # размер шрифта веб-версии, %
     compact: bool = False            # компактный режим веб-версии
+    avatar_show: bool = True         # аватар на страницах веб-версии
+    avatar_size: int = 232           # размер аватара, точек
+    avatar_motion: str = "float"     # движение аватара
+    avatar_glow: str = "soft"        # сияние за аватаром
+    avatar_speed: str = "normal"     # скорость анимации
     cloud_model: str | None = None   # модель Cloud.ru для чата; ключ хранится в secrets.json
     cloud_url: str = "https://foundation-models.api.cloud.ru/v1"  # адрес API Cloud.ru
 
@@ -30,6 +35,11 @@ class Config:
         "language": ("ru", "en"),
         "font_scale": (90, 100, 115, 130),
         "compact": (True, False),
+        "avatar_show": (True, False),
+        "avatar_size": tuple(range(120, 361, 8)),
+        "avatar_motion": ("none", "float", "sway", "breathe", "bounce", "drift"),
+        "avatar_glow": ("off", "soft", "bright", "pulse"),
+        "avatar_speed": ("slow", "normal", "fast"),
     }
 
     def update(self, changes: dict) -> None:
