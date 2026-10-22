@@ -6,7 +6,7 @@ import json
 import logging
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 from urllib.parse import unquote, urlsplit
 
 log = logging.getLogger(__name__)
@@ -81,7 +81,9 @@ class Handler(SimpleHTTPRequestHandler):
             raise ValueError("Неверный JSON") from exc
 
     def _respond(self, result: Any) -> None:
-        if isinstance(result, tuple):
+        if isinstance(result, Iterator):
+            self._stream(result)
+        elif isinstance(result, tuple):
             code, ctype, body = result
             self._send(code, ctype, body.encode("utf-8") if isinstance(body, str) else body)
         elif isinstance(result, bytes):
@@ -91,6 +93,24 @@ class Handler(SimpleHTTPRequestHandler):
         else:
             body = json.dumps(result, ensure_ascii=False, indent=2).encode("utf-8")
             self._send(200, "application/json; charset=utf-8", body)
+
+    def _stream(self, chunks: Iterator[bytes]) -> None:
+        """Ответ частями по мере готовности (чат). Длины нет, соединение закрывается в конце."""
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.end_headers()
+        self.close_connection = True
+        try:
+            for chunk in chunks:
+                self.wfile.write(chunk)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            log.info("Клиент закрыл соединение до конца ответа")
+        finally:
+            close = getattr(chunks, "close", None)
+            if close:
+                close()  # освободить запрос к внешнему сервису
 
     def _send(self, code: int, ctype: str, body: bytes) -> None:
         self.send_response(code)

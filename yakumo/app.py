@@ -10,6 +10,7 @@ import time
 import webbrowser
 
 from yakumo import APP_NAME, __version__
+from yakumo.core.cloud import CloudService
 from yakumo.core.config import Config
 from yakumo.core.instance import InstanceLock
 from yakumo.core.modules import Context, load_all
@@ -138,8 +139,9 @@ def serve(args, storage: StorageChoice, paths: Paths, config: Config,
     use_tray = config.tray and not args.no_tray and tray.available()
     settings = SettingsService(config, paths.config_file, tray_running=use_tray,
                                tray_available=tray.available())
+    cloud = CloudService(config, paths.config_file, paths.secrets_file)
     routes = {"/api/status": status, "/api/modules": lambda _req: [m.as_dict() for m in modules],
-              **settings.routes(), **ctx.routes}
+              **settings.routes(), **cloud.routes(), **ctx.routes}
 
     # Порт мог заняться между проверкой и запуском: пробуем следующий.
     for _ in range(5):
