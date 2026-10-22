@@ -12,6 +12,8 @@
         ctx.on_stop(lambda: ...)
         ctx.web("page.js", "page.css")   # своя страница в веб-версии
         ctx.chat_tool("имя", "что делает", run)  # инструмент для чата с Yakumo
+        ctx.chat_context(lambda history, chat_id: "текст в подсказку")
+        ctx.on_chat(lambda history, answer, chat_id: ...)  # после ответа в чате
 
 Ошибка в одном модуле не мешает запуску остальных и ядра.
 """
@@ -61,6 +63,8 @@ class Context:
     web_files: dict[str, list[str]] = field(default_factory=dict)
     cloud: Any = None  # CloudService: модули могут обращаться к моделям Cloud.ru
     chat_tools: dict[str, Any] = field(default_factory=dict)
+    chat_contexts: list[Callable] = field(default_factory=list)
+    chat_listeners: list[Callable] = field(default_factory=list)
     request_exit: Callable[[], None] | None = None  # завершение ядра для установщика
     restart_command: list[str] = field(default_factory=list)
     instance_info: Path | None = None
@@ -108,6 +112,18 @@ class Context:
         if name in self.chat_tools:
             raise ValueError(f"Инструмент {name} уже есть")
         self.chat_tools[name] = ChatTool(name, description, run, change, title)
+
+    def chat_context(self, hook: Callable[[list[dict], str], str | None]) -> None:
+        """Дополнение к системной подсказке чата.
+
+        hook(history, chat_id) получает реплики разговора и id беседы из браузера
+        и возвращает текст, который модель увидит перед разговором (или None).
+        """
+        self.chat_contexts.append(hook)
+
+    def on_chat(self, hook: Callable[[list[dict], str, str], None]) -> None:
+        """hook(history, answer, chat_id) — после каждого ответа в чате. Должен работать быстро."""
+        self.chat_listeners.append(hook)
 
     def on_stop(self, hook: Callable[[], None]) -> None:
         self.stop_hooks.append(hook)

@@ -1,0 +1,71 @@
+/* «Память»: тот же стиль, что у веб-версии — чёрный фон, акцентный (золотой) цвет из настроек */
+
+.brain { max-width: 860px; }
+.br-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px 24px; flex-wrap: wrap;
+           margin-bottom: 16px; }
+.br-lead { margin: 0; color: var(--muted); font-size: 14px; }
+.br-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.br-danger:hover:not(:disabled) { color: var(--bad); border-color: var(--bad); }
+.br-msg { margin: 0 0 12px; }
+.br-tip { margin: 10px 0 12px; line-height: 1.45; }
+.br-busy { color: var(--accent); margin: 10px 0 0; }
+.brain .group > .row-hint.bad { margin: 10px 0 0; }
+
+/* Добавить факт */
+.br-add { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+.br-add .text-input { flex: 1 1 260px; width: auto; min-width: 0; }
+.br-fact.editing .br-add { margin: 0; width: 100%; }
+
+/* Вкладки и поиск */
+.br-tabs { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+           border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+.br-tablist { display: flex; gap: 4px; }
+.br-tablist button { display: flex; align-items: center; gap: 8px; font: inherit; font-size: 14px; padding: 10px 12px;
+                     border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: none;
+                     color: var(--muted); cursor: pointer; }
+.br-tablist button span, .br-kind h2 span { font-size: 12px; padding: 1px 7px; border-radius: var(--chip-radius);
+                                            background: var(--accent-soft); color: var(--accent); }
+.br-tablist button:hover { color: var(--text); }
+.br-tablist button.on { color: var(--accent); border-bottom-color: var(--accent); }
+.br-tablist button:focus-visible { outline: 2px solid var(--accent); }
+.br-search { flex: 0 1 300px; margin-bottom: 8px; }
+.br-search .text-input { width: 100%; }
+
+/* Факты и разговоры */
+.br-kind h2 { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--muted);
+              text-transform: uppercase; letter-spacing: .04em; margin: 18px 0 6px; }
+.br-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: var(--radius);
+           background: var(--card-bg); }
+.br-fact, .br-talk { display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+                     border-top: 1px solid var(--border); }
+.br-list > li:first-child { border-top: 0; }
+.br-fact-body { flex: 1; min-width: 0; }
+.br-fact-text { font-size: 15px; line-height: 1.4; overflow-wrap: anywhere; }
+.br-talk .br-fact-text { color: var(--muted); font-size: 14px; margin-top: 3px; }
+.br-talk-head { display: flex; align-items: baseline; justify-content: space-between; gap: 4px 12px; flex-wrap: wrap; }
+.br-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.br-fact.faded .br-fact-text { color: var(--muted); }
+.br-fact.pinned { box-shadow: inset 2px 0 0 var(--accent); }
+
+/* Сила памяти: пять золотых делений */
+.br-meter { display: flex; flex-direction: column-reverse; gap: 2px; flex: none; }
+.br-meter i { display: block; width: 4px; height: 4px; border-radius: 1px; background: var(--border); }
+.br-meter i.on { background: var(--accent); }
+
+.br-tools { display: flex; gap: 2px; flex: none; opacity: .55; transition: opacity .15s; }
+.br-fact:hover .br-tools, .br-talk:hover .br-tools, .br-tools:focus-within { opacity: 1; }
+.br-tool { font: inherit; font-size: 15px; width: 30px; height: 30px; border: 0; border-radius: var(--btn-radius);
+           background: none; color: var(--muted); cursor: pointer; }
+.br-tool:hover { background: var(--hover); color: var(--text); }
+.br-tool.on { color: var(--accent); }
+.br-tool.danger:hover { color: var(--bad); }
+.br-tool:focus-visible { outline: 2px solid var(--accent); }
+
+.br-empty { display: grid; place-items: center; gap: 6px; padding: 48px 16px; text-align: center; color: var(--muted); }
+.br-empty strong { color: var(--text); font-weight: 600; }
+
+@media (max-width: 600px) {
+  .br-tools { opacity: 1; }
+  .br-search { flex-basis: 100%; }
+}
+.brain .group > .row:first-child { border-top: 0; }
