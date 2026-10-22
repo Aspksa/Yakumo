@@ -22,6 +22,7 @@ ENTITY_TYPES = ("person", "pet", "place", "project", "org", "thing")
 SETTINGS = {"enabled": True,    # использовать память в чате
             "auto": True,       # самой запоминать из разговоров
             "sleep": True,      # «сон»: ночная уборка памяти и утреннее сообщение
+            "grow": True,       # саморазвитие во сне: учёба по Диску, экзамен, стиль
             "mood": False,      # замечать настроение
             "activity": False}  # видеть, какая программа открыта (только Windows)
 MAX_FACTS = 500
@@ -32,6 +33,12 @@ MAX_SUMMARY = 1200  # символов в конспекте разговора
 MAX_DAYS = 400      # сколько дней хранить настроение и программы
 FADE_DAYS = 45      # за столько дней без упоминания факт теряет одно очко
 FORGET_DAYS = 180   # мелкие факты, которые не вспоминались так долго, забываются сами
+
+MAX_LESSONS = 40   # правил, которые Yakumo вывела сама
+ARCHIVE_SCORE = 0  # факты слабее этого во сне уходят в архив: не в подсказке, но находятся поиском
+# Списки «роста»: уроки, желания, предложенные навыки, свои инструменты, конспекты, ассоциации,
+# примеры разговоров (для улучшения подсказки), мысли фонового разума.
+GROWTH = ("lessons", "wishes", "suggestions", "user_tools", "notes", "links", "samples", "thoughts")
 
 WORD = re.compile(r"\w{3,}", re.U)
 DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
@@ -63,6 +70,13 @@ def _clean(text, limit: int) -> str:
     if not text:
         raise BrainError("Пустой текст")
     return text[:limit]
+
+
+def _block(text, limit: int) -> str:
+    """Как _clean, но абзацы и списки сохраняются (сообщения в чат, стиль)."""
+    if not isinstance(text, str) or not text.strip():
+        raise BrainError("Пустой текст")
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(" ".join(line.split()) for line in text.strip().splitlines()))[:limit]
 
 
 def _date(value) -> str | None:
@@ -114,9 +128,9 @@ class Memory:
             if type(data.get(key)) is not bool:
                 data[key] = default
         data["facts"] = [f for f in data.get("facts", []) if isinstance(f, dict) and isinstance(f.get("text"), str)]
-        for name in ("talks", "entities", "promises", "events", "skills", "inbox"):
+        for name in ("talks", "entities", "promises", "events", "skills", "inbox", *GROWTH):
             data[name] = [x for x in data.get(name, []) if isinstance(x, dict) and isinstance(x.get("id"), str)]
-        for key in ("days", "meta"):
+        for key in ("days", "meta", "chains", "style"):
             if not isinstance(data.get(key), dict):
                 data[key] = {}
         return data
@@ -326,6 +340,7 @@ class Memory:
                 if f["id"] in ids:
                     f["seen"] = f.get("seen", 1) + 1
                     f["last_seen"] = now
+                    f.pop("archived", None)  # вспомнилось — возвращается из архива
             self.save()
 
     def delete(self, ids) -> int:
@@ -361,6 +376,18 @@ class Memory:
             self.save()
             self._changed("f", keep["id"])
             return keep
+
+    def archive_faded(self) -> int:
+        """Во сне: потускневшие факты уходят в архив (уровень памяти ниже), чтобы не забивать подсказку."""
+        count = 0
+        with self.lock:
+            for f in self.data["facts"]:
+                if not f.get("pinned") and not f.get("archived") and self.score(f) < ARCHIVE_SCORE:
+                    f["archived"] = True
+                    count += 1
+            if count:
+                self.save()
+        return count
 
     def _trim(self) -> None:
         """Забыть то, что давно не вспоминалось: мелкие факты, выученные самой Yakumo."""
@@ -519,7 +546,7 @@ class Memory:
         return found
 
     def delete_items(self, name: str, ids) -> int:
-        if name not in ("promises", "events", "skills", "inbox"):
+        if name not in ("promises", "events", "skills", "inbox", *GROWTH):
             raise BrainError("Неизвестный список")
         ids = set(_ids(ids))
         with self.lock:
@@ -604,7 +631,7 @@ class Memory:
 
     def say(self, text: str, kind: str = "note") -> dict:
         """Сообщение, которое Yakumo сама напишет в чат при следующем открытии страницы."""
-        item = {"id": _id(), "text": _clean(text, 3000), "kind": kind, "at": int(time.time())}
+        item = {"id": _id(), "text": _block(text, 3000), "kind": kind, "at": int(time.time())}
         with self.lock:
             self.data["inbox"].append(item)
             self.data["inbox"] = self.data["inbox"][-10:]
@@ -618,13 +645,105 @@ class Memory:
                 self.save()
             return items
 
+    # --- Рост: уроки, желания, цепочки действий ---
+
+    def item(self, name: str, item_id: str) -> dict | None:
+        return next((x for x in self.data[name] if x["id"] == item_id), None)
+
+    def add_item(self, name: str, item: dict, limit: int = MAX_ITEMS) -> dict:
+        with self.lock:
+            item = {"id": _id(), "created": int(time.time()), **item}
+            self.data[name].append(item)
+            del self.data[name][:-limit]
+            self.save()
+            return item
+
+    def lesson(self, text: str, source: str = "exam") -> dict:
+        """Правило, которое Yakumo вывела сама (из ошибки, ночной тренировки). Повтор не дублируется."""
+        text = _clean(text, 300)
+        with self.lock:
+            same = next((x for x in self.data["lessons"] if alike(x["text"], text)), None)
+            if same:
+                same["seen"] = same.get("seen", 1) + 1
+                self.save()
+                return same
+            return self.add_item("lessons", {"text": text, "source": source, "seen": 1}, MAX_LESSONS)
+
+    def wish(self, text: str) -> dict:
+        """Чему Yakumo хочет научиться: её просили, а она не умеет."""
+        text = _clean(text, 200)
+        with self.lock:
+            same = next((x for x in self.data["wishes"] if alike(x["text"], text)), None)
+            if same:
+                same["count"] = same.get("count", 1) + 1
+                same["last"] = int(time.time())
+                self.save()
+                return same
+            return self.add_item("wishes", {"text": text, "count": 1, "last": int(time.time())}, 50)
+
+    def chain(self, signature: str, steps: list, question: str) -> int:
+        """Запомнить цепочку инструментов; вернуть, сколько раз она уже встречалась."""
+        with self.lock:
+            c = self.data["chains"].setdefault(signature, {"count": 0})
+            c.update(count=c["count"] + 1, steps=steps, question=question[:200], last=int(time.time()))
+            if len(self.data["chains"]) > 200:
+                for old in sorted(self.data["chains"], key=lambda k: self.data["chains"][k].get("last", 0))[:50]:
+                    del self.data["chains"][old]
+            self.save()
+            return c["count"]
+
+    def link(self, a: str, b: str, why: str) -> dict | None:
+        """Ассоциация между двумя фактами (находит «сон»). Повтор той же пары не дублируется."""
+        ids = {f["id"] for f in self.data["facts"]}
+        why = _clean(why, 200)
+        if a == b or a not in ids or b not in ids or not why:
+            return None
+        with self.lock:
+            pair = {a, b}
+            same = next((x for x in self.data["links"] if {x["a"], x["b"]} == pair), None)
+            if same:
+                same["why"] = why
+                self.save()
+                return same
+            return self.add_item("links", {"a": a, "b": b, "why": why}, 100)
+
+    def links(self) -> list[dict]:
+        ids = {f["id"] for f in self.data["facts"]}
+        return [x for x in self.data["links"] if x["a"] in ids and x["b"] in ids]
+
+    # --- Стиль: подсказка, которую Yakumo улучшает сама ---
+
+    def style(self) -> dict | None:
+        """Действующая версия стиля или None."""
+        st = self.data["style"]
+        return next((v for v in st.get("versions", []) if v["id"] == st.get("active")), None)
+
+    def add_style(self, text: str, why: str) -> dict:
+        with self.lock:
+            st = self.data["style"]
+            version = {"id": _id(), "text": _block(text, 800), "why": " ".join(str(why or "").split())[:300],
+                       "created": int(time.time())}
+            st["versions"] = [*st.get("versions", []), version][-10:]
+            st["active"] = version["id"]
+            self.save()
+            return version
+
+    def use_style(self, version_id: str | None) -> None:
+        """Откатить стиль к прежней версии (или выключить, если None)."""
+        with self.lock:
+            st = self.data["style"]
+            if version_id is not None and all(v["id"] != version_id for v in st.get("versions", [])):
+                raise BrainError("Такой версии нет")
+            st["active"] = version_id
+            self.save()
+
     # --- Всё сразу ---
 
     def clear(self) -> None:
         with self.lock:
-            for name in ("facts", "talks", "entities", "promises", "events", "skills", "inbox"):
+            for name in ("facts", "talks", "entities", "promises", "events", "skills", "inbox", *GROWTH):
                 self.data[name] = []
-            self.data["days"] = {}
+            self.data["days"], self.data["chains"], self.data["style"] = {}, {}, {}
             self.save()
 
     # --- Поиск по словам ---

@@ -6,25 +6,38 @@ Yakumo сама выписывает из разговоров факты о п�
 пишет первой. Ищет по смыслу через эмбеддинги Cloud.ru, помнит навыки
 (процедуры по шагам), по согласию видит, какая программа открыта. Другим
 модулям память доступна через ctx.memory. Хранится в <данные>/brain/.
+
+Фоновый «разум» (mind.py) работает круглые сутки: бодрствует, дремлет и спит,
+учится по документам Диска (knowledge.py), сдаёт себе ночные экзамены и
+улучшает стиль (grow.py), выполняет длинные задачи в фоне (tasks.py) и пишет
+себе инструменты в песочнице (usertools.py). Всё видно на вкладках «Разум» и «Рост».
 """
 
 from __future__ import annotations
 
+import json
 import time
 
 from . import learn
 from .activity import Activity
+from .grow import Growth
+from .knowledge import Knowledge
 from .learn import Learner
+from .mind import Mind
 from .semantic import Semantic
 from .sleep import Sleep
-from .store import ENTITY_TYPES, KINDS, SETTINGS, BrainError, Memory
+from .store import ENTITY_TYPES, KINDS, SETTINGS, BrainError, Memory, today
+from .tasks import Tasks
+from .usertools import NAME as TOOL_NAME, ToolError, calc, check, sandbox
 
 NAME = "Мозг"
-VERSION = "2.0"
+VERSION = "3.0"
 
 PROMPT_FACTS = 30     # самые важные факты — в каждую подсказку
 PROMPT_RELEVANT = 10  # и ещё столько подходящих к последней реплике (по словам и по смыслу)
 PROMPT_TALKS = 3      # последних бесед + столько же подходящих
+PROMPT_LESSONS = 10
+KNOWLEDGE_SCORE = 0.6  # кусочек документа попадает в подсказку сам, только если очень близок к вопросу
 
 INTRO = {
     "ru": ("Твоя долговременная память — это ты помнишь сама из прошлых разговоров. Используй её к месту и "
@@ -39,6 +52,28 @@ INTRO = {
            "what is not below — memory_recall; \"how do you know?\" — memory_source; promises — memory_promise and "
            "memory_done; important dates — memory_date; \"remember how I do…\" — memory_skill_save, and to perform a "
            "skill call memory_skill and follow the steps."),
+}
+RULES = {
+    "ru": ("Как думать: перед непростым ответом порассуждай про себя внутри <think>…</think> — пользователь этого не "
+           "видит; на простые реплики отвечай сразу. Любые вычисления делай через calc, не в уме. Сведения из документов "
+           "пользователя бери через knowledge_search и давай ссылку на файл. Если в чём-то не уверена, честно пометь это "
+           "(«не уверена», «стоит проверить»), не выдумывай. Долгую работу (разобрать много файлов, собрать сводку) ставь "
+           "в фон через background_task. Если не хватает умения, напиши себе инструмент через tool_propose: его включит "
+           "пользователь."),
+    "en": ("How to think: before a non-trivial answer reason privately inside <think>…</think> — the user doesn't see "
+           "it; answer simple messages right away. Do any calculation with calc, never in your head. Take information "
+           "from the user's documents with knowledge_search and link the file. If you're unsure, say so honestly "
+           "(\"not sure\", \"worth checking\"), don't make things up. Put long work (many files, a summary) in the "
+           "background with background_task. If you lack a skill, write yourself a tool with tool_propose; the user "
+           "will enable it."),
+}
+GROW_HEAD = {
+    "ru": {"lessons": "Твои уроки (ты вывела их сама из ошибок):", "style": "Твой стиль ответов (выработан тобой):",
+           "notes": "Твои конспекты по темам пользователя:", "docs": "Из документов пользователя (ссылайся на файл):",
+           "wishes": "Чему ты хочешь научиться:"},
+    "en": {"lessons": "Your lessons (you derived them from mistakes):", "style": "Your answer style (you developed it):",
+           "notes": "Your notes on the user's topics:", "docs": "From the user's documents (cite the file):",
+           "wishes": "What you want to learn:"},
 }
 HEAD = {
     "ru": {"now": "Сейчас {now}.", "facts": "Что ты знаешь о пользователе:", "none": "Пока ничего.",
@@ -107,24 +142,47 @@ def setup(ctx):
     cloud = getattr(ctx, "cloud", None)
     lang = lambda: "en" if ctx.config.language == "en" else "ru"  # noqa: E731
     learner = Learner(memory, cloud, lang)
+    mind = Mind(memory, cloud, learner)
     semantic = Semantic(ctx.paths.data / "brain" / "vectors.json", memory, cloud)
-    sleep = Sleep(memory, cloud, lang, learner)
+    knowledge = Knowledge(ctx.paths.data / "brain" / "knowledge.json", ctx.services, semantic, mind, memory)
+    sleep = Sleep(memory, mind, lang, learner)
+    growth = Growth(memory, mind, lang)
     activity = Activity(memory)
-    learner.ticks += [activity.tick, semantic.sync, sleep.tick]
+    tasks = Tasks(memory, mind, ctx.chat_tools, lang)
+
+    def growing(fn):
+        """Саморазвитие во сне — только если оно включено."""
+        return lambda: fn() if memory.on("grow") else None
+
+    def study():
+        if memory.data["meta"].get("last_study") != today():
+            memory.data["meta"]["last_study"] = today()
+            knowledge.study(lang())
+
+    mind.every("activity", "any", 60, activity.tick)
+    mind.every("vectors", "any", 60, semantic.sync)
+    mind.every("knowledge", "rest", 5 * 60, knowledge.sync)
+    mind.every("sleep", "rest", 60, sleep.tick)
+    mind.every("study", "asleep", 30 * 60, growing(study))
+    mind.every("exam", "asleep", 30 * 60, growing(growth.exam))
+    mind.every("style", "asleep", 30 * 60, growing(growth.evolve))
+    learner.ticks = [mind.tick]
     learner.start()
+    tasks.resume()
     ctx.on_stop(learner.stop)
+    ctx.on_stop(tasks.stop)
 
     def recall(query: str, limit: int = 10) -> dict:
         """Поиск по словам плюс по смыслу; найденное по смыслу добавляется после совпадений по словам."""
-        found = memory.search(query, limit)
+        found = {**memory.search(query, limit), "notes": []}
         hits = semantic.search(query, limit) if memory.enabled else []
         if hits:
             index = {"f": {f["id"]: f for f in memory.data["facts"]}, "t": {t["id"]: t for t in memory.data["talks"]},
-                     "s": {s["id"]: s for s in memory.data["skills"]}}
-            names = {"f": "facts", "t": "talks", "s": "skills"}
+                     "s": {s["id"]: s for s in memory.data["skills"]}, "n": {n["id"]: n for n in memory.data["notes"]}}
+            names = {"f": "facts", "t": "talks", "s": "skills", "n": "notes"}
             for key, _score in hits:
                 kind, item_id = key.split(":", 1)
-                item = index[kind].get(item_id)
+                item = index.get(kind, {}).get(item_id)
                 if item is not None and all(x["id"] != item_id for x in found[names[kind]]):
                     found[names[kind]].append(item)
         return {k: v[:limit] for k, v in found.items()}
@@ -140,10 +198,10 @@ def setup(ctx):
         H = HEAD[ln]
         last = next((m["content"] for m in reversed(history) if m["role"] == "user"), "")
         names = {e["id"]: e for e in memory.data["entities"]}
-        facts = memory.facts()
+        facts = [f for f in memory.facts() if not f.get("archived")]  # архив — только через поиск
         chosen = [f for f in facts if f["kind"] != "self"][:PROMPT_FACTS]
         own = [f for f in facts if f["kind"] == "self"][:10]
-        found = recall(last, PROMPT_RELEVANT) if last else {"facts": [], "talks": [], "skills": []}
+        found = recall(last, PROMPT_RELEVANT) if last else {"facts": [], "talks": [], "skills": [], "notes": []}
         seen = {f["id"] for f in chosen + own}
         chosen += [f for f in found["facts"] if f["id"] not in seen]
 
@@ -153,7 +211,7 @@ def setup(ctx):
             files = " ".join(f"[{p.split('/')[-1]}](disk:{p})" for p in f.get("files", []))
             return f"- [{f['id']}] {f['text']}" + (f" ({tail})" if tail else "") + (f" {files}" if files else "")
 
-        lines = [INTRO[ln], "", H["now"].format(now=time.strftime("%Y-%m-%d %H:%M, %A")), "", H["facts"]]
+        lines = [INTRO[ln], "", RULES[ln], "", H["now"].format(now=time.strftime("%Y-%m-%d %H:%M, %A")), "", H["facts"]]
         lines += [line(f) for f in chosen] or [H["none"]]
         if own:
             lines += ["", H["self"], *(line(f) for f in own)]
@@ -189,6 +247,23 @@ def setup(ctx):
             apps = activity.today()
             if apps:
                 lines.append(H["apps"].format(apps=", ".join(f"{a} {m} {H['min']}" for a, m in apps)))
+        G = GROW_HEAD[ln]
+        lessons = sorted(memory.data["lessons"], key=lambda x: -x.get("seen", 1))[:PROMPT_LESSONS]
+        if lessons:
+            lines += ["", G["lessons"], *(f"- {x['text']}" for x in lessons)]
+        style = memory.style()
+        if style:
+            lines += ["", G["style"], style["text"]]
+        if found["notes"]:
+            lines += ["", G["notes"], *(f"- {n['topic']}: {n['summary'][:800]}" for n in found["notes"][:2])]
+        if last and knowledge.model:
+            docs = [c for c in knowledge.search(last, 2) if c["score"] >= KNOWLEDGE_SCORE]
+            if docs:
+                lines += ["", G["docs"], *(f"- [{c['path'].split('/')[-1]}](disk:{c['path']}): {c['text'][:700]}"
+                                           for c in docs)]
+        wishes = sorted(memory.data["wishes"], key=lambda x: -x.get("count", 1))[:3]
+        if wishes:
+            lines += ["", G["wishes"], *(f"- {x['text']}" for x in wishes)]
         return "\n".join(lines)
 
     ctx.chat_context(context)
@@ -281,6 +356,71 @@ def setup(ctx):
     def short(a, key, n=60):
         return str(a.get(key, ""))[:n]
 
+    def calc_tool(args):
+        try:
+            return {"result": calc(str(args.get("expr", "")))}
+        except (ValueError, TypeError, ZeroDivisionError, OverflowError, SyntaxError) as exc:
+            return {"error": str(exc) or type(exc).__name__}
+
+    def knowledge_tool(args):
+        if not knowledge.disk:
+            return {"error": "Диск не подключён" if ru() else "Drive is not connected"}
+        if not knowledge.items:  # база ещё не собрана (разум не успел задремать) — собрать сейчас
+            knowledge.sync()
+        found = knowledge.search(str(args.get("query", "")), 6)
+        return {"found": [{"link": f"[{c['path'].split('/')[-1]}](disk:{c['path']})", "text": c["text"],
+                           "score": c["score"]} for c in found],
+                "note": ("Отвечай по найденному и давай ссылку на файл; если не нашлось — так и скажи."
+                         if ru() else "Answer from what was found and link the file; if nothing, say so.")}
+
+    def task_tool(args):
+        task = str(args.get("task", "")).strip()
+        if not task:
+            return {"error": "Нужно описание задачи" if ru() else "Task description required"}
+        if not mind.can_think():
+            return {"error": "Фоновые задачи сейчас недоступны: нет ключа Cloud.ru или исчерпан дневной бюджет"
+                    if ru() else "Background tasks are unavailable: no Cloud.ru key or the daily budget is used up"}
+        item = tasks.add(task, str(args.get("title", "")))
+        return {"ok": True, "id": item["id"],
+                "note": "Задача в очереди; результат придёт сообщением в чат, её видно на вкладке «Разум»."
+                        if ru() else "Queued; the result will arrive as a chat message, see the Mind tab."}
+
+    def register_tool(t) -> None:
+        from yakumo.core.cloud import ChatTool
+
+        name = "my_" + t["name"]
+        example = json.dumps(t.get("example") or {}, ensure_ascii=False)[:200]
+        ctx.chat_tools[name] = ChatTool(name, f"{t['description']} args: {example}",
+                                        lambda args, code=t["code"]: sandbox(code, args), False,
+                                        lambda _a, n=t["name"]: (f"Мой инструмент: {n}" if ru() else f"My tool: {n}"))
+
+    def propose_tool(args):
+        name = str(args.get("name", "")).strip().lower()
+        description = " ".join(str(args.get("description", "")).split())[:300]
+        code, example = args.get("code"), args.get("example") if isinstance(args.get("example"), dict) else {}
+        if not TOOL_NAME.fullmatch(name) or not description:
+            return {"error": "Нужны name (латиница, a-z0-9_) и description"}
+        try:
+            check(code)
+        except ToolError as exc:
+            return {"error": str(exc)}
+        test = sandbox(code, example)
+        with memory.lock:
+            memory.data["user_tools"] = [t for t in memory.data["user_tools"] if t["name"] != name]
+            ctx.chat_tools.pop("my_" + name, None)
+        memory.add_item("user_tools", {"name": name, "description": description, "code": code, "example": example,
+                                       "test": test, "status": "pending"}, 30)
+        memory.say((f"Я написала себе инструмент «{name}»: {description}. Проверь код и включи его в «Память» → «Рост»."
+                    if ru() else f"I wrote myself a tool “{name}”: {description}. Review the code and enable it in "
+                    "Memory → Growth."), "tool")
+        return {"ok": True, "test": test,
+                "note": "Инструмент ждёт одобрения пользователя на странице «Память» → «Рост»."
+                        if ru() else "The tool awaits the user's approval on the Memory → Growth page."}
+
+    for t in memory.data["user_tools"]:
+        if t.get("status") == "on":
+            register_tool(t)
+
     tools = [
         ("memory_remember", 'запомнить факт о пользователе надолго (когда просят «запомни»). args: {"text": "кратко '
          'от третьего лица", "kind": "person|likes|work|other|self", "about": ["Аня"], "quote": "слова пользователя", '
@@ -304,6 +444,21 @@ def setup(ctx):
          lambda a: f"Запоминаю навык: {short(a, 'name')}" if ru() else f"Learning a skill: {short(a, 'name')}"),
         ("memory_skill", 'получить шаги навыка, чтобы выполнить его. args: {"name": "название"}', skill, False,
          lambda a: f"Вспоминаю навык: {short(a, 'name')}" if ru() else f"Recalling skill: {short(a, 'name')}"),
+        ("calc", 'точно посчитать выражение (всегда вместо счёта в уме): + - * / // % ** ^, проценты «15%», sqrt, '
+         'log, sin, round, pi… args: {"expr": "2000 * 15% + sqrt(16)"}', calc_tool, False,
+         lambda a: f"Считаю: {short(a, 'expr')}" if ru() else f"Calculating: {short(a, 'expr')}"),
+        ("knowledge_search", 'найти ответ в документах пользователя на Диске (по смыслу, с цитатой и ссылкой). '
+         'args: {"query": "вопрос"}', knowledge_tool, False,
+         lambda a: f"Ищу в документах: {short(a, 'query')}" if ru() else f"Searching documents: {short(a, 'query')}"),
+        ("background_task", 'поставить долгую задачу в фон (разобрать много файлов, собрать сводку); результат придёт '
+         'сообщением. args: {"task": "что сделать, подробно", "title": "коротко"}', task_tool, False,
+         lambda a: f"Ставлю в фон: {short(a, 'title') or short(a, 'task')}" if ru()
+         else f"Queuing: {short(a, 'title') or short(a, 'task')}"),
+        ("tool_propose", 'написать себе новый инструмент на Python, когда не хватает умения; включит пользователь. '
+         'Код: функция run(args), только модули math, datetime, re, json, statistics, collections и т.п., без файлов и '
+         'сети. args: {"name": "mortgage", "description": "что делает", "code": "def run(args): ...", '
+         '"example": {"x": 1}}', propose_tool, False,
+         lambda a: f"Пишу себе инструмент: {short(a, 'name')}" if ru() else f"Writing a tool: {short(a, 'name')}"),
         ("memory_forget", 'забыть факты (когда просят «забудь»). args: {"ids": ["id из памяти", ...]}', forget, True,
          lambda a: f"Забыть {fact_text(a)}" if ru() else f"Forget {fact_text(a)}"),
     ]
@@ -329,6 +484,13 @@ def setup(ctx):
                 "promises": sorted(m["promises"], key=lambda p: (p.get("done", False), p.get("due") or "9999")),
                 "events": sorted(m["events"], key=lambda e: e["date"][5:] if e.get("yearly") else e["date"]),
                 "skills": m["skills"], "upcoming": memory.upcoming(7),
+                "mind": mind.status(), "knowledge": knowledge.status(),
+                "lessons": sorted(m["lessons"], key=lambda x: -x.get("seen", 1)),
+                "wishes": sorted(m["wishes"], key=lambda x: -x.get("count", 1)),
+                "suggestions": [x for x in m["suggestions"] if x.get("status") == "new"],
+                "user_tools": m["user_tools"], "notes": sorted(m["notes"], key=lambda x: -x["created"]),
+                "links": memory.links(), "style": {"versions": m["style"].get("versions", []),
+                                                   "active": m["style"].get("active")},
                 "mood_days": [{"date": k, "mood": round(sum(v["mood"]) / len(v["mood"]), 2)}
                          for k, v in sorted(m["days"].items())[-30:] if v.get("mood")]}
 
@@ -369,7 +531,7 @@ def setup(ctx):
         kind = d.get("type")
         if kind == "entity":
             memory.delete_entities(d.get("ids"))
-        elif kind in ("promises", "events", "skills"):
+        elif kind in ("promises", "events", "skills", "lessons", "wishes", "notes", "links"):
             memory.delete_items(kind, d.get("ids"))
         else:
             raise BrainError("Неизвестный тип записи")
@@ -384,6 +546,66 @@ def setup(ctx):
     def sleep_now(_req):
         return {"morning": sleep.run(), "state": state()}
 
+    def set_mind(req):
+        d = body(req)
+        if "budget" in d:
+            try:
+                mind.set_limit(d["budget"])
+            except ValueError as exc:
+                raise BrainError(str(exc)) from exc
+        return mind.status()
+
+    def suggestion(req):
+        d = body(req)
+        item = memory.item("suggestions", str(d.get("id")))
+        if not item:
+            raise BrainError("Такого предложения нет")
+        if d.get("accept") is True:
+            memory.skill(d.get("name") or item["name"], item["steps"], item["name"])
+        with memory.lock:
+            item["status"] = "accepted" if d.get("accept") is True else "dismissed"
+            memory.save()
+        return state()
+
+    def user_tool(req):
+        d = body(req)
+        t = memory.item("user_tools", str(d.get("id")))
+        if not t:
+            raise BrainError("Такого инструмента нет")
+        action = d.get("action")
+        if action not in ("on", "off", "delete"):
+            raise BrainError("action: on, off или delete")
+        with memory.lock:
+            ctx.chat_tools.pop("my_" + t["name"], None)
+            if action == "delete":
+                memory.data["user_tools"].remove(t)
+            else:
+                t["status"] = action
+                if action == "on":
+                    register_tool(t)
+            memory.save()
+        return state()
+
+    def style(req):
+        version = body(req).get("id")
+        memory.use_style(str(version) if version else None)
+        return state()
+
+    def grow_now(req):
+        what = body(req).get("what")
+        if what not in ("exam", "style", "study"):
+            raise BrainError("what: exam, style или study")
+        if not mind.can_think():
+            raise BrainError("Нет ключа Cloud.ru или исчерпан дневной бюджет")
+        if what == "exam":
+            growth.exam(force=True)
+        elif what == "style":
+            growth.evolve(force=True)
+        else:
+            knowledge.sync()
+            knowledge.study(lang())
+        return state()
+
     routes = {
         "/api/brain": state,
         "/api/brain/export": lambda _req: memory.export(),
@@ -396,11 +618,19 @@ def setup(ctx):
         "POST /api/brain/talks/delete": lambda r: (memory.delete_talks(body(r).get("ids")), state())[1],
         "POST /api/brain/clear": clear,
         "POST /api/brain/sleep": sleep_now,
+        "/api/brain/mind": lambda _req: mind.status(),
+        "POST /api/brain/mind": set_mind,
+        "POST /api/brain/thought/cancel": lambda r: {"ok": mind.cancel(str(body(r).get("id"))), **mind.status()},
+        "POST /api/brain/suggestion": suggestion,
+        "POST /api/brain/tool": user_tool,
+        "POST /api/brain/style": style,
+        "POST /api/brain/grow": grow_now,
+        "POST /api/brain/fact/restore": lambda r: (memory.touch([str(body(r).get("id"))]), state())[1],
         "POST /api/brain/import": lambda r: {**memory.import_(r.read_json()), "state": state()},
     }
     for path, handler in routes.items():
         ctx.route(path, handler)
     ctx.web("brain.css", "brain.js")
     ctx.status(lambda: {"facts": len(memory.data["facts"]), "talks": len(memory.data["talks"]),
-                        "enabled": memory.enabled})
+                        "enabled": memory.enabled, "mode": mind.mode()})
     ctx.log.info("Память: %s фактов, %s бесед", len(memory.data["facts"]), len(memory.data["talks"]))

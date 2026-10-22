@@ -13,7 +13,7 @@
         ctx.web("page.js", "page.css")   # своя страница в веб-версии
         ctx.chat_tool("имя", "что делает", run)  # инструмент для чата с Yakumo
         ctx.chat_context(lambda history, chat_id: "текст в подсказку")
-        ctx.on_chat(lambda history, answer, chat_id: ...)  # после ответа в чате
+        ctx.on_chat(lambda history, answer, chat_id, tools: ...)  # после ответа в чате
         if ctx.memory: ctx.memory.remember("факт", about=["Аня"])  # память Yakumo
 
 Ошибка в одном модуле не мешает запуску остальных и ядра.
@@ -65,6 +65,7 @@ class Context:
     cloud: Any = None  # CloudService: модули могут обращаться к моделям Cloud.ru
     chat_tools: dict[str, Any] = field(default_factory=dict)
     memory: Any = None  # память Yakumo (модуль brain): remember, recall, facts, moved, say
+    services: dict[str, Any] = field(default_factory=dict)  # что модули дают друг другу, например "disk"
     chat_contexts: list[Callable] = field(default_factory=list)
     chat_listeners: list[Callable] = field(default_factory=list)
     request_exit: Callable[[], None] | None = None  # завершение ядра для установщика
@@ -123,8 +124,9 @@ class Context:
         """
         self.chat_contexts.append(hook)
 
-    def on_chat(self, hook: Callable[[list[dict], str, str], None]) -> None:
-        """hook(history, answer, chat_id) — после каждого ответа в чате. Должен работать быстро."""
+    def on_chat(self, hook: Callable[[list[dict], str, str, list], None]) -> None:
+        """hook(history, answer, chat_id, tools) — после каждого ответа в чате; tools — [(имя, args)],
+        которые модель вызвала. Должен работать быстро."""
         self.chat_listeners.append(hook)
 
     def on_stop(self, hook: Callable[[], None]) -> None:

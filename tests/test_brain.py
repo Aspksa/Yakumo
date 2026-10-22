@@ -25,6 +25,7 @@ class FakeCloud(BaseHTTPRequestHandler):
     learned: dict = {}
     requests: list[dict] = []
     embedded: list[str] = []
+    completions: list[str] = []  # готовые ответы для фоновых запросов (задачи, экзамен, стиль) — по очереди
 
     def _json(self, data):
         body = json.dumps(data, ensure_ascii=False).encode()
@@ -57,6 +58,9 @@ class FakeCloud(BaseHTTPRequestHandler):
             self._json({"data": [{"index": i, "embedding": self.vector(t)} for i, t in enumerate(body["input"])]})
             return
         FakeCloud.requests.append(body)
+        if not body.get("stream") and FakeCloud.completions:
+            self._json({"choices": [{"message": {"content": FakeCloud.completions.pop(0)}}]})
+            return
         if not body.get("stream"):
             text = "Вот память:\n```json\n" + json.dumps(FakeCloud.learned, ensure_ascii=False) + "\n```"
             self._json({"choices": [{"message": {"content": text}}]})
@@ -83,6 +87,7 @@ class BrainBase(unittest.TestCase):
         self.fake = ThreadingHTTPServer(("127.0.0.1", 0), FakeCloud)
         threading.Thread(target=self.fake.serve_forever, daemon=True).start()
         FakeCloud.replies, FakeCloud.requests, FakeCloud.learned, FakeCloud.embedded = [], [], {}, []
+        FakeCloud.completions = []
         FakeCloud.embeddings = False
         config = Config(cloud_url=f"http://127.0.0.1:{self.fake.server_address[1]}/v1",
                         cloud_model="Qwen/Qwen3-235B-A22B-Instruct-2507")
@@ -101,8 +106,9 @@ class BrainBase(unittest.TestCase):
         self.server = create_server("127.0.0.1", 0, base, {**self.ctx.routes, **cloud.routes()})
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.base = f"http://127.0.0.1:{self.server.server_address[1]}"
-        # Фоновые дела (сон, смысловой поиск, программы на экране) в тестах запускаем сами.
-        self.ticks = list(self.learner().ticks)
+        # Фоновые дела разума (сон, смысловой поиск, программы на экране) в тестах запускаем сами.
+        self.mind = self.learner().ticks[0].__self__
+        self.ticks = [fn for _name, _mode, _every, fn in self.mind.jobs]
         self.learner().ticks.clear()
 
     def tearDown(self):
@@ -141,7 +147,7 @@ class BrainBase(unittest.TestCase):
         return next(r for r in FakeCloud.requests if r.get("stream"))["messages"][0]["content"]
 
     def tick(self, name):
-        return next(t.__self__ for t in self.ticks if type(t.__self__).__name__ == name)
+        return next(t.__self__ for t in self.ticks if type(getattr(t, "__self__", None)).__name__ == name)
 
     def memory(self):
         return self.ctx.memory._memory
@@ -407,6 +413,182 @@ class BrainTest(BrainBase):
         self.assertIn("Photoshop 2 мин", prompt)
         saved = (self.data / "brain" / "memory.json").read_text(encoding="utf-8")
         self.assertNotIn("portfolio.psd", saved)  # заголовки окон на диск не попадают
+
+
+class GrowthTest(BrainBase):
+    """Саморазвитие: размышления, calc, разум и бюджет, уроки, стиль, задачи, свои инструменты, база знаний."""
+
+    def test_thinking_is_hidden_and_rules_are_in_prompt(self):
+        FakeCloud.replies = ["<think>Сначала посчитаю: 2+2=4, проверю.</think>Будет 4."]
+        text, events = self.chat([{"role": "user", "content": "Сколько 2+2?"}])
+        self.assertEqual(text, "Будет 4.")
+        self.assertIn({"status": "Думаю…"}, events)
+        prompt = self.system_prompt()
+        self.assertIn("<think>", prompt)
+        self.assertIn("calc", prompt)
+        self.assertIn("не уверена", prompt)
+
+    def test_calc_tool(self):
+        run = self.ctx.chat_tools["calc"].run
+        self.assertEqual(run({"expr": "2000 * 15% + sqrt(16)"}), {"result": 304})
+        self.assertEqual(run({"expr": "2^10"}), {"result": 1024})
+        self.assertIn("error", run({"expr": "__import__('os')"}))
+        self.assertIn("error", run({"expr": "1/0"}))
+        self.assertIn("error", run({"expr": "9**9**9**9"}))
+
+    def test_repeated_tool_chain_becomes_skill_suggestion(self):
+        for i in range(3):
+            FakeCloud.replies = ['<tool>{"name": "calc", "args": {"expr": "1+1"}}</tool>'
+                                 '<tool>{"name": "memory_recall", "args": {"query": "отчёт"}}</tool>', "Готово."]
+            self.chat([{"role": "user", "content": "Сделай сводку по отчёту"}], chat_id=f"c{i}")
+        state = self.get("/api/brain")
+        self.assertEqual(len(state["suggestions"]), 1)
+        sug = state["suggestions"][0]
+        self.assertEqual(sug["signature"], "calc → memory_recall")
+        inbox = self.get("/api/brain/inbox")["messages"]
+        self.assertEqual(inbox[-1]["kind"], "suggestion")
+        state = self.post("/api/brain/suggestion", {"id": sug["id"], "accept": True, "name": "Сводка по отчёту"})
+        self.assertEqual(state["suggestions"], [])
+        self.assertEqual(state["skills"][0]["name"], "Сводка по отчёту")
+        self.assertEqual(len(state["skills"][0]["steps"]), 2)
+
+    def test_wishes_and_lessons_from_chat(self):
+        FakeCloud.learned = {"wish": "Считать ипотеку", "lesson": "Отвечать короче, без длинных списков",
+                             "summary": "Говорили об ипотеке"}
+        FakeCloud.replies = ["Пока не умею считать ипотеку.", "Ок."]
+        self.chat([{"role": "user", "content": "Посчитай ипотеку. И отвечай короче!"}])
+        self.wait_for(lambda: self.memory().data["lessons"])
+        state = self.get("/api/brain")
+        self.assertEqual(state["wishes"][0]["text"], "Считать ипотеку")
+        self.assertEqual(state["lessons"][0]["source"], "chat")
+        FakeCloud.requests = []
+        self.chat([{"role": "user", "content": "Привет"}], chat_id="c2")
+        prompt = self.system_prompt()
+        self.assertIn("Отвечать короче, без длинных списков", prompt)
+        self.assertIn("Считать ипотеку", prompt)
+
+    def test_mind_modes_budget_and_thoughts(self):
+        now = time.mktime(time.strptime(time.strftime("%Y-%m-%d") + " 12:00", "%Y-%m-%d %H:%M"))
+        self.learner().last_chat = now - 60
+        self.assertEqual(self.mind.mode(now), "awake")
+        self.learner().last_chat = now - 20 * 60
+        self.assertEqual(self.mind.mode(now), "drowsy")
+        self.learner().last_chat = now - 2 * 3600
+        self.assertEqual(self.mind.mode(now), "asleep")
+        night = now - 9 * 3600  # 3 часа ночи
+        self.learner().last_chat = night - 20 * 60
+        self.assertEqual(self.mind.mode(night), "asleep")  # ночью засыпает быстрее
+        status = self.post("/api/brain/mind", {"budget": 50})
+        self.assertEqual(status["budget"], 50)
+        with self.assertRaises(urllib.error.HTTPError):
+            self.post("/api/brain/mind", {"budget": 7})
+        self.memory().data["meta"]["usage"] = {"date": time.strftime("%Y-%m-%d"), "calls": 50}
+        self.assertFalse(self.mind.can_think())
+        self.assertIn("error", self.ctx.chat_tools["background_task"].run({"task": "что-то"}))
+        self.post("/api/brain/mind", {"budget": 0})  # без ограничения
+        self.assertTrue(self.mind.can_think())
+        item = self.mind.thought("task", "Тест", "queued")
+        self.assertTrue(self.post("/api/brain/thought/cancel", {"id": item["id"]})["ok"])
+        self.assertEqual(self.get("/api/brain/mind")["thoughts"][0]["status"], "cancelled")
+
+    def test_night_exam_and_style_versions(self):
+        for i in range(5):
+            FakeCloud.replies = [f"Ответ {i}"]
+            self.chat([{"role": "user", "content": f"Вопрос {i}"}], chat_id=f"c{i}")
+        FakeCloud.completions = [json.dumps({"score": 3, "review": "Местами длинно",
+                                             "lessons": ["Проверять расчёты через calc"]}, ensure_ascii=False)]
+        state = self.post("/api/brain/grow", {"what": "exam"})
+        self.assertEqual(state["lessons"][0]["text"], "Проверять расчёты через calc")
+        self.assertEqual(state["lessons"][0]["source"], "exam")
+        self.assertEqual(state["mind"]["thoughts"][0]["kind"], "exam")
+        self.assertIn("3/5", state["mind"]["thoughts"][0]["result"])
+        FakeCloud.completions = [json.dumps({"style": "- Отвечать коротко\n- На «ты»", "why": "Просил короче"},
+                                            ensure_ascii=False),
+                                 json.dumps({"style": "- Совсем коротко", "why": "Ещё короче"}, ensure_ascii=False)]
+        first = self.post("/api/brain/grow", {"what": "style"})["style"]["versions"][0]
+        state = self.post("/api/brain/grow", {"what": "style"})
+        self.assertEqual(len(state["style"]["versions"]), 2)
+        FakeCloud.requests = []
+        self.chat([{"role": "user", "content": "Привет"}], chat_id="x")
+        self.assertIn("- Совсем коротко", self.system_prompt())
+        self.post("/api/brain/style", {"id": first["id"]})  # откат
+        FakeCloud.requests = []
+        self.chat([{"role": "user", "content": "Привет"}], chat_id="y")
+        self.assertIn("- Отвечать коротко\n- На «ты»", self.system_prompt())
+        self.post("/api/brain/style", {"id": None})
+        FakeCloud.requests = []
+        self.chat([{"role": "user", "content": "Привет"}], chat_id="z")
+        self.assertNotIn("Отвечать коротко", self.system_prompt())
+
+    def test_background_task_runs_tools_and_reports(self):
+        FakeCloud.completions = ['<tool>{"name": "calc", "args": {"expr": "6*7"}}</tool>', "Итог: **42**"]
+        res = self.ctx.chat_tools["background_task"].run({"task": "Посчитай 6*7 и доложи", "title": "Подсчёт"})
+        self.assertTrue(res["ok"])
+        self.wait_for(lambda: self.memory().item("thoughts", res["id"])["status"] == "done")
+        item = self.memory().item("thoughts", res["id"])
+        self.assertEqual(item["steps"], ["calc"])
+        self.assertEqual(item["result"], "Итог: **42**")
+        tool_result = [r for r in FakeCloud.requests if not r.get("stream")][1]["messages"][-1]["content"]
+        self.assertIn("42", tool_result)
+        inbox = self.get("/api/brain/inbox")["messages"]
+        self.assertEqual(inbox[-1]["kind"], "task")
+        self.assertIn("«Подсчёт»", inbox[-1]["text"])
+
+    def test_own_tools_need_approval_and_run_in_sandbox(self):
+        propose = self.ctx.chat_tools["tool_propose"].run
+        self.assertIn("error", propose({"name": "evil", "description": "x", "code": "import os\ndef run(a): pass"}))
+        res = propose({"name": "double", "description": "удвоить число",
+                       "code": "def run(args):\n    return args['x'] * 2", "example": {"x": 21}})
+        self.assertEqual(res["test"], {"result": 42})
+        self.assertNotIn("my_double", self.ctx.chat_tools)  # без одобрения не работает
+        tool = self.get("/api/brain")["user_tools"][0]
+        self.assertEqual(tool["status"], "pending")
+        self.post("/api/brain/tool", {"id": tool["id"], "action": "on"})
+        self.assertEqual(self.ctx.chat_tools["my_double"].run({"x": 5}), {"result": 10})
+        self.post("/api/brain/tool", {"id": tool["id"], "action": "off"})
+        self.assertNotIn("my_double", self.ctx.chat_tools)
+
+    def test_sleep_links_and_archive(self):
+        a = self.memory().add("Экзамен по истории 20 мая", "work")
+        b = self.memory().add("Поездка в Казань 19-21 мая", "other")
+        old = self.memory().add("Когда-то любил квас", "likes", importance=1)
+        old["last_seen"] = old["created"] = int(time.time()) - 400 * 86400
+        FakeCloud.learned = {"merge": [], "links": [{"a": a["id"], "b": b["id"], "why": "в одни дни"},
+                                                    {"a": a["id"], "b": "чужой", "why": "x"}],
+                             "morning": "Доброе утро! Экзамен и поездка совпадают."}
+        state = self.post("/api/brain/sleep", {})["state"]
+        self.assertEqual([(x["a"], x["b"]) for x in state["links"]], [(a["id"], b["id"])])
+        archived = next(f for f in state["facts"] if f["id"] == old["id"])
+        self.assertTrue(archived["archived"])
+        self.assertEqual(state["mind"]["thoughts"][0]["kind"], "sleep")
+        FakeCloud.requests = []
+        self.chat([{"role": "user", "content": "Привет"}])
+        self.assertNotIn("квас", self.system_prompt())  # архив не в подсказке…
+        self.assertIn("квас", json.dumps(self.ctx.memory.recall("квас"), ensure_ascii=False))  # …но ищется
+        self.post("/api/brain/fact/restore", {"id": old["id"]})
+        self.assertNotIn("archived", self.memory().fact(old["id"]))
+
+    def test_knowledge_base_and_study(self):
+        FakeCloud.embeddings = True
+        docs = [("Учёба/конспект.txt", 1, "Машинное обучение: градиентный спуск.\n\nОтчёт по курсу сдать до мая."),
+                ("Дом/кошка.txt", 1, "Кошку Мурку кормить дважды в день.")]
+        self.ctx.services["disk"] = SimpleNamespace(documents=lambda: docs)
+        self.tick("Semantic").sync()
+        knowledge = self.tick("Knowledge")
+        self.assertEqual(knowledge.sync(), 2)
+        found = self.ctx.chat_tools["knowledge_search"].run({"query": "чем кормить кота"})["found"]
+        self.assertEqual(found[0]["link"], "[кошка.txt](disk:Дом/кошка.txt)")
+        FakeCloud.requests = []
+        self.chat([{"role": "user", "content": "Когда кормить котика?"}])
+        self.assertIn("Мурку кормить", self.system_prompt())
+        docs.pop()  # документ удалили с Диска — из базы тоже
+        knowledge.sync()
+        self.assertEqual(knowledge.status()["documents"], 1)
+        self.memory().entity("Курс по ML", "project")
+        self.memory().add("Делает отчёт по курсу", "work", about=[{"name": "Курс по ML", "type": "project"}])
+        FakeCloud.completions = ["- Отчёт сдать до мая"]
+        state = self.post("/api/brain/grow", {"what": "study"})
+        self.assertEqual(state["notes"][0]["sources"], ["Учёба/конспект.txt"])
 
 
 class BrainWithDiskTest(BrainBase):

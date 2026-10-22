@@ -4,6 +4,10 @@
 «приснилось» из вашей недели, и сама напоминает о важном: даты, обещания,
 цели, «а помнишь, год назад…», бережный вопрос, если в последние дни было тяжело.
 Сообщение появляется в чате при следующем открытии Yakumo.
+
+Во сне же Yakumo ищет неочевидные связи между фактами (ассоциации — видны на
+карте, а самую интересную она может упомянуть утром) и уносит потускневшие
+факты в архив: в подсказку они больше не попадают, но находятся поиском.
 """
 
 from __future__ import annotations
@@ -13,6 +17,7 @@ import logging
 import time
 
 from .learn import parse
+from .mind import BudgetError
 from .store import today
 
 log = logging.getLogger("yakumo.modules.brain")
@@ -48,12 +53,16 @@ PROMPT = {
 
 Ответь ТОЛЬКО объектом JSON:
 {{"merge": [{{"ids": ["id", "id"], "text": "один факт вместо нескольких повторов"}}],
+ "links": [{{"a": "id", "b": "id", "why": "чем связаны"}}],
  "morning": "утреннее сообщение пользователю"}}
 
 merge — только настоящие повторы и дубли одного и того же; если таких нет, пустой список.
+links — 0-5 неочевидных, но правдоподобных связей между разными фактами (не повторы): «экзамен и поездка в одну
+неделю», «Аня тоже любит рисовать». Только то, что следует из фактов.
 morning — 2-6 коротких предложений от первого лица, тепло и живо, по-русски, Markdown можно. Начни с одной забавной
 строчки о том, что тебе «приснилось» по мотивам недели (без выдумок о фактах). Потом то, что действительно важно:
-напомни о датах и сроках, мягко спроси о прогрессе одной цели, вспомни «в этот день», если есть. Если в последние дни
+напомни о датах и сроках, мягко спроси о прогрессе одной цели, вспомни «в этот день», если есть; можешь упомянуть
+одну интересную связь из links. Если в последние дни
 пользователю было тяжело — будь бережной, без нравоучений. Если работал поздно ночью — заботливо отметь это.
 Не перечисляй всё подряд и не упоминай, что это JSON или память.""",
     "en": """You are Yakumo, a nine-tailed golden kitsune and the user's assistant. It's night: you "sleep" and tidy up
@@ -82,20 +91,23 @@ Computer at night: {late}
 
 Reply ONLY with a JSON object:
 {{"merge": [{{"ids": ["id", "id"], "text": "one fact instead of several duplicates"}}],
+ "links": [{{"a": "id", "b": "id", "why": "how they relate"}}],
  "morning": "morning message to the user"}}
 
 merge — only real duplicates of the same thing; empty list if none.
+links — 0-5 non-obvious but plausible connections between different facts (not duplicates): "the exam and the trip
+are the same week", "Ann likes drawing too". Only what follows from the facts.
 morning — 2-6 short sentences in first person, warm and lively, Markdown allowed. Start with one funny line about what
 you "dreamed" based on the week (don't invent facts). Then what truly matters: remind of dates and deadlines, gently
-ask about progress on one goal, recall "on this day" if any. If the user had a hard time lately, be gentle, no
+ask about progress on one goal, recall "on this day" if any; you may mention one interesting link. If the user had a hard time lately, be gentle, no
 lecturing. If they worked late at night, note it with care. Don't list everything and don't mention JSON or memory.""",
 }
 
 
 class Sleep:
-    def __init__(self, memory, cloud, language, learner):
+    def __init__(self, memory, mind, language, learner):
         self.memory = memory
-        self.cloud = cloud
+        self.mind = mind
         self.language = language
         self.learner = learner
         self.busy = False
@@ -114,9 +126,14 @@ class Sleep:
     def run(self) -> str | None:
         """Уснуть сейчас. Возвращает утреннее сообщение (оно же уходит во «входящие» чата) или None."""
         self.busy = True
+        ru = self.language() != "en"
+        thought = self.mind.thought("sleep", "Сплю: навожу порядок в памяти" if ru else "Sleeping: tidying up memory")
         try:
-            text = self._dream() if self.cloud and self.cloud.api_key() else None
+            text = self._dream() if self.mind.can_think() else None
             text = text or self._plain()
+            archived = self.memory.archive_faded()
+            self.mind.finish(thought, "done", (f"В архив: {archived}. " if ru else f"Archived: {archived}. ")
+                             + (text or ""))
             self.memory.data["meta"]["last_sleep"] = today()
             if text:
                 self.memory.data["meta"]["last_morning"] = text
@@ -124,6 +141,9 @@ class Sleep:
             else:
                 self.memory.save()
             return text
+        except Exception:
+            self.mind.finish(thought, "failed")
+            raise
         finally:
             self.busy = False
 
@@ -167,7 +187,9 @@ class Sleep:
             talks=lines(c["talks"]), upcoming=lines(c["upcoming"]), promises=lines(c["promises"]),
             goals=lines(c["goals"]), memories=lines(c["memories"]), mood=c["mood"], late=c["late"])
         try:
-            data = parse(self.cloud.complete([{"role": "user", "content": prompt}], max_tokens=1200))
+            data = parse(self.mind.complete([{"role": "user", "content": prompt}], max_tokens=1200))
+        except BudgetError:
+            return None
         except Exception as exc:  # noqa: BLE001 — без связи утро будет попроще
             log.warning("Память: сон без модели: %s", exc)
             return None
@@ -178,6 +200,9 @@ class Sleep:
                 ids = [i for i in item["ids"] if i in known]
                 if len(ids) >= 2 and self.memory.merge(ids, item["text"]):
                     known -= set(ids[1:])
+        for item in data.get("links") or []:
+            if isinstance(item, dict) and all(isinstance(item.get(k), str) for k in ("a", "b", "why")):
+                self.memory.link(item["a"], item["b"], item["why"])
         morning = data.get("morning")
         return morning.strip() if isinstance(morning, str) and morning.strip() else None
 

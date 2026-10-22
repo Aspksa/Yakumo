@@ -19,7 +19,8 @@
 /* Вкладки и поиск */
 .br-tabs { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
            border-bottom: 1px solid var(--border); margin-bottom: 12px; }
-.br-tablist { display: flex; gap: 4px; }
+.br-tablist { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; max-width: 100%; }
+.br-tablist button { flex: none; }
 .br-tablist button { display: flex; align-items: center; gap: 8px; font: inherit; font-size: 14px; padding: 10px 12px;
                      border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: none;
                      color: var(--muted); cursor: pointer; }
@@ -137,3 +138,55 @@
                       animation: br-news 1.6s ease-in-out infinite; }
 @keyframes br-news { 50% { transform: scale(1.25); } }
 @media (prefers-reduced-motion: reduce) { .avatar.news::after { animation: none; } }
+
+/* Ассоциации на карте */
+.br-map line.assoc { stroke: var(--accent); stroke-dasharray: 4 5; opacity: .75; }
+
+/* Разум: режим, бюджет, очередь мыслей */
+.br-mind { margin-bottom: 8px; }
+.br-mind-mode { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 4px 0 12px; }
+.br-mind-mode strong { font-size: 18px; color: var(--accent); }
+.br-mind-mode .row-hint { flex: 1 1 260px; }
+.br-mind-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--accent);
+               box-shadow: 0 0 12px rgba(var(--accent-rgb), .9); animation: br-breathe 2.4s ease-in-out infinite; }
+.br-mind-mode[data-mode="drowsy"] .br-mind-dot { opacity: .6; animation-duration: 4s; }
+.br-mind-mode[data-mode="asleep"] .br-mind-dot { opacity: .35; box-shadow: none; animation-duration: 6s; }
+@keyframes br-breathe { 50% { transform: scale(.7); } }
+.br-mind .row .select { flex: none; width: auto; }
+.br-thought-kind { flex: none; min-width: 64px; font-size: 12px; color: var(--accent); text-transform: uppercase;
+                   letter-spacing: .04em; }
+.br-status-chip { font-size: 12px; padding: 1px 7px; border-radius: var(--chip-radius); background: var(--hover); }
+.br-thought.s-running .br-status-chip, .br-thought.s-queued .br-status-chip { background: var(--accent-soft); color: var(--accent); }
+.br-thought.s-failed .br-status-chip { color: var(--bad); }
+.br-thought.s-cancelled .br-fact-text { color: var(--muted); }
+.br-result { white-space: pre-wrap; }
+
+/* Рост */
+.br-grow-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 6px; }
+.br-section-hint { margin: -2px 0 8px; }
+.br-suggestion .br-add, .br-utool-actions { margin: 10px 0 0; }
+.br-code { margin: 8px 0; padding: 10px 12px; max-height: 260px; overflow: auto; font-size: 13px; line-height: 1.45;
+           background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); white-space: pre; }
+.br-utool.s-pending { box-shadow: inset 3px 0 0 var(--accent); }
+.br-style { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.br-style-text { white-space: pre-wrap; line-height: 1.5; font-size: 14px; }
+.br-archive h2 .br-link { font: inherit; text-transform: inherit; letter-spacing: inherit; color: inherit; }
+
+/* Режим разума на аватаре: дремлет — тусклее, спит — ещё тусклее и «z z z» */
+.avatar[data-mind="drowsy"] .av-img { filter: saturate(.8) brightness(.9); transition: filter 1s; }
+.avatar[data-mind="asleep"] .av-img { filter: saturate(.55) brightness(.72); transition: filter 1s; }
+.br-z { position: absolute; top: 2%; left: 14%; display: none; pointer-events: none; color: var(--accent);
+        font-weight: 700; text-shadow: 0 0 8px rgba(var(--accent-rgb), .8); }
+.avatar[data-mind="drowsy"] .br-z, .avatar[data-mind="asleep"] .br-z { display: block; }
+.br-z i { position: absolute; font-style: normal; opacity: 0; animation: br-z 3s ease-in infinite; }
+.br-z i:nth-child(2) { animation-delay: 1s; font-size: 1.2em; }
+.br-z i:nth-child(3) { animation-delay: 2s; font-size: 1.4em; }
+.avatar[data-mind="drowsy"] .br-z i:nth-child(n+2) { display: none; }
+@keyframes br-z { 0% { opacity: 0; transform: translate(0, 0); } 30% { opacity: 1; }
+                  100% { opacity: 0; transform: translate(-14px, -26px); } }
+@media (prefers-reduced-motion: reduce) {
+  .br-z i { animation: none; opacity: 1; }
+  .br-z i:nth-child(2) { transform: translate(-8px, -12px); }
+  .br-z i:nth-child(3) { transform: translate(-16px, -26px); }
+  .br-mind-dot { animation: none; }
+}
