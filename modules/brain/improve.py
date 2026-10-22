@@ -34,11 +34,15 @@ REFINE = {
 Сейчас записано:
 {item}
 
+Твой код, который может относиться к делу:
+{code}
+
 Ответь ТОЛЬКО объектом JSON:
 {{"title": "коротко, до 80 символов", "problem": "что не так, 1-3 предложения",
 "steps": "как воспроизвести, по шагам, или пусто", "want": "что должно получиться",
-"module": "Чат|Мозг|Диск|Обновление|Аватар|Настройки|Ядро", "priority": "high|normal|low"}}
-Не выдумывай подробности, которых нет в записи.""",
+"module": "Чат|Мозг|Диск|Обновление|Аватар|Настройки|Ядро", "priority": "high|normal|low",
+"fix": "где и что поправить в коде: файл, функция, суть правки — только если это видно из кода, иначе пусто"}}
+Не выдумывай подробности, которых нет в записи или в коде.""",
     "en": """You are Yakumo, a kitsune assistant inside the Yakumo app (Windows, Python, web UI; modules: Chat,
 Brain, Disk, Update, Avatar, Settings). Turn an item from your "what to improve in me" list into a developer task.
 
@@ -46,11 +50,15 @@ Source: {source}
 Current record:
 {item}
 
+Your code that may be relevant:
+{code}
+
 Reply ONLY with a JSON object:
 {{"title": "short, up to 80 chars", "problem": "what is wrong, 1-3 sentences",
 "steps": "steps to reproduce, or empty", "want": "the desired result",
-"module": "Chat|Brain|Disk|Update|Avatar|Settings|Core", "priority": "high|normal|low"}}
-Do not invent details that are not in the record.""",
+"module": "Chat|Brain|Disk|Update|Avatar|Settings|Core", "priority": "high|normal|low",
+"fix": "where and what to change in the code: file, function, the gist — only if the code shows it, else empty"}}
+Do not invent details that are not in the record or the code.""",
 }
 
 IDEAS = {
@@ -91,12 +99,14 @@ COPY = {
     "ru": {"head": "Задачи для Yakumo (репозиторий Aspksa/Yakumo, Windows). Их собрала сама Yakumo.",
            "version": "Установленная версия: {v}.", "module": "Модуль", "source": "Источник", "times": "Повторов",
            "priority": "Важность", "problem": "Что не так", "steps": "Как воспроизвести", "want": "Что хочется",
+           "fix": "Где поправить",
            "detail": "Подробности", "sources": {"wish": "Yakumo не смогла", "thumbs": "ответ с 👎",
                                                  "error": "ошибка программы", "idea": "идея Yakumo", "manual": "вы"},
            "priorities": {"high": "важно", "normal": "обычно", "low": "мелочь"}},
     "en": {"head": "Tasks for Yakumo (repository Aspksa/Yakumo, Windows). Collected by Yakumo herself.",
            "version": "Installed version: {v}.", "module": "Module", "source": "Source", "times": "Times",
            "priority": "Priority", "problem": "What is wrong", "steps": "Steps to reproduce", "want": "Desired result",
+           "fix": "Where to fix",
            "detail": "Details", "sources": {"wish": "Yakumo couldn't do it", "thumbs": "answer with 👎",
                                             "error": "program error", "idea": "Yakumo's idea", "manual": "you"},
            "priorities": {"high": "important", "normal": "normal", "low": "minor"}},
@@ -152,11 +162,12 @@ class ErrorCatcher(logging.Handler):
 
 
 class Improvements:
-    def __init__(self, memory, mind, lang, version=lambda: ""):
+    def __init__(self, memory, mind, lang, version=lambda: "", code=None):
         self.memory = memory
         self.mind = mind
         self.lang = lang
         self.version = version
+        self.code = code
 
     def add(self, item: dict) -> dict | None:
         return self.memory.improvement(item)
@@ -193,14 +204,30 @@ class Improvements:
                                if item.get(k))
             try:
                 data = parse(self.mind.complete([{"role": "user", "content": REFINE[lang].format(
-                    source=COPY[lang]["sources"].get(item["source"], item["source"]), item=record)}], max_tokens=500))
+                    source=COPY[lang]["sources"].get(item["source"], item["source"]), item=record,
+                    code=self.related_code(item) or "—")}], max_tokens=700))
             finally:
                 self.memory.edit_improvement(item["id"], refined=True)
             self.memory.edit_improvement(item["id"], **{k: data[k] for k in ("title", "problem", "steps", "want",
-                                                                               "module", "priority")
+                                                                               "module", "priority", "fix")
                                                          if isinstance(data.get(k), str) and data[k].strip()})
             done += 1
         return done
+
+    def related_code(self, item: dict, limit: int = 6000) -> str:
+        """Код к пункту: место сбоя из подробностей ошибки, иначе похожее по смыслу."""
+        if self.code is None:
+            return ""
+        parts = []
+        for line in (item.get("detail") or "").splitlines():
+            found = self.code.around(line)
+            if found:
+                parts.append(f"[{found['path']}:{found['start']}-{found['end']}]\n{found['text']}")
+                break
+        if not parts:
+            query = " ".join(x for x in (item.get("title"), item.get("problem"), item.get("module")) if x)
+            parts = [f"[{c['path']}:{c['start']}-{c['end']}]\n{c['text']}" for c in self.code.search(query, 2)]
+        return "\n\n".join(parts)[:limit]
 
     # --- Свои идеи ---
 
@@ -250,7 +277,7 @@ class Improvements:
                                            f"{T['priority']}: {T['priorities'].get(x.get('priority'), '')}"
                                            if x.get("priority") else "",
                                            f"{T['times']}: {x['count']}" if x.get("count", 1) > 1 else "") if p)]
-            for key in ("problem", "steps", "want"):
+            for key in ("problem", "steps", "want", "fix"):
                 if x.get(key):
                     out.append(f"**{T[key]}:** {x[key]}")
             if x.get("detail"):

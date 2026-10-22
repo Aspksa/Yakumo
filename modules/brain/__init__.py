@@ -27,6 +27,7 @@ from .activity import Activity
 from .docs import Docs
 from .grow import Growth
 from .improve import ErrorCatcher, Improvements
+from .selfcode import Code
 from .knowledge import Knowledge
 from .learn import Learner
 from .mind import Mind
@@ -95,7 +96,8 @@ HEAD = {
            "screen": "Сейчас на экране у пользователя: {app} — «{title}».", "apps": "Сегодня за компьютером: {apps}.",
            "min": "мин", "today": "сегодня", "tomorrow": "завтра", "in": "через {n} дн.",
            "versions": "Твои версии (история тебя, подробнее — my_versions):", "v_install": "обновление",
-           "v_rollback": "возврат к прошлой версии", "v_seen": "версия"},
+           "v_rollback": "возврат к прошлой версии", "v_seen": "версия",
+           "code": "Твои модули (свой код читаешь через code_search, code_read и self_map):"},
     "en": {"now": "Now is {now}.", "facts": "What you know about the user:", "none": "Nothing yet.",
            "self": "What you remember about yourself and your relationship:", "talks": "Past conversations:",
            "promises": "Open promises (id, who, due):", "user": "user", "yakumo": "you",
@@ -106,7 +108,8 @@ HEAD = {
            "screen": "On the user's screen now: {app} — “{title}”.", "apps": "Time at the computer today: {apps}.",
            "min": "min", "today": "today", "tomorrow": "tomorrow", "in": "in {n} days",
            "versions": "Your versions (your own history, more with my_versions):", "v_install": "update",
-           "v_rollback": "rolled back to the previous version", "v_seen": "version"},
+           "v_rollback": "rolled back to the previous version", "v_seen": "version",
+           "code": "Your modules (read your own code with code_search, code_read and self_map):"},
 }
 
 
@@ -188,7 +191,12 @@ def setup(ctx):
     growth = Growth(memory, mind, lang, ctx.services, tasks)
     deep = DeepThink(memory, cloud, lang)
     docs = Docs(ctx.paths.data / "brain" / "docs.json", memory, mind, ctx.services, cloud, lang)
-    improve = Improvements(memory, mind, lang, lambda: next((v["revision"][:7] for v in memory.versions()), ""))
+    code = Code(getattr(ctx.paths, "app", None), ctx.paths.data / "brain" / "code.json", semantic)
+    try:
+        code.sync(vectors=False)  # карта и поиск по словам готовы сразу, векторы — в простое
+    except Exception:  # noqa: BLE001
+        ctx.log.exception("Свой код: не удалось прочитать файлы программы")
+    improve = Improvements(memory, mind, lang, lambda: next((v["revision"][:7] for v in memory.versions()), ""), code)
     catcher = ErrorCatcher(improve, getattr(ctx.paths, "app", ""))
     logging.getLogger("yakumo").addHandler(catcher)
     ctx.on_stop(lambda: logging.getLogger("yakumo").removeHandler(catcher))
@@ -216,6 +224,7 @@ def setup(ctx):
     mind.every("edits", "rest", 10 * 60, growing(growth.edits))
     mind.every("foresee", "rest", 30 * 60, growing(growth.foresee))
     mind.every("census", "any", 60 * 60, lambda: growth.census(len(knowledge.items)))
+    mind.every("code", "rest", 10 * 60, code.sync)
     mind.every("improve", "any", 5 * 60, improve.scan)
     mind.every("improve_refine", "rest", 10 * 60, improve.refine)
     mind.every("ideas", "rest", 30 * 60, growing(improve.ideas))
@@ -276,6 +285,9 @@ def setup(ctx):
         versions = memory.versions()[:3]
         if versions:
             lines += ["", H["versions"], *(version_line(v, ln) for v in versions)]
+        modules = code.overview()
+        if modules:
+            lines += ["", H["code"], *(f"- {m}" for m in modules)]
         promises = memory.open_promises()[:10]
         if promises:
             lines += ["", H["promises"]]
@@ -356,6 +368,21 @@ def setup(ctx):
         return {"versions": [{k: v.get(k) for k in ("kind", "revision", "from_revision", "title", "date", "changes", "total")}
                              | {"installed": time.strftime("%Y-%m-%d %H:%M", time.localtime(v["at"]))}
                              for v in memory.versions()[:limit]]}
+
+    def code_search_tool(args):
+        found = code.search(str(args.get("query", "")), 5)
+        return {"found": [{"file": f"{c['path']}:{c['start']}-{c['end']}", "name": c["name"], "code": c["text"][:1500]}
+                          for c in found]} if found else {"found": [], "note": "Ничего не нашлось" if ru() else "Nothing found"}
+
+    def code_read_tool(args):
+        try:
+            return code.read(str(args.get("path", "")), args.get("start") if type(args.get("start")) is int else 1,
+                             args.get("end") if type(args.get("end")) is int else None)
+        except ValueError as exc:
+            return {"error": str(exc), "files": sorted(code.files)[:200]}
+
+    def self_map_tool(_args):
+        return code.map or {"error": "Карта ещё не собрана" if ru() else "The map is not ready yet"}
 
     def forget(args):
         ids = args.get("ids")
@@ -527,6 +554,14 @@ def setup(ctx):
         ("my_versions", 'история тебя: когда тебя обновляли или возвращали к прошлой версии и что изменилось. '
          'args: {"limit": 10}', versions_tool, False,
          lambda a: "Вспоминаю свои версии" if ru() else "Recalling my versions"),
+        ("code_search", 'найти место в СВОЁМ коде (программа Yakumo): где и как ты что-то делаешь. Только чтение. '
+         'args: {"query": "что ищешь, словами или именами функций"}', code_search_tool, False,
+         lambda a: f"Смотрю свой код: {short(a, 'query')}" if ru() else f"Looking at my code: {short(a, 'query')}"),
+        ("code_read", 'прочитать свой файл программы по строкам (до 200 строк за раз). '
+         'args: {"path": "modules/disk/extract.py", "start": 1, "end": 120}', code_read_tool, False,
+         lambda a: f"Читаю {short(a, 'path')}" if ru() else f"Reading {short(a, 'path')}"),
+        ("self_map", 'карта себя: какие у тебя модули и файлы и что за что отвечает. args: {}', self_map_tool, False,
+         lambda a: "Смотрю карту себя" if ru() else "Checking my map"),
         ("calc", 'точно посчитать выражение (всегда вместо счёта в уме): + - * / // % ** ^, проценты «15%», sqrt, '
          'log, sin, round, pi… args: {"expr": "2000 * 15% + sqrt(16)"}', calc_tool, False,
          lambda a: f"Считаю: {short(a, 'expr')}" if ru() else f"Calculating: {short(a, 'expr')}"),
@@ -574,7 +609,7 @@ def setup(ctx):
                 "facts": memory.facts(), "talks": memory.talks(), "entities": memory.entities(),
                 "promises": sorted(m["promises"], key=lambda p: (p.get("done", False), p.get("due") or "9999")),
                 "events": sorted(m["events"], key=lambda e: e["date"][5:] if e.get("yearly") else e["date"]),
-                "skills": m["skills"], "upcoming": memory.upcoming(7), "versions": memory.versions(),
+                "skills": m["skills"], "upcoming": memory.upcoming(7), "versions": memory.versions(), "code": {**code.status(), "map": code.map},
                 "improvements": memory.improvements(),
                 "mind": mind.status(), "knowledge": knowledge.status(),
                 "lessons": sorted(m["lessons"], key=lambda x: -x.get("seen", 1)),

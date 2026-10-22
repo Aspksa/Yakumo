@@ -795,7 +795,7 @@ class Memory:
 
     # --- Улучшения: что доработать в самой Yakumo ---
 
-    IMPROVEMENT_TEXT = {"title": 200, "problem": 1500, "steps": 1500, "want": 1500, "module": 40}
+    IMPROVEMENT_TEXT = {"title": 200, "problem": 1500, "steps": 1500, "want": 1500, "fix": 1500, "module": 40}
 
     def _improvement_fields(self, fields: dict) -> dict:
         out = {}
