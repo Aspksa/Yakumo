@@ -113,8 +113,10 @@ def serve(args, storage: StorageChoice, paths: Paths, config: Config,
 
     from yakumo.web.server import create_server
 
-    ctx = Context(paths=paths, config=config)
+    cloud = CloudService(config, paths.config_file, paths.secrets_file)
+    ctx = Context(paths=paths, config=config, cloud=cloud)
     modules = load_all(ctx, [paths.app / "modules", paths.modules], config.disabled_modules)
+    cloud.tools = ctx.chat_tools
     endpoint = choose_endpoint(args.host or config.host, args.port or config.port, args.lan or config.lan)
 
     def status(_req=None) -> dict:
@@ -139,7 +141,6 @@ def serve(args, storage: StorageChoice, paths: Paths, config: Config,
     use_tray = config.tray and not args.no_tray and tray.available()
     settings = SettingsService(config, paths.config_file, tray_running=use_tray,
                                tray_available=tray.available())
-    cloud = CloudService(config, paths.config_file, paths.secrets_file)
     routes = {"/api/status": status, "/api/modules": lambda _req: [m.as_dict() for m in modules],
               **settings.routes(), **cloud.routes(), **ctx.routes}
 

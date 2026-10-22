@@ -5,11 +5,13 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import socket
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator
+from typing import Any, Callable, Iterator
 
 log = logging.getLogger(__name__)
 
@@ -27,6 +29,41 @@ SYSTEM_PROMPT = {
            "Be friendly and to the point. Use Markdown for code and lists."),
 }
 
+# Инструменты модулей (например, «Диск»). Модель вызывает их строкой <tool>{"name": ..., "args": {...}}</tool>:
+# такой текстовый формат понимает любая модель каталога, в отличие от встроенного вызова функций.
+TOOLS_PROMPT = {
+    "ru": ("\n\nУ тебя есть инструменты. Чтобы вызвать инструмент, напиши отдельной строкой\n"
+           '<tool>{{"name": "имя", "args": {{...}}}}</tool>\n'
+           "и закончи ответ: результат придёт следующим сообщением, его видишь только ты. Можно вызвать "
+           "несколько инструментов подряд. Не выдумывай результаты и пути файлов — сначала узнай их инструментом. "
+           "Инструменты, которые меняют файлы, выполняются только после того, как пользователь подтвердит план "
+           "кнопкой, поэтому после них коротко перечисли, что предлагаешь сделать. На файлы ссылайся так: "
+           "[имя](disk:путь/к/файлу).\n\nИнструменты:\n{tools}"),
+    "en": ("\n\nYou have tools. To call one, write on its own line\n"
+           '<tool>{{"name": "name", "args": {{...}}}}</tool>\n'
+           "and end your message: the result comes in the next message and only you see it. You may call several "
+           "tools in a row. Never invent results or file paths — look them up with a tool first. Tools that change "
+           "files only run after the user confirms the plan with a button, so after calling them briefly list "
+           "what you propose. Link files like [name](disk:path/to/file).\n\nTools:\n{tools}"),
+}
+MAX_TOOL_ROUNDS = 6         # сколько раз подряд модель может обратиться к инструментам
+MAX_TOOL_RESULT = 15000     # символов результата одного инструмента
+TOOL_TAG = "<tool>"
+# Модели, которые понимают картинки (для описания фото на Диске).
+VISION = re.compile(r"(^|[/_-])(vl|vision|visual|omni|llava|pixtral|internvl|minicpm-v)|gemma-?3", re.I)
+
+
+@dataclass
+class ChatTool:
+    """Инструмент для чата. change=True — меняет данные и выполняется только по подтверждению."""
+
+    name: str
+    description: str                 # для модели: что делает и какие аргументы принимает
+    run: Callable[[dict], Any]
+    change: bool = False
+    title: Callable[[dict], str] | None = None  # для пользователя: «Ищу…» или пункт плана
+
+
 MAX_MESSAGES = 30          # сколько последних реплик отправлять модели
 MAX_MESSAGE_CHARS = 8000   # одна реплика
 TIMEOUT = 120              # секунд на ответ модели
@@ -42,6 +79,7 @@ class CloudService:
         self.config_path = config_path
         self.secrets_path = secrets_path
         self.models: list[str] = []  # последний полученный каталог
+        self.tools: dict[str, ChatTool] = {}  # инструменты модулей (ctx.chat_tool)
 
     # --- Ключ ---
     # Ключ лежит отдельно от настроек и никогда не отдаётся в браузер целиком.
@@ -101,6 +139,26 @@ class CloudService:
 
     def default_model(self, models: list[str]) -> str:
         return next((m for m in PREFERRED_MODELS if m in models), models[0])
+
+    def vision_model(self) -> str | None:
+        """Модель из каталога, которая видит картинки, или None."""
+        models = self.models or self.fetch_models(self.api_key())
+        found = [m for m in models if VISION.search(m)]
+        return next((m for m in found if "qwen" in m.lower()), found[0] if found else None)
+
+    def complete(self, messages: list[dict], model: str | None = None, max_tokens: int = 600,
+                 timeout: float = TIMEOUT) -> str:
+        """Ответ модели целиком (для фоновых задач модулей). Ошибки — CloudError."""
+        key = self.api_key()
+        payload = {"model": model or self.config.cloud_model, "messages": messages, "stream": False,
+                   "temperature": 0.2, "max_tokens": max_tokens}
+        with self._request("/chat/completions", key, payload, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        try:
+            text = data["choices"][0]["message"]["content"] or ""
+        except (KeyError, IndexError, TypeError) as exc:
+            raise CloudError(_message(data.get("error", "empty") if isinstance(data, dict) else data)) from exc
+        return re.sub(r"<think>.*?(</think>|$)", "", text, flags=re.S).strip()
 
     # --- Маршруты ---
 
@@ -168,38 +226,73 @@ class CloudService:
         if not merged:
             raise ValueError("Нет сообщений пользователя")
         clean = merged
-        system = {"role": "system", "content": SYSTEM_PROMPT.get(self.config.language, SYSTEM_PROMPT["ru"])}
-        return self._stream([system, *clean])
+        lang = self.config.language if self.config.language in SYSTEM_PROMPT else "ru"
+        prompt = SYSTEM_PROMPT[lang]
+        if self.tools:
+            listing = "\n".join(f"- {t.name}: {t.description}" + (" [меняет файлы]" if t.change and lang == "ru"
+                                 else " [changes files]" if t.change else "") for t in self.tools.values())
+            prompt += TOOLS_PROMPT[lang].format(tools=listing)
+        return self._stream([{"role": "system", "content": prompt}, *clean])
 
     def _stream(self, messages: list[dict]) -> Iterator[bytes]:
+        """Ответ потоком; если модель зовёт инструменты — выполнить и продолжить с их результатами.
+
+        События: {"delta": текст}, {"status": "Ищу…"}, {"card": {"type": "plan", ...}}, {"done": true}, {"error": ...}.
+        """
         def line(obj) -> bytes:
             return (json.dumps(obj, ensure_ascii=False) + "\n").encode("utf-8")
 
+        plan: list[dict] = []
         try:
             key = self.api_key()
             model = self.config.cloud_model
             if key and not model:
                 model = self.config.cloud_model = self.default_model(self.fetch_models(key))
-            payload = {"model": model, "messages": messages, "stream": True,
-                       "temperature": 0.7, "max_tokens": 2500}
-            with self._request("/chat/completions", key, payload, timeout=TIMEOUT) as resp:
-                for raw in resp:
-                    text = raw.decode("utf-8", errors="replace").strip()
-                    if not text.startswith("data:"):
+            said = False
+            for _ in range(MAX_TOOL_ROUNDS + 1):
+                payload = {"model": model, "messages": messages, "stream": True,
+                           "temperature": 0.7, "max_tokens": 2500}
+                text, shown = "", 0
+                with self._request("/chat/completions", key, payload, timeout=TIMEOUT) as resp:
+                    for delta in _deltas(resp):
+                        text += delta
+                        shown_text = _visible(text, partial=True)
+                        if len(shown_text) > shown:
+                            out = shown_text[shown:]
+                            if not shown and said:
+                                out = "\n\n" + out.lstrip()  # ответ после работы инструментов — с новой строки
+                            yield line({"delta": out})
+                            shown = len(shown_text)
+                tail = _visible(text)[shown:]
+                if tail:
+                    yield line({"delta": tail})
+                said = said or bool(_visible(text).strip())
+                calls = _tool_calls(text) if self.tools else []
+                if not calls:
+                    break
+                results, asked = [], False
+                for name, args in calls:
+                    tool = self.tools.get(name)
+                    if tool is None:  # модель ошиблась в имени или JSON: пусть исправится
+                        asked = True
+                        results.append((name, {"error": "нет такого инструмента или неверный JSON"}))
                         continue
-                    data = text[5:].strip()
-                    if data == "[DONE]":
-                        break
+                    title = _title(tool, args)
+                    if tool.change:
+                        plan.append({"tool": name, "args": args, "title": title})
+                        results.append((name, {"ok": "добавлено в план, выполнится после подтверждения"}))
+                        continue
+                    asked = True
+                    yield line({"status": title})
                     try:
-                        chunk = json.loads(data)
-                    except ValueError:
-                        continue
-                    if chunk.get("error"):
-                        raise CloudError(_message(chunk["error"]))
-                    for choice in chunk.get("choices") or []:
-                        delta = (choice.get("delta") or {}).get("content")
-                        if delta:
-                            yield line({"delta": delta})
+                        results.append((name, tool.run(args)))
+                    except Exception as exc:  # noqa: BLE001 — ошибку видит модель и может исправиться
+                        results.append((name, {"error": str(exc) or type(exc).__name__}))
+                if not asked:
+                    break  # только план: дальше решает пользователь
+                report = "\n".join(f"{name}: {_dump(result)}" for name, result in results)
+                messages = [*messages, {"role": "assistant", "content": text},
+                            {"role": "user", "content": "Результаты инструментов:\n" + report}]
         except CloudError as exc:
             yield line({"error": str(exc)})
             return
@@ -207,11 +300,100 @@ class CloudService:
             log.warning("Ответ Cloud.ru прервался: %s", exc)
             yield line({"error": "network"})
             return
+        if plan:
+            yield line({"card": {"type": "plan", "actions": plan}})
         yield line({"done": True})
+
+    def apply(self, request) -> dict:
+        """Выполнить подтверждённый пользователем план (инструменты, которые меняют данные)."""
+        body = request.read_json()
+        actions = body.get("actions") if isinstance(body, dict) else None
+        if not isinstance(actions, list) or not actions or len(actions) > 200:
+            raise ValueError("Нет действий")
+        results = []
+        for action in actions:
+            tool = self.tools.get(action.get("tool")) if isinstance(action, dict) else None
+            args = action.get("args") if isinstance(action, dict) else None
+            if tool is None or not tool.change or not isinstance(args, dict):
+                results.append({"ok": False, "error": "неизвестное действие"})
+                continue
+            try:
+                tool.run(args)
+                results.append({"ok": True, "title": _title(tool, args)})
+            except Exception as exc:  # noqa: BLE001 — остальные шаги плана всё равно выполняем
+                results.append({"ok": False, "title": _title(tool, args), "error": str(exc) or type(exc).__name__})
+        log.info("План из чата: выполнено %s из %s", sum(r["ok"] for r in results), len(results))
+        return {"results": results}
 
     def routes(self) -> dict:
         return {"/api/cloud": self.state, "POST /api/cloud": self.save,
-                "POST /api/cloud/test": self.test, "POST /api/chat": self.chat}
+                "POST /api/cloud/test": self.test, "POST /api/chat": self.chat,
+                "POST /api/chat/apply": self.apply}
+
+
+def _deltas(resp) -> Iterator[str]:
+    """Куски текста из потока Cloud.ru (Server-Sent Events в формате OpenAI)."""
+    for raw in resp:
+        text = raw.decode("utf-8", errors="replace").strip()
+        if not text.startswith("data:"):
+            continue
+        data = text[5:].strip()
+        if data == "[DONE]":
+            break
+        try:
+            chunk = json.loads(data)
+        except ValueError:
+            continue
+        if chunk.get("error"):
+            raise CloudError(_message(chunk["error"]))
+        for choice in chunk.get("choices") or []:
+            delta = (choice.get("delta") or {}).get("content")
+            if delta:
+                yield delta
+
+
+def _visible(text: str, partial: bool = False) -> str:
+    """Текст для пользователя без вызовов инструментов.
+
+    partial: ответ ещё идёт — придержать незакрытый вызов и хвост, похожий на его начало («<to»).
+    """
+    out = re.sub(r"<tool>.*?</tool>[ \t]*\n?", "", text, flags=re.S)
+    cut = out.find(TOOL_TAG)
+    if cut >= 0:
+        out = out[:cut]
+    if partial:
+        for k in range(min(len(TOOL_TAG) - 1, len(out)), 0, -1):
+            if out.endswith(TOOL_TAG[:k]):
+                return out[:-k]
+    return out
+
+
+def _tool_calls(text: str) -> list[tuple[str, dict]]:
+    calls = []
+    text = re.sub(r"<think>.*?(</think>|$)", "", text, flags=re.S)
+    for body in re.findall(r"<tool>(.*?)(?:</tool>|$)", text, flags=re.S):
+        body = body.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        try:
+            data = json.loads(body)
+        except ValueError:
+            calls.append(("?", {"raw": body[:200]}))
+            continue
+        if isinstance(data, dict) and isinstance(data.get("name"), str):
+            args = data.get("args") if isinstance(data.get("args"), dict) else {}
+            calls.append((data["name"], args))
+    return calls
+
+
+def _title(tool: ChatTool, args: dict) -> str:
+    try:
+        return tool.title(args) if tool.title else tool.name
+    except Exception:  # noqa: BLE001
+        return tool.name
+
+
+def _dump(result) -> str:
+    text = json.dumps(result, ensure_ascii=False, default=str)
+    return text if len(text) <= MAX_TOOL_RESULT else text[:MAX_TOOL_RESULT] + "… (обрезано)"
 
 
 def _message(error) -> str:

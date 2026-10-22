@@ -11,6 +11,7 @@
         ctx.route("/api/hello", lambda req: {"hello": "мир"})
         ctx.on_stop(lambda: ...)
         ctx.web("page.js", "page.css")   # своя страница в веб-версии
+        ctx.chat_tool("имя", "что делает", run)  # инструмент для чата с Yakumo
 
 Ошибка в одном модуле не мешает запуску остальных и ядра.
 """
@@ -58,6 +59,8 @@ class Context:
     current: str = ""
     current_dir: Path | None = None
     web_files: dict[str, list[str]] = field(default_factory=dict)
+    cloud: Any = None  # CloudService: модули могут обращаться к моделям Cloud.ru
+    chat_tools: dict[str, Any] = field(default_factory=dict)
 
     @property
     def log(self) -> logging.Logger:
@@ -84,6 +87,20 @@ class Context:
             # Читаем при каждом запросе: правки видны после обновления страницы.
             self.route(url, lambda _req, p=path, t=ctype: (200, t, p.read_bytes()))
             self.web_files.setdefault(self.current, []).append(url)
+
+    def chat_tool(self, name: str, description: str, run: Callable[[dict], Any], *, change: bool = False,
+                  title: Callable[[dict], str] | None = None) -> None:
+        """Инструмент, которым Yakumo пользуется в чате.
+
+        description объясняет модели, что делает инструмент и какие аргументы ждёт.
+        change=True: инструмент меняет данные — Yakumo только предлагает его в плане,
+        а выполняется он после подтверждения пользователя. title(args) — подпись для пользователя.
+        """
+        from yakumo.core.cloud import ChatTool
+
+        if name in self.chat_tools:
+            raise ValueError(f"Инструмент {name} уже есть")
+        self.chat_tools[name] = ChatTool(name, description, run, change, title)
 
     def on_stop(self, hook: Callable[[], None]) -> None:
         self.stop_hooks.append(hook)
@@ -117,6 +134,11 @@ def discover(dirs: list[Path]) -> list[tuple[str, Path]]:
 
 
 def _import(name: str, path: Path) -> ModuleType:
+    # Общий родительский пакет: без него не работает «from . import соседний_файл» внутри модуля-папки.
+    if "yakumo_modules" not in sys.modules:
+        parent = ModuleType("yakumo_modules")
+        parent.__path__ = []
+        sys.modules["yakumo_modules"] = parent
     mod_name = f"yakumo_modules.{name}"
     spec = importlib.util.spec_from_file_location(
         mod_name, path, submodule_search_locations=[str(path.parent)] if path.name == "__init__.py" else None)

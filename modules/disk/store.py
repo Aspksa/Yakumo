@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import mimetypes
 import os
+import re
 import secrets
 import shutil
 import sys
@@ -44,6 +45,24 @@ KIND_BY_EXT = {ext: kind for kind, exts in KINDS.items() for ext in exts.split()
 MIME = {".mkv": "video/x-matroska", ".webp": "image/webp", ".heic": "image/heic", ".avif": "image/avif",
         ".m4a": "audio/mp4", ".flac": "audio/flac", ".opus": "audio/ogg", ".md": "text/markdown",
         ".fb2": "application/xml", ".epub": "application/epub+zip"}
+
+
+def norm(text: str) -> str:
+    """Для поиска: без регистра, «ё» как «е» (длина строки не меняется)."""
+    return text.lower().replace("ё", "е")
+
+
+# Окончания, которые отрезаются от слов запроса: так «квитанции» находит «квитанция», а «рыжую» — «рыжая».
+ENDINGS = re.compile(r"(ями|ами|ого|его|ому|ему|ыми|ими|ые|ый|ий|ая|яя|ое|ее|ой|ей|ую|юю|ов|ев|ах|ях|ом|ем|ам|ям|"
+                     r"а|я|о|е|ы|и|у|ю|ь|s)$")
+
+
+def query_words(query: str) -> list[str]:
+    words = []
+    for w in re.findall(r"\w+", norm(query)):
+        stem = ENDINGS.sub("", w)
+        words.append(stem if len(stem) >= 3 else w)
+    return words
 
 
 class DiskError(ValueError):
@@ -112,6 +131,8 @@ class Disk:
             d.mkdir(parents=True, exist_ok=True)
         self.lock = threading.RLock()
         self._used: dict | None = None
+        self.on_change: list = []  # вызываются после любых изменений (умный поиск)
+        self.on_move: list = []    # (старый путь, новый путь) после переименования и переноса
         # Недокачанные файлы от прошлого запуска.
         for part in self.tmp_dir.glob("*.part"):
             part.unlink(missing_ok=True)
@@ -149,6 +170,8 @@ class Disk:
 
     def _changed(self) -> None:
         self._used = None
+        for hook in self.on_change:
+            hook()
 
     # --- Просмотр ---
 
@@ -165,8 +188,9 @@ class Disk:
         return {"path": self.rel(folder) if folder != self.root else "", "items": items}
 
     def search(self, query: str, rel: str | None = None, limit: int = 500) -> dict:
-        query = (query or "").strip().casefold()
-        if not query:
+        """Поиск по именам: все слова запроса (без окончаний) должны встретиться в имени."""
+        words = query_words(query or "")
+        if not words:
             return {"items": [], "more": False}
         start = self.path(rel)
         found: list[dict] = []
@@ -175,7 +199,8 @@ class Disk:
             if here == self.root:
                 dirnames[:] = [d for d in dirnames if d.lower() != SERVICE]
             for name in [*dirnames, *filenames]:
-                if query in name.casefold():
+                low = norm(name)
+                if all(w in low for w in words):
                     try:
                         found.append(self.entry(here / name))
                     except OSError:
@@ -211,6 +236,19 @@ class Disk:
             self._changed()
             return self.entry(target)
 
+    def makedirs(self, rel: str) -> dict:
+        """Папка по пути вместе с недостающими родителями (для плана от Yakumo)."""
+        names = [check_name(p) for p in split_rel(rel)]
+        if not names:
+            raise DiskError("Нужно имя папки")
+        with self.lock:
+            target = self.path("/".join(names), must_exist=False)
+            if target.exists() and not target.is_dir():
+                raise DiskError(f"«{target.name}» — это файл")
+            target.mkdir(parents=True, exist_ok=True)
+            self._changed()
+            return self.entry(target)
+
     def rename(self, rel: str, name: str) -> dict:
         src = self.path(rel)
         if src == self.root:
@@ -222,6 +260,7 @@ class Disk:
                 raise DiskError(f"«{dst.name}» уже есть")
             src.rename(dst)
             self._relink(self.rel(src), self.rel(dst))
+            self._changed()
             return self.entry(dst)
 
     def move(self, rels: list[str], to: str | None, copy: bool = False) -> list[dict]:
@@ -394,6 +433,8 @@ class Disk:
 
     def _relink(self, old: str, new: str) -> None:
         """Ссылки на переименованный или перенесённый путь продолжают работать."""
+        for hook in self.on_move:
+            hook(old, new)
         shares = self._shares()
         changed = False
         for item in shares.values():

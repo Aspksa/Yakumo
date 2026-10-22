@@ -56,6 +56,8 @@ const TEXTS = {
     send: "Отправить", stop: "Остановить", clearChat: "Очистить чат", noCloud: "Cloud.ru не подключён",
     greeting: "Привет! Я Yakumo. Меня можно перетащить куда угодно, а по нажатию открывается этот чат.",
     openSettings: "Открыть настройки", stopped: "(остановлено)",
+    planTitle: "Предлагаю сделать:", planRun: "Выполнить", planCancel: "Отмена", planRunning: "Выполняю…",
+    planDone: (ok, n) => `Готово: ${ok} из ${n}`, planCancelled: "Отменено",
     cloudHint: "Через Cloud.ru Foundation Models со мной можно говорить в чате. Ключ выдаётся в личном кабинете Cloud.ru.",
     apiKey: "API-ключ", keySaved: (hint) => `Ключ сохранён (${hint}).`, keyNone: "Ключ ещё не сохранён.",
     keyPlaceholder: "Вставьте ключ Cloud.ru", saveKey: "Сохранить", deleteKey: "Удалить",
@@ -126,6 +128,8 @@ const TEXTS = {
     send: "Send", stop: "Stop", clearChat: "Clear chat", noCloud: "Cloud.ru is not connected",
     greeting: "Hi! I'm Yakumo. Drag me anywhere; click me to open this chat.",
     openSettings: "Open settings", stopped: "(stopped)",
+    planTitle: "Here's my plan:", planRun: "Run", planCancel: "Cancel", planRunning: "Running…",
+    planDone: (ok, n) => `Done: ${ok} of ${n}`, planCancelled: "Cancelled",
     cloudHint: "Chat with me through Cloud.ru Foundation Models. Get a key in your Cloud.ru console.",
     apiKey: "API key", keySaved: (hint) => `Key saved (${hint}).`, keyNone: "No key saved yet.",
     keyPlaceholder: "Paste your Cloud.ru key", saveKey: "Save", deleteKey: "Delete",
@@ -796,7 +800,9 @@ function inlineMd(text) {
     .replace(/`([^`\n]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
     .replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,!?:;]|$)/g, "$1<em>$2</em>")
-    .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+    // Ссылки на файлы «Диска» из ответов Yakumo: [имя](disk:путь) — открывает модуль Диск.
+    .replace(/\[([^\]\n]+)\]\(disk:([^)\n]*)\)/g, '<a href="#/disk" class="disk-link" data-path="$2">$1</a>');
 }
 
 function markdown(text) {
@@ -831,6 +837,8 @@ function messageEl(m) {
   const text = m.from === "bot" ? visible(m.text) : m.text;
   if (m.from === "bot" && !m.error) bubble.innerHTML = markdown(text) || "<span class=\"typing\"><i></i><i></i><i></i></span>";
   else bubble.textContent = m.error ? errorText(m.error) : text;
+  if (m.from === "bot" && !m.error && !text && !m.pending && m.cards) bubble.hidden = true;  // ответ — только план
+  if (m.pending && m.status) bubble.append(h("div", { class: "msg-status" }, m.status));
   if (m.error === "no_key" || m.error === "bad_key" || m.error === "bad_model") {
     bubble.append(h("button", { class: "btn small", type: "button",
                                 onclick: () => { location.hash = "#/settings"; } }, T.openSettings));
@@ -842,9 +850,48 @@ function messageEl(m) {
   } else if (!m.pending && !m.error && text) {
     meta.append(iconButton("i-copy", T.copy, (e) => copyText(text, e.currentTarget)));
   }
-  const col = h("div", { class: "msg-col" }, bubble, meta);
+  const col = h("div", { class: "msg-col" }, bubble, (m.cards || []).map((c) => cardEl(c, m)), meta);
   if (m.from === "me") return h("div", { class: "msg-row me" }, col);
   return h("div", { class: "msg-row bot" }, h("img", { class: "msg-face", src: "avatar-face.webp", alt: "" }), col);
+}
+
+// Карточки под ответом. План: Yakumo предлагает изменения, они выполняются только по кнопке.
+function cardEl(card, m) {
+  if (card.type !== "plan") return "";
+  const box = h("div", { class: "plan-card" }, h("strong", {}, T.planTitle),
+    h("ol", {}, card.actions.map((a, i) => {
+      const r = card.results?.[i];
+      return h("li", { class: r ? (r.ok ? "ok" : "bad") : "" }, a.title, r && !r.ok ? h("small", {}, r.error) : "");
+    })));
+  if (card.state === "done") {
+    const ok = card.results.filter((r) => r.ok).length;
+    box.append(h("div", { class: "plan-state" }, T.planDone(ok, card.results.length)));
+  } else if (card.state === "cancelled") {
+    box.append(h("div", { class: "plan-state" }, T.planCancelled));
+  } else {
+    const run = h("button", { class: "btn primary small", type: "button", disabled: card.state === "running",
+      onclick: () => runPlan(card) }, card.state === "running" ? T.planRunning : T.planRun);
+    const cancel = h("button", { class: "btn small", type: "button", disabled: card.state === "running",
+      onclick: () => { card.state = "cancelled"; saveMessages(); showMessages(); } }, T.planCancel);
+    box.append(h("div", { class: "plan-actions" }, run, cancel));
+  }
+  return box;
+}
+
+async function runPlan(card) {
+  card.state = "running";
+  showMessages();
+  try {
+    const res = await postJSON("/api/chat/apply", { actions: card.actions.map(({ tool, args }) => ({ tool, args })) });
+    card.results = res.results;
+    card.state = "done";
+  } catch (e) {
+    card.results = card.actions.map(() => ({ ok: false, error: e.message }));
+    card.state = "done";
+  }
+  saveMessages();
+  showMessages();
+  window.dispatchEvent(new CustomEvent("yakumo:files-changed"));  // открытые страницы модулей обновятся
 }
 
 function iconButton(id, label, onclick) {
@@ -932,10 +979,12 @@ async function ask() {
         if (!line.trim()) continue;
         const ev = JSON.parse(line);
         if (ev.delta) { answer.text += ev.delta; update(); }
+        if (ev.status) { answer.status = ev.status; update(); }
+        if (ev.card) { (answer.cards ||= []).push(ev.card); update(); }
         if (ev.error) { if (answer.text) answer.text += "\n\n"; answer.error = ev.error; }
       }
     }
-    if (!answer.text && !answer.error) answer.error = "network";
+    if (!answer.text && !answer.error && !answer.cards) answer.error = "network";
   } catch (e) {
     if (e.name === "AbortError") answer.text += (answer.text ? " " : "") + T.stopped;
     else answer.error = e instanceof TypeError ? "network" : e.message;
@@ -945,6 +994,7 @@ async function ask() {
   if (!messages.includes(answer)) return;  // чат очистили во время ответа
   // Ошибку после части ответа показываем отдельной репликой, а начало ответа оставляем.
   delete answer.pending;
+  delete answer.status;
   if (answer.error && answer.text.trim()) {
     const error = answer.error;
     delete answer.error;

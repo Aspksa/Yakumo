@@ -34,6 +34,16 @@
       noPreview: "Предпросмотр недоступен", textCut: "Показано начало файла.",
       deletedAt: "Удалён", from: "Откуда", root: "Диск", created: "Создана",
       moved: (n) => `Перемещено: ${n}`, copied: (n) => `Скопировано: ${n}`,
+      notFound: "Файл не найден: его переместили или удалили",
+      smart: "Умный поиск", inText: "в тексте", onPhoto: "на фото",
+      smartText: (n) => `Поиск ищет не только по именам, но и по тексту внутри документов: txt, Word, Excel, PowerPoint, PDF, RTF, книги. Прочитано документов: ${n}.`,
+      smartBusy: (d, n) => `Обновляю: ${d} из ${n}`,
+      photos: "Распознавать фото через Cloud.ru",
+      photosHint: "Фото по очереди отправляются в Cloud.ru, и модель описывает, что на них. Описания хранятся у вас на Диске, по ним работает поиск: «чек», «кошка», «море». Можно выключить в любой момент.",
+      photosDone: (n) => `Описано фото: ${n}`, visionModel: (m) => `Модель: ${m}`,
+      noCloud: "Сначала подключите Cloud.ru в настройках (раздел Cloud.ru).",
+      noVision: "В каталоге Cloud.ru не нашлась модель, которая видит картинки.",
+      chatTip: "Ещё можно попросить Yakumo в чате: «найди договор аренды», «перескажи отчёт.pdf», «разложи файлы в папке Загрузки по папкам». Изменения она только предлагает, а выполняются они по кнопке «Выполнить».",
     },
     en: {
       title: "Drive", files: "Files", shared: "Shared", trash: "Trash",
@@ -64,6 +74,16 @@
       noPreview: "No preview available", textCut: "Showing the beginning of the file.",
       deletedAt: "Deleted", from: "From", root: "Drive", created: "Created",
       moved: (n) => `Moved: ${n}`, copied: (n) => `Copied: ${n}`,
+      notFound: "File not found: it was moved or deleted",
+      smart: "Smart search", inText: "in text", onPhoto: "in photo",
+      smartText: (n) => `Search looks not only at names but also at the text inside documents: txt, Word, Excel, PowerPoint, PDF, RTF, books. Documents read: ${n}.`,
+      smartBusy: (d, n) => `Updating: ${d} of ${n}`,
+      photos: "Recognise photos with Cloud.ru",
+      photosHint: "Photos are sent to Cloud.ru one by one and the model describes them. Descriptions are stored on your Drive and make search work: “receipt”, “cat”, “sea”. You can turn it off any time.",
+      photosDone: (n) => `Photos described: ${n}`, visionModel: (m) => `Model: ${m}`,
+      noCloud: "Connect Cloud.ru in Settings first.",
+      noVision: "The Cloud.ru catalog has no model that can see images.",
+      chatTip: "You can also ask Yakumo in the chat: “find the lease”, “summarise report.pdf”, “sort the Downloads folder”. She only proposes changes; they run when you press Run.",
     },
   };
   let L = TX.ru;
@@ -106,6 +126,7 @@
     "dk-up": '<path d="m6 15 6-6 6 6"/>', "dk-down": '<path d="m6 9 6 6 6-6"/>',
     "dk-prev": '<path d="m15 5-7 7 7 7"/>', "dk-next": '<path d="m9 5 7 7-7 7"/>',
     "dk-x": '<path d="M6 6l12 12M18 6 6 18"/>', "dk-check": '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
+    "dk-spark": '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>',
     "dk-more": '<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
   };
   const sprite = document.querySelector("svg symbol").parentNode;
@@ -279,7 +300,7 @@
     return h("div", { class: "dk-tabs" },
       h("div", { class: "dk-tablist", role: "tablist" },
         tab("files", "dk-folder"), tab("shared", "dk-link"), tab("trash", "dk-trash")),
-      box);
+      h("div", { class: "dk-searchrow" }, box, button("dk-spark", L.smart, smartDialog, { iconOnly: true })));
   }
   let searchTimer = 0;
 
@@ -430,7 +451,8 @@
         e.dataTransfer.effectAllowed = "move";
       },
     }, check, thumb,
-      h("span", { class: "dk-name" }, item.name),
+      h("span", { class: "dk-name" }, item.name, item.snippet ? h("small", { class: "dk-snippet" },
+        item.match !== "name" ? h("b", {}, item.match === "photo" ? L.onPhoto : L.inText) : "", item.snippet) : ""),
       h("span", { class: "dk-meta" }, meta[0]), h("span", { class: "dk-meta dk-size" }, meta[1]));
     if (item.dir && state.view === "files") dropTarget(el, item.path);
     return el;
@@ -451,11 +473,12 @@
     L = TX[lng] || TX.ru;
     const focused = keepFocus && document.activeElement?.classList.contains("dk-search-input");
     const items = currentItems();
-    const list = h("div", { class: `dk-list ${state.view === "files" ? state.layout : "list"}`, role: "listbox",
+    const layout = state.view === "files" && !state.found ? state.layout : "list";  // у найденного — фрагменты текста
+    const list = h("div", { class: `dk-list ${layout}`, role: "listbox",
                              "aria-multiselectable": "true", "aria-label": L.title,
                              onclick: (e) => { if (e.target === e.currentTarget && state.selected.size) {
                                state.selected.clear(); showSelection(); } } });
-    if (state.view !== "files" || state.layout === "list") {
+    if (layout === "list") {
       list.append(h("div", { class: "dk-listhead", "aria-hidden": "true" }, h("span"), h("span"),
         h("span", {}, L.name),
         h("span", {}, state.view === "trash" ? L.from : state.found || state.view === "shared" ? L.from : L.modified),
@@ -936,6 +959,74 @@
     swipeX = null;
   });
   viewer.addEventListener("click", (e) => { if (e.target.classList.contains("dk-stage")) closeViewer(); });
+
+  // --- Умный поиск ---
+
+  async function smartDialog() {
+    const body = h("div", { class: "dk-smart" });
+    let info = null;
+    async function show() {
+      try { info = await get("smart"); } catch (e) { body.replaceChildren(e.message); return; }
+      const toggle = h("input", { type: "checkbox", role: "switch", checked: info.photos, disabled: !info.cloud,
+        onchange: async (e) => {
+          try { await post("smart", { photos: e.target.checked }); } catch (err) { toast(err.message, true); }
+          show();
+        } });
+      let note = "";
+      if (!info.cloud) note = h("p", { class: "dk-warn" }, L.noCloud);
+      else if (!info.vision_model) note = h("p", { class: "dk-warn" }, L.noVision);
+      else note = h("p", { class: "row-hint" }, L.visionModel(info.vision_model),
+        info.photos ? ` · ${L.photosDone(info.photos_done)}` : "");
+      body.replaceChildren(
+        h("p", {}, L.smartText(info.texts)),
+        info.running && info.queue ? h("p", { class: "row-hint" }, L.smartBusy(info.done, info.queue)) : "",
+        h("label", { class: "row" },
+          h("span", { class: "row-text" }, h("span", { class: "row-title" }, L.photos),
+            h("span", { class: "row-hint" }, L.photosHint)),
+          h("span", { class: "switch" }, toggle, h("span", { class: "knob" }))),
+        note,
+        info.photo_error ? h("p", { class: "dk-error" }, info.photo_error) : "",
+        h("p", { class: "row-hint dk-tip" }, L.chatTip));
+    }
+    await show();
+    const timer = setInterval(() => { if (info?.running || info?.photos) show(); }, 3000);
+    await modal(L.smart, [body], [{ label: L.close, primary: true }]);
+    clearInterval(timer);
+  }
+
+  // Ссылки на файлы из ответов Yakumo в чате: [имя](disk:путь).
+  async function openPath(raw) {
+    let path = raw || "";
+    try { path = decodeURIComponent(path); } catch { /* уже без %-кодов */ }
+    path = path.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+    state.view = "files";
+    state.query = "";
+    state.found = null;
+    if (location.hash !== "#/disk") location.hash = "#/disk";
+    if (!path) return go("");
+    const parent = parentOf(path), name = path.split("/").pop();
+    let res;
+    try { res = await get("list", { path: parent }); } catch { return toast(L.notFound, true); }
+    const item = res.items.find((i) => i.name === name);
+    if (!item) return toast(L.notFound, true);
+    if (item.dir) return go(item.path);
+    go(parent);
+    return preview(item, sorted(res.items).filter((i) => !i.dir));
+  }
+
+  document.addEventListener("click", (e) => {
+    const link = e.target.closest?.("a.disk-link");
+    if (!link) return;
+    e.preventDefault();
+    openPath(link.dataset.path);
+  });
+
+  // Yakumo выполнила план из чата: показать изменения.
+  window.addEventListener("yakumo:files-changed", () => {
+    if (!started) return;
+    load();
+    refreshInfo();
+  });
 
   // --- Окна, меню, уведомления ---
 
