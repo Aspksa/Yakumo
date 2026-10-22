@@ -202,7 +202,7 @@ function h(tag, attrs = {}, ...children) {
     else if (v === true) el.setAttribute(k, "");
     else if (v !== false && v != null) el.setAttribute(k, v);
   }
-  for (const c of children.flat()) if (c != null && c !== "") el.append(c instanceof Node ? c : String(c));
+  for (const c of children.flat(Infinity)) if (c != null && c !== "") el.append(c instanceof Node ? c : String(c));
   return el;
 }
 
