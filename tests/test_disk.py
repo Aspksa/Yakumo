@@ -63,6 +63,31 @@ class DiskTest(unittest.TestCase):
     def names(self, path=""):
         return sorted(i["name"] for i in self.json("/api/disk/list", path=path)["items"])
 
+    def test_favorites_recent_and_space(self):
+        import os
+        import time
+        self.upload("Документы/отчёт.docx", b"A" * 5000)
+        self.upload("Документы/копия отчёта.docx", b"A" * 5000)
+        self.upload("Фото/большое.jpg", b"B" * 9000)
+        self.upload("заметка.txt", b"hi")
+        os.utime(self.root / "Фото" / "большое.jpg", (time.time() - 3600, time.time() - 3600))
+        self.json("/api/disk/favorite", {"paths": ["Документы/отчёт.docx", "Фото"]})
+        stars = {i["path"] for i in self.json("/api/disk/favorites")}
+        self.assertEqual(stars, {"Документы/отчёт.docx", "Фото"})
+        self.assertTrue(next(i for i in self.json("/api/disk/list", path="")["items"] if i["name"] == "Фото")["star"])
+        # Избранное едет вслед за переименованием.
+        self.json("/api/disk/rename", {"path": "Документы", "name": "Бумаги"})
+        self.assertIn("Бумаги/отчёт.docx", {i["path"] for i in self.json("/api/disk/favorites")})
+        self.json("/api/disk/favorite", {"paths": ["Фото"], "on": False})
+        self.assertEqual([i["path"] for i in self.json("/api/disk/favorites")], ["Бумаги/отчёт.docx"])
+        recent = [i["path"] for i in self.json("/api/disk/recent")]
+        self.assertEqual(recent[-1], "Фото/большое.jpg")  # самое старое — в конце
+        space = self.json("/api/disk/space")
+        self.assertEqual(space["largest"][0]["path"], "Фото/большое.jpg")
+        dup, = space["duplicates"]
+        self.assertEqual(({f["name"] for f in dup["files"]}, dup["wasted"]), ({"отчёт.docx", "копия отчёта.docx"}, 5000))
+        self.assertNotIn(".yakumo", json.dumps(space, ensure_ascii=False))
+
     def test_upload_list_download_russian(self):
         code, _, body = self.upload("Фото/Море 2024/закат.jpg", b"0123456789")
         self.assertEqual(code, 200, body)

@@ -330,6 +330,40 @@
 .dk-plan li span { overflow-wrap: anywhere; }
 .dk-plan li small { color: var(--accent); }
 
+/* Фильтры, избранное, видео, место, клавиши */
+.dk-filters { display: flex; flex-wrap: wrap; gap: 6px; margin: -2px 0 12px; }
+.dk-filters .dk-chip { padding: 5px 12px; display: inline-flex; gap: 6px; align-items: baseline; }
+.dk-filters .dk-chip small { color: var(--muted); font-size: 11px; }
+.dk-chip.on { background: var(--accent-soft); border-color: rgba(var(--accent-rgb), .6); color: var(--accent); }
+.dk-star { position: absolute; top: 8px; right: 8px; z-index: 1; color: var(--accent); display: grid; }
+.dk-star svg { width: 16px; height: 16px; fill: var(--accent); filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .6)); }
+.list .dk-star { position: static; display: inline-grid; vertical-align: -2px; margin-right: 6px; }
+.list .dk-star svg { width: 14px; height: 14px; }
+.tiles .dk-thumb video { width: 100%; height: 100%; object-fit: cover; background: #000; pointer-events: none; }
+.dk-thumb { position: relative; }
+.dk-play { position: absolute; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%;
+           background: rgba(0, 0, 0, .55); color: #fff; }
+.dk-play svg { width: 18px !important; height: 18px !important; stroke-width: 1.8 !important; }
+.dk-dialog:has(.dk-space) { width: min(620px, calc(100vw - 32px)); }
+.dk-space { max-height: min(62vh, 640px); overflow-y: auto; padding-right: 4px; }
+.dk-space h3 { font-size: 14px; margin: 16px 0 8px; color: var(--accent); }
+.dk-space h3:first-child { margin-top: 0; }
+.dk-space h3 small { color: var(--muted); font-weight: 400; }
+.dk-space-bar { display: grid; grid-template-columns: minmax(0, 150px) 1fr 76px; align-items: center; gap: 10px;
+                font-size: 13px; padding: 3px 0; }
+.dk-space-bar span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-space-bar small { color: var(--muted); text-align: right; }
+.dk-space-meter { height: 8px; border-radius: 4px; background: var(--border); overflow: hidden; }
+.dk-space-meter i { display: block; height: 100%; border-radius: 4px;
+                    background: linear-gradient(90deg, rgb(var(--accent-rgb)), rgb(var(--accent-hi-rgb))); }
+.dk-dup { border: 1px solid var(--border); border-radius: 8px; padding: 2px; margin-bottom: 6px; }
+.dk-keys { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; margin: 0; font-size: 14px; }
+.dk-keys dt { white-space: nowrap; color: var(--muted); }
+.dk-keys dd { margin: 0; }
+kbd { display: inline-block; min-width: 22px; padding: 1px 6px; border-radius: 5px; text-align: center;
+      font: 12px/1.6 "Segoe UI", system-ui, sans-serif; color: var(--text); background: var(--bg);
+      border: 1px solid var(--border); border-bottom-width: 2px; }
+
 /* Вопросы к папке и понятные имена */
 .dk-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .dk-chip { font: inherit; font-size: 13px; padding: 7px 12px; border-radius: var(--chip-radius);

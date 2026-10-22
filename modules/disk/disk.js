@@ -78,6 +78,20 @@
       whyWords: (w) => `общие слова: ${w}`, whyMemory: "через память", whyMeaning: "похоже по смыслу",
       cinema: "Кинорежим", zoomIn: "Увеличить", zoomOut: "Уменьшить", zoomReset: "Вписать",
       sniffing: "Кицунэ ищет…",
+      recent: "Недавние", starred: "Избранное", star: "В избранное", unstar: "Убрать из избранного",
+      emptyRecent: "Пока нет файлов", emptyStarred: "В избранном пока пусто",
+      emptyStarredHint: "Отметьте звёздочкой файл или папку, к которым возвращаетесь чаще всего.",
+      filters: { all: "Все", folder: "Папки", docs: "Документы", image: "Фото", video: "Видео", audio: "Музыка",
+                 archive: "Архивы", other: "Другое" },
+      space: "Место на Диске", spaceBusy: "Кицунэ считает место…", largest: "Самые большие файлы",
+      duplicates: "Дубликаты", noDuplicates: "Дубликатов нет", byFolder: "По папкам", byKind: "По типам",
+      dupWaste: (s) => `лишнее: ${s}`, keepOldest: "Оставить по одному", keepHint: "Самая старая копия остаётся, остальные — в корзину.",
+      pasted: (n) => `Вставлено из буфера: ${n}`, shot: "Скриншот",
+      keys: "Горячие клавиши", keyList: [
+        ["Ctrl+F", "поиск по Диску"], ["Ctrl+U", "загрузить файлы"], ["Ctrl+V", "вставить скриншот или файлы"],
+        ["Ctrl+Shift+N", "новая папка"], ["Ctrl+A", "выделить всё"], ["Enter", "открыть"], ["F2", "переименовать"],
+        ["Del", "в корзину"], ["S", "в избранное"], ["Backspace", "на папку выше"], ["← →", "листать в просмотре"],
+        ["+ − 0", "увеличение в просмотре"], ["?", "эта подсказка"]],
     },
     en: {
       title: "Drive", files: "Files", shared: "Shared", trash: "Trash",
@@ -153,6 +167,20 @@
       whyWords: (w) => `shared words: ${w}`, whyMemory: "through memory", whyMeaning: "similar meaning",
       cinema: "Cinema mode", zoomIn: "Zoom in", zoomOut: "Zoom out", zoomReset: "Fit",
       sniffing: "The kitsune is searching…",
+      recent: "Recent", starred: "Starred", star: "Add to starred", unstar: "Remove from starred",
+      emptyRecent: "No files yet", emptyStarred: "Nothing starred yet",
+      emptyStarredHint: "Star the files and folders you come back to most.",
+      filters: { all: "All", folder: "Folders", docs: "Documents", image: "Photos", video: "Videos", audio: "Music",
+                 archive: "Archives", other: "Other" },
+      space: "Drive space", spaceBusy: "The kitsune is counting…", largest: "Largest files",
+      duplicates: "Duplicates", noDuplicates: "No duplicates", byFolder: "By folder", byKind: "By type",
+      dupWaste: (s) => `wasted: ${s}`, keepOldest: "Keep one of each", keepHint: "The oldest copy stays, the rest go to the trash.",
+      pasted: (n) => `Pasted from clipboard: ${n}`, shot: "Screenshot",
+      keys: "Keyboard shortcuts", keyList: [
+        ["Ctrl+F", "search Drive"], ["Ctrl+U", "upload files"], ["Ctrl+V", "paste a screenshot or files"],
+        ["Ctrl+Shift+N", "new folder"], ["Ctrl+A", "select all"], ["Enter", "open"], ["F2", "rename"],
+        ["Del", "move to trash"], ["S", "star"], ["Backspace", "up a folder"], ["← →", "browse in the viewer"],
+        ["+ − 0", "zoom in the viewer"], ["?", "this help"]],
     },
   };
   let L = TX.ru;
@@ -206,6 +234,10 @@
     "dk-zoomin": '<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.4-4.4M11 8v6M8 11h6"/>',
     "dk-zoomout": '<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.4-4.4M8 11h6"/>',
     "dk-fit": '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
+    "dk-star": '<path d="m12 3.5 2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.8l-5.2 2.8 1-5.8-4.3-4.1 5.9-.8z"/>',
+    "dk-clock": '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+    "dk-pie": '<path d="M12 3.5a8.5 8.5 0 1 0 8.5 8.5H12z"/><path d="M15 2.8A8.5 8.5 0 0 1 21.2 9H15z"/>',
+    "dk-keys": '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/>',
   };
   const sprite = document.querySelector("svg symbol").parentNode;
   for (const [id, body] of Object.entries(ICONS)) {
@@ -442,6 +474,8 @@
     layout: stored("layout", "tiles"),
     info: null, loading: false, error: null,
     order: null,                // правила, предложения и уроки кицунэ
+    recent: [], starred: [],
+    filter: "all",              // тип файлов в списке
     fresh: false,               // результаты поиска только что пришли: подсветить
   };
   const root = h("div", { class: "disk" });
@@ -488,6 +522,10 @@
         if (state.query) await runSearch();
       } else if (state.view === "order") {
         state.order = await get("order");
+      } else if (state.view === "recent") {
+        state.recent = await get("recent");
+      } else if (state.view === "starred") {
+        state.starred = await get("favorites");
       } else if (state.view === "trash") {
         state.trash = await get("trash");
       } else {
@@ -537,11 +575,27 @@
   }
 
   const keyOf = (item) => item.id || item.token || item.path;
-  function currentItems() {
+  // Фильтры по типу: «Документы» — всё, из чего читается текст.
+  const FILTERS = {
+    folder: (i) => i.dir, docs: (i) => ["pdf", "doc", "text", "sheet", "slides", "book"].includes(i.kind),
+    image: (i) => i.kind === "image", video: (i) => i.kind === "video", audio: (i) => i.kind === "audio",
+    archive: (i) => i.kind === "archive",
+  };
+  FILTERS.other = (i) => !Object.entries(FILTERS).some(([k, f]) => k !== "other" && f(i));
+  const fileLike = () => ["files", "recent", "starred"].includes(state.view);
+
+  function viewItems() {
     if (state.view === "order") return [];
     if (state.view === "trash") return state.trash;
     if (state.view === "shared") return state.shares;
+    if (state.view === "recent") return state.recent;
+    if (state.view === "starred") return sorted(state.starred);
     return sorted(state.found ? state.found.items : state.items);
+  }
+  function currentItems() {
+    const items = viewItems();
+    const f = fileLike() && FILTERS[state.filter];
+    return f ? items.filter(f) : items;
   }
   const selectedItems = () => currentItems().filter((i) => state.selected.has(keyOf(i)));
 
@@ -591,7 +645,8 @@
     box.prepend(icon("i-dk-search"));
     return h("div", { class: "dk-tabs" },
       h("div", { class: "dk-tablist", role: "tablist" },
-        tab("files", "dk-folder"), orderTab(), tab("shared", "dk-link"), tab("trash", "dk-trash")),
+        tab("files", "dk-folder"), tab("recent", "dk-clock"), tab("starred", "dk-star"), orderTab(),
+        tab("shared", "dk-link"), tab("trash", "dk-trash")),
       h("div", { class: "dk-searchrow" }, box, button("dk-spark", L.smart, smartDialog, { iconOnly: true })));
   }
   let searchTimer = 0;
@@ -627,6 +682,9 @@
         state.trash.length ? button("dk-trash", L.emptyTrash, emptyTrash) : "");
     }
     if (state.view === "shared") return h("div", { class: "dk-bar" }, h("div", { class: "dk-bar-title" }, L.shared));
+    if (state.view === "recent" || state.view === "starred") {
+      return h("div", { class: "dk-bar" }, h("div", { class: "dk-bar-title" }, L[state.view]));
+    }
     if (state.view === "order") {
       return h("div", { class: "dk-bar" }, h("div", { class: "dk-bar-title" }, L.order),
         h("div", { class: "dk-actions" }, button("dk-fox", L.sortNow, sortNow),
@@ -644,6 +702,8 @@
       openMenu(e.currentTarget, [
         { icon: "dk-wand", label: L.names, run: () => namesDialog(state.path) },
         { icon: "dk-fox", label: L.sortNow, run: sortNow },
+        { icon: "dk-pie", label: L.space, run: spaceDialog },
+        { icon: "dk-keys", label: L.keys, run: keysDialog },
       ]);
     }, { iconOnly: true });
     return h("div", { class: "dk-bar" }, head,
@@ -728,6 +788,8 @@
     return [
       ...(one && !one.dir ? [{ icon: "dk-file", label: L.open, run: () => open(one) }] : []),
       ...(askable(sel) ? [{ icon: "dk-ask", label: L.askYakumo, run: () => askYakumo(sel) }] : []),
+      sel.every((i) => i.star) ? { icon: "dk-star", label: L.unstar, run: () => star(sel, false), extra: true }
+        : { icon: "dk-star", label: L.star, run: () => star(sel, true), extra: true },
       ...(one && !one.dir ? [{ icon: "dk-related", label: L.related, run: () => { sideOn = true; open(one); }, extra: true }] : []),
       ...(one && DOCS.has(one.kind) ? [{ icon: "dk-summary", label: L.summary, run: () => summarize(one), extra: true }] : []),
       ...(one ? [{ icon: "dk-wand", label: one.dir ? L.names : L.nameOne, run: () => namesDialog(one.path), extra: true }] : []),
@@ -744,9 +806,13 @@
     const key = keyOf(item);
     const on = state.selected.has(key);
     const thumb = h("span", { class: "dk-thumb", "data-kind": item.kind });
-    if (item.kind === "image" && state.view === "files" && state.layout === "tiles") {
+    const tiles = fileLike() && state.layout === "tiles" && !state.found && state.view !== "recent";
+    if (item.kind === "image" && tiles) {
       thumb.append(h("img", { src: fileUrl(item.path), alt: "", loading: "lazy", decoding: "async", draggable: "false",
                               onerror: (e) => e.target.replaceWith(itemArt(item)) }));
+    } else if (item.kind === "video" && tiles) {
+      thumb.append(itemArt(item));
+      videoFrame(thumb, item);
     } else {
       thumb.append(itemArt(item));
     }
@@ -754,16 +820,16 @@
                               onclick: (e) => { e.stopPropagation(); toggleSelect(key, index, items, e.shiftKey); } });
     check.append(icon("i-dk-check"));
     let meta;
-    const where = baseName(parentOf(item.path));  // «Откуда» — папка, где лежит (лежал) файл
+    const where = parentOf(item.path).split("/").join(" / ") || L.root;  // «Откуда» — папка, где лежит (лежал) файл
     if (state.view === "trash") meta = [where, date(item.deleted)];
     else if (state.view === "shared") meta = [where, date(item.created)];
-    else if (state.found) meta = [where, item.dir ? "" : size(item.size)];
+    else if (state.found || state.view === "recent" || state.view === "starred") meta = [where, item.dir ? "" : size(item.size)];
     else meta = [date(item.mtime), item.dir ? "" : size(item.size)];
     const el = h("div", {
       class: "dk-item" + (on ? " on" : ""), tabindex: "0", role: "option", "aria-selected": String(on),
-      "data-key": key, draggable: state.view === "files" ? "true" : "false", title: item.path || item.name,
+      "data-key": key, draggable: fileLike() ? "true" : "false", title: item.path || item.name,
       onclick: (e) => clickItem(e, item, index, items),
-      ondblclick: () => state.view === "files" && open(item),
+      ondblclick: () => fileLike() && open(item),
       onkeydown: (e) => { if (e.key === "Enter") { e.preventDefault(); openOrRun(item); } },
       oncontextmenu: (e) => {
         e.preventDefault();
@@ -779,6 +845,10 @@
       h("span", { class: "dk-name" }, item.name, item.snippet ? h("small", { class: "dk-snippet" },
         item.match !== "name" ? h("b", {}, item.match === "photo" ? L.onPhoto : L.inText) : "", item.snippet) : ""),
       h("span", { class: "dk-meta" }, meta[0]), h("span", { class: "dk-meta dk-size" }, meta[1]));
+    if (item.star && fileLike()) {
+      const mark = h("span", { class: "dk-star", title: L.starred }, icon("i-dk-star"));
+      if (layoutNow() === "tiles") el.append(mark); else el.querySelector(".dk-name").prepend(mark);
+    }
     if (item.dir && state.view === "files") dropTarget(el, item.path);
     return el;
   }
@@ -788,15 +858,21 @@
     if (state.found) { title = L.nothingFound; hint = L.nothingHint; scene = "search"; }
     else if (state.view === "trash") { title = L.emptyTrashText; hint = L.emptyTrashHint; scene = "trash"; }
     else if (state.view === "shared") { title = L.emptySharedText; hint = L.emptySharedHint; scene = "shared"; }
+    else if (state.view === "recent") { title = L.emptyRecent; hint = L.emptyHint; }
+    else if (state.view === "starred") { title = L.emptyStarred; hint = L.emptyStarredHint; scene = "search"; }
+    if (state.filter !== "all" && viewItems().length) { title = L.nothingFound; hint = ""; scene = "search"; }
     return h("div", { class: "empty dk-empty" }, sceneArt(scene), h("strong", {}, title), hint ? h("span", {}, hint) : "");
   }
+
+  // У найденного — фрагменты текста, у недавних — где лежит: им удобнее список.
+  const layoutNow = () => (state.view === "files" && !state.found) || state.view === "starred" ? state.layout : "list";
 
   function draw(keepFocus = false) {
     const lng = window.Yakumo.lang();
     L = TX[lng] || TX.ru;
     const focused = keepFocus && document.activeElement?.classList.contains("dk-search-input");
     const items = currentItems();
-    const layout = state.view === "files" && !state.found ? state.layout : "list";  // у найденного — фрагменты текста
+    const layout = layoutNow();
     const list = h("div", { class: `dk-list ${layout}`, role: "listbox",
                              "aria-multiselectable": "true", "aria-label": L.title,
                              onclick: (e) => { if (e.target === e.currentTarget && state.selected.size) {
@@ -804,7 +880,8 @@
     if (layout === "list") {
       list.append(h("div", { class: "dk-listhead", "aria-hidden": "true" }, h("span"), h("span"),
         h("span", {}, L.name),
-        h("span", {}, state.view === "trash" ? L.from : state.found || state.view === "shared" ? L.from : L.modified),
+        h("span", {}, state.view === "trash" || state.found || ["shared", "recent", "starred"].includes(state.view)
+          ? L.from : L.modified),
         h("span", {}, state.view === "trash" ? L.deletedAt : state.view === "shared" ? L.created : L.size)));
     }
     items.forEach((item, i) => list.append(itemEl(item, i, items)));
@@ -816,7 +893,7 @@
     const footer = items.length && !state.found ? h("div", { class: "dk-foot" }, L.items(items.length)) : "";
     root.replaceChildren(
       h("div", { class: "dk-head" }, h("h1", {}, L.title), usageEl()),
-      tabs(), toolbar(),
+      tabs(), toolbar(), filterRow(),
       state.error ? h("p", { class: "dk-error" }, state.error) : "",
       state.view === "order" ? orderEl() : items.length ? list : (state.loading ? "" : emptyEl()),
       footer,
@@ -856,7 +933,7 @@
   }
 
   function openOrRun(item) {
-    if (state.view === "files") return open(item);
+    if (fileLike()) return open(item);
     if (state.view === "shared") return item.dir ? goTo(item.path) : preview(item, [item]);
     return null;
   }
@@ -865,6 +942,7 @@
 
   function go(path, push = true) {
     state.path = path;
+    state.filter = "all";
     state.query = "";
     state.found = null;
     state.selected.clear();
@@ -875,7 +953,7 @@
   }
 
   function open(item) {
-    if (item.dir) return go(item.path);
+    if (item.dir) return state.view === "files" ? go(item.path) : goTo(item.path);
     const files = currentItems().filter((i) => !i.dir);
     return preview(item, files);
   }
@@ -886,6 +964,7 @@
     state.selected.clear();
     state.anchor = null;
     if (view !== "files") { state.query = ""; state.found = null; }
+    state.filter = "all";
     draw();
     load();
   }
@@ -932,6 +1011,105 @@
     if (sel.length === 2) return window.Yakumo.ask(L.askCompare(sel[0].path, sel[1].path));
     window.Yakumo.ask(sel[0].dir ? L.askFolder(sel[0].path) : L.askFile(sel[0].path));
   }
+
+  // Фильтры по типу — только если в списке есть из чего выбирать.
+  function filterRow() {
+    if (!fileLike()) return "";
+    const items = viewItems();
+    const present = Object.keys(FILTERS).filter((k) => items.some(FILTERS[k]));
+    if (present.length < 2 && state.filter === "all") return "";
+    return h("div", { class: "dk-filters", role: "radiogroup", "aria-label": L.filters.all },
+      ["all", ...present].map((k) => h("button", {
+        type: "button", role: "radio", "aria-checked": String(state.filter === k),
+        class: "dk-chip" + (state.filter === k ? " on" : ""),
+        onclick: () => { state.filter = k; state.selected.clear(); draw(); },
+      }, L.filters[k], k === "all" ? "" : h("small", {}, String(items.filter(FILTERS[k]).length)))));
+  }
+
+  async function star(items, on) {
+    try { await post("favorite", { paths: items.map((i) => i.path), on }); } catch (e) { return toast(e.message, true); }
+    for (const i of items) i.star = on;
+    if (state.view === "starred") return load();
+    draw();
+  }
+
+  // Кадр из видео вместо значка: браузер сам берёт первый кадр, когда плитка видна.
+  const frames = "IntersectionObserver" in window ? new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (!e.isIntersecting) continue;
+      frames.unobserve(e.target);
+      const v = h("video", { src: `${fileUrl(e.target.dataset.path)}#t=1`, muted: true, preload: "metadata",
+                             playsinline: true, "aria-hidden": "true", tabindex: "-1" });
+      v.addEventListener("loadeddata", () => {
+        e.target.querySelector(".dk-art")?.replaceWith(v, h("span", { class: "dk-play" }, icon("i-dk-video")));
+      }, { once: true });
+    }
+  }, { rootMargin: "200px" }) : null;
+  function videoFrame(thumb, item) {
+    if (!frames) return;
+    thumb.dataset.path = item.path;
+    frames.observe(thumb);
+  }
+
+  // --- Место на Диске: крупные файлы, дубликаты, папки и типы ---
+
+  // Закрыть открытое окно так же, как кнопкой (чтобы ожидающий его код получил ответ).
+  const closeDialog = () => document.querySelector("dialog[open] .dk-dialog-actions button[type=submit]")?.click();
+
+  async function spaceDialog() {
+    const body = h("div", { class: "dk-space" }, h("p", { class: "row-hint dk-busy" }, foxArt("dk-fox-mini"), L.spaceBusy));
+    const done = modal(L.space, [body], [{ label: L.close, primary: true }]);
+    let res;
+    try { res = await get("space"); } catch (e) { body.replaceChildren(h("p", { class: "dk-error" }, e.message)); return done; }
+    const total = res.kinds.reduce((a, k) => a + k.size, 0) || 1;
+    const bar = (label, value) => h("div", { class: "dk-space-bar" }, h("span", {}, label),
+      h("span", { class: "dk-space-meter" }, h("i", { style: `width:${Math.max(1, (value / total) * 100)}%` })),
+      h("small", {}, size(value)));
+    const fileRow = (f, extra) => h("button", { type: "button", class: "dk-side-file", title: f.path,
+      onclick: () => { closeDialog(); openPath(f.path); } },
+      fileArt(f.kind, f.name), h("span", {}, h("b", {}, f.name), h("small", {}, extra || `${size(f.size)} · ${parentOf(f.path) || L.root}`)));
+    const extraCopies = res.duplicates.flatMap((d) => d.files.slice(1).map((f) => f.path));
+    body.replaceChildren(
+      h("h3", {}, L.byKind), ...res.kinds.slice(0, 6).map((k) => bar(L.kindNames[k.kind] || L.filters.other, k.size)),
+      h("h3", {}, L.byFolder), ...res.folders.slice(0, 6).map((f) => bar(f.path || L.root, f.size)),
+      h("h3", {}, L.duplicates, res.duplicates.length
+        ? h("small", {}, ` · ${L.dupWaste(size(res.duplicates.reduce((a, d) => a + d.wasted, 0)))}`) : ""),
+      ...(res.duplicates.length ? [
+        ...res.duplicates.slice(0, 8).map((d) => h("div", { class: "dk-dup" },
+          ...d.files.map((f, i) => fileRow(f, `${size(f.size)} · ${parentOf(f.path) || L.root}${i ? "" : " ✓"}`)))),
+        h("p", { class: "row-hint" }, L.keepHint),
+        h("button", { type: "button", class: "btn", onclick: () => {
+          closeDialog();
+          remove(extraCopies.map((path) => ({ path })));
+        } }, L.keepOldest),
+      ] : [h("p", { class: "row-hint" }, L.noDuplicates)]),
+      h("h3", {}, L.largest), ...res.largest.slice(0, 10).map((f) => fileRow(f)));
+    return done;
+  }
+
+  function keysDialog() {
+    modal(L.keys, [h("dl", { class: "dk-keys" }, L.keyList.flatMap(([k, v]) =>
+      [h("dt", {}, ...(k.includes(" ") ? k.split(" ").map((x) => h("kbd", {}, x))
+        : k.split("+").flatMap((x, i) => [i ? "+" : "", h("kbd", {}, x)]))), h("dd", {}, v)]))],
+    [{ label: L.close, primary: true }]);
+  }
+
+  // Ctrl+V: скриншот или скопированные файлы — сразу в открытую папку.
+  document.addEventListener("paste", (e) => {
+    if (document.body.dataset.page !== "disk" || state.view !== "files" || state.found) return;
+    if (e.target.closest?.("input, textarea, [contenteditable]") || document.querySelector("dialog[open]")) return;
+    const files = [...(e.clipboardData?.files || [])];
+    if (!files.length) return;
+    e.preventDefault();
+    const stamp = new Date().toLocaleString("sv").replace(/:/g, "-");
+    const list = files.map((f, i) => {
+      const generic = /^image\.(png|jpe?g|gif|webp)$/i.test(f.name);
+      const name = generic ? `${L.shot} ${stamp}${files.length > 1 ? ` (${i + 1})` : ""}.${f.name.split(".").pop()}` : f.name;
+      return { file: f, rel: name };
+    });
+    toast(L.pasted(list.length));
+    enqueue(list, state.path);
+  });
 
   // «Спросить о папке»: готовые вопросы и свой; отвечает Yakumo в чате (пересказ папки — folder_brief).
   async function askFolderDialog(path) {
@@ -1411,7 +1589,7 @@
       b.append(icon("i-" + id));
       return b;
     };
-    const files = state.view === "files";
+    const files = fileLike();
     const stage = h("div", { class: "dk-stage" + (dir ? ` dk-slide-${dir > 0 ? "next" : "prev"}` : "") }, body);
     viewer.replaceChildren(
       h("div", { class: "dk-viewer-top" },
@@ -1748,7 +1926,21 @@
       return;
     }
     if (document.body.dataset.page !== "disk" || document.querySelector("dialog[open]")) return;
+    const ctrl = e.ctrlKey || e.metaKey;
+    if (ctrl && e.key.toLowerCase() === "f") {
+      e.preventDefault();
+      root.querySelector(".dk-search-input")?.focus();
+      return;
+    }
     if (e.target.closest?.("input, textarea, select")) return;
+    if (ctrl && e.key.toLowerCase() === "u" && state.view === "files") { e.preventDefault(); fileInput.click(); return; }
+    if (ctrl && e.shiftKey && e.key.toLowerCase() === "n" && state.view === "files") { e.preventDefault(); newFolder(); return; }
+    if (e.key === "?") { keysDialog(); return; }
+    if (!ctrl && !e.altKey && e.key.toLowerCase() === "s" && fileLike() && selectedItems().length) {
+      const sel = selectedItems();
+      star(sel, !sel.every((i) => i.star));
+      return;
+    }
     const sel = selectedItems();
     if (e.key === "Escape" && state.selected.size) { state.selected.clear(); showSelection(); }
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
@@ -1756,9 +1948,9 @@
       state.selected = new Set(currentItems().map(keyOf));
       showSelection();
     } else if (e.key === "Delete" && sel.length) {
-      if (state.view === "files") remove(sel);
+      if (fileLike()) remove(sel);
       else if (state.view === "trash") purge(sel);
-    } else if (e.key === "F2" && sel.length === 1 && state.view === "files") {
+    } else if (e.key === "F2" && sel.length === 1 && fileLike()) {
       e.preventDefault();
       rename(sel[0]);
     } else if (e.key === "Backspace" && state.view === "files" && state.path && !state.found) {

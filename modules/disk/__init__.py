@@ -20,6 +20,7 @@ from yakumo.core.network import lan_address
 from . import assistant, insight
 from .extract import extract
 from .index import Index, data_url
+from .library import Library
 from .names import Namer
 from .organizer import Organizer
 from .store import CHUNK, Disk, DiskError, mime_of
@@ -205,6 +206,7 @@ def setup(ctx):
     memory = lambda: getattr(ctx, "memory", None)  # noqa: E731 — «Мозг» мог загрузиться позже
     organizer = Organizer(disk, lambda rel: index.text_of(rel)["text"], memory, language)
     namer = Namer(disk, index, cloud, language)
+    library = Library(disk)
 
     def smart_search(q: str, limit: int = 300) -> dict:
         """Имена файлов, текст внутри документов и описания фото — одним списком."""
@@ -250,11 +252,17 @@ def setup(ctx):
         return {"root": str(disk.root), **disk.usage(),
                 "lan": bool(ctx.config.lan), "lan_address": lan_address()}
 
+    def starred(res: dict) -> dict:
+        stars = library.starred()
+        for item in res["items"]:
+            item["star"] = item["path"] in stars
+        return res
+
     def listing(req):
-        return disk.list(query(req).get("path"))
+        return starred(disk.list(query(req).get("path")))
 
     def search(req):
-        return smart_search(query(req).get("q", ""))
+        return starred(smart_search(query(req).get("q", "")))
 
     def file(req):
         q = query(req)
@@ -308,6 +316,11 @@ def setup(ctx):
         "POST /api/disk/order/answer": lambda r: {"rule": organizer.answer(str((d := body(r)).get("id", "")),
                                                                             d.get("accept") is True)},
         "POST /api/disk/order/apply": lambda r: organizer.apply(body(r).get("moves")),
+        # Избранное, недавние, место.
+        "/api/disk/favorites": lambda _req: library.favorites(),
+        "POST /api/disk/favorite": lambda r: {"paths": library.star((d := body(r)).get("paths"), d.get("on") is not False)},
+        "/api/disk/recent": lambda _req: library.recent(),
+        "/api/disk/space": lambda _req: library.space(),
         # Понятные имена, похожие файлы, конспект.
         "/api/disk/names": lambda r: namer.suggest(query(r).get("path", ""), query(r).get("all") != "1"),
         "POST /api/disk/names": lambda r: namer.apply(body(r).get("items")),
