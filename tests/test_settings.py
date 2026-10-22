@@ -51,8 +51,9 @@ class SettingsApiTest(unittest.TestCase):
         self.assertEqual(got["values"]["avatar_size"], 232)
         self.assertIn(232, got["options"]["avatar_size"])
         res = self.post({"avatar_show": False, "avatar_size": 960, "avatar_motion": "alive",
-                         "avatar_glow": "pulse", "avatar_speed": "fast"})
+                         "avatar_glow": "pulse", "avatar_speed": "fast", "avatar_image": "sleep"})
         self.assertEqual(res["values"]["avatar_motion"], "alive")
+        self.assertEqual(res["values"]["avatar_image"], "sleep")
         saved = json.loads(self.config_path.read_text(encoding="utf-8"))
         self.assertEqual((saved["avatar_show"], saved["avatar_size"]), (False, 960))
         # Убранный вариант движения в старом файле настроек сбрасывается на значение по умолчанию.
@@ -62,7 +63,11 @@ class SettingsApiTest(unittest.TestCase):
         res = self.post({"avatar_effects": ["foxfire", "petals", "moon", "runes"], "avatar_fx_power": "high", "avatar_size": 2000})
         self.assertEqual(res["values"]["avatar_effects"], ["foxfire", "petals", "moon", "runes"])
         self.assertEqual(self.post({"avatar_effects": []})["values"]["avatar_effects"], [])
-        for bad in ({"avatar_size": 233}, {"avatar_size": 2008}, {"avatar_motion": "sway"}, {"avatar_show": 1},
+        res = self.post({"avatar_lock": True, "avatar_fx_mode": "hover", "power_save": True, "accent": "rose",
+                         "background": "blur", "card_radius": "large", "card_alpha": "glass"})
+        self.assertEqual((res["values"]["accent"], res["values"]["background"], res["values"]["avatar_fx_mode"]),
+                         ("rose", "blur", "hover"))
+        for bad in ({"avatar_size": 233}, {"avatar_size": 2008}, {"avatar_motion": "sway"}, {"avatar_image": "../x"}, {"accent": "red"}, {"background": "url(x)"}, {"avatar_show": 1},
                     {"avatar_effects": "petals"}, {"avatar_effects": ["petals", "petals"]}, {"avatar_effects": ["boom"]}):
             with self.assertRaises(urllib.error.HTTPError):
                 self.post(bad)

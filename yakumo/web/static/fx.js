@@ -10,7 +10,7 @@ const AvatarFx = (() => {
   const TAU = Math.PI * 2;
 
   let host, back, front, bctx, fctx;
-  let effects = new Set(), power = 1, frame = 0, last = 0, clock = 0;
+  let effects = new Set(), power = 1, frame = 0, last = 0, clock = 0, paused = false;
   let parts = [];
   let spawned = [];  // частицы, рождённые другими частицами в этом кадре
   const reduced = matchMedia("(prefers-reduced-motion: reduce)");
@@ -477,11 +477,11 @@ const AvatarFx = (() => {
       ctx.globalAlpha = 1;
     }
     if (running()) frame = requestAnimationFrame(tick);
-    else clear();
+    else if (!paused) clear();
   }
 
   function running() {
-    return !document.hidden && !reduced.matches && host && !host.hidden && (effects.size > 0 || parts.length > 0);
+    return !document.hidden && !paused && !reduced.matches && host && !host.hidden && (effects.size > 0 || parts.length > 0);
   }
 
   function clear() {
@@ -514,6 +514,11 @@ const AvatarFx = (() => {
       effects = new Set(list.filter((k) => KINDS[k] || ["rays", "circle", "moon"].includes(k)));
       power = POWER[strength] || 1;
       fill(first);
+      kick();
+    },
+    // Экономия: пока окно не активно, кадры не рисуются, частицы замирают на месте.
+    pause(on) {
+      paused = on;
       kick();
     },
     // Россыпь искр при нажатии на аватар.

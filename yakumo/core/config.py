@@ -20,13 +20,21 @@ class Config:
     language: str = "ru"             # язык интерфейса: ru или en
     font_scale: int = 100            # размер шрифта веб-версии, %
     compact: bool = False            # компактный режим веб-версии
+    accent: str = "gold"             # акцентный цвет
+    background: str = "black"        # фон страниц
+    card_radius: str = "normal"      # скругление карточек
+    card_alpha: str = "solid"        # прозрачность карточек
+    power_save: bool = False         # останавливать анимации, когда окно не активно
     avatar_show: bool = True         # аватар на страницах веб-версии
+    avatar_image: str = "classic"    # какая картинка аватара
     avatar_size: int = 232           # размер аватара, точек
     avatar_motion: str = "float"     # движение аватара
     avatar_glow: str = "soft"        # сияние за аватаром
     avatar_speed: str = "normal"     # скорость анимации
     avatar_effects: list[str] = field(default_factory=lambda: ["sparkles"])  # эффекты вокруг аватара
     avatar_fx_power: str = "normal"  # сила эффектов
+    avatar_fx_mode: str = "always"   # эффекты всегда или только при наведении
+    avatar_lock: bool = False        # закрепить аватар на месте
     cloud_model: str | None = None   # модель Cloud.ru для чата; ключ хранится в secrets.json
     cloud_url: str = "https://foundation-models.api.cloud.ru/v1"  # адрес API Cloud.ru
 
@@ -37,12 +45,20 @@ class Config:
         "language": ("ru", "en"),
         "font_scale": (90, 100, 115, 130),
         "compact": (True, False),
+        "accent": ("gold", "silver", "rose", "jade", "azure", "violet", "crimson"),
+        "background": ("black", "gradient", "image", "blur"),
+        "card_radius": ("small", "normal", "large"),
+        "card_alpha": ("solid", "glass", "clear"),
+        "power_save": (True, False),
         "avatar_show": (True, False),
+        "avatar_image": ("classic", "welcome", "tender", "prayer", "shy", "invite", "bow", "respect", "sleep"),
         "avatar_size": tuple(range(120, 2001, 8)),
         "avatar_motion": ("none", "float", "glide", "alive"),
         "avatar_glow": ("off", "soft", "bright", "pulse"),
         "avatar_speed": ("slow", "normal", "fast"),
         "avatar_fx_power": ("low", "normal", "high"),
+        "avatar_fx_mode": ("always", "hover"),
+        "avatar_lock": (True, False),
     }
     # Настройки-списки: можно выбрать несколько значений сразу (или ни одного).
     MULTI: ClassVar[dict[str, tuple]] = {
