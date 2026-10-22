@@ -6,8 +6,6 @@ const TEXTS = {
   ru: {
     home: "Главная", files: "Файлы", modules: "Модули", log: "Журнал", settings: "Настройки",
     loading: "Загрузка…", running: "работает", offline: "нет связи", connecting: "подключение…",
-    works: "работает", lastKnown: "— нет связи, показаны последние данные", address: "Адрес", data: "Данные", workspace: "Рабочая папка",
-    modulesOf: (ok, all) => `${ok} из ${all}`, noModules: "нет модулей",
     filesSoon: "Здесь будет файловый менеджер рабочей папки.",
     modulesSoon: "Здесь будет список модулей и их страницы.",
     logSoon: "Здесь будет журнал в реальном времени.",
@@ -31,8 +29,6 @@ const TEXTS = {
   en: {
     home: "Home", files: "Files", modules: "Modules", log: "Log", settings: "Settings",
     loading: "Loading…", running: "running", offline: "offline", connecting: "connecting…",
-    works: "is running", lastKnown: "— offline, showing last known data", address: "Address", data: "Data", workspace: "Workspace",
-    modulesOf: (ok, all) => `${ok} of ${all}`, noModules: "no modules",
     filesSoon: "A file manager for the workspace will be here.",
     modulesSoon: "The module list and module pages will be here.",
     logSoon: "A live log will be here.",
@@ -119,11 +115,6 @@ function applyLook() {
 
 // --- Страницы ---
 
-function card(title, value, hint) {
-  return h("div", { class: "card" }, h("h2", {}, title), h("div", { class: "value" }, value),
-           hint ? h("div", { class: "hint" }, hint) : "");
-}
-
 function placeholder(section, text) {
   const box = h("div", { class: "empty" });
   box.append(icon(section.icon), h("strong", {}, T[section.id]), h("span", {}, text));
@@ -158,21 +149,7 @@ function restartNote(key) {
 }
 
 const PAGES = {
-  home() {
-    if (!status) return [h("h1", {}, T.home), h("p", { class: "subtitle" }, T.loading)];
-    const okModules = status.modules.filter((m) => !m.error).length;
-    return [
-      h("h1", {}, T.home),
-      h("p", { class: "subtitle" },
-        `${status.app} ${status.version} ` + (online === false ? T.lastKnown : T.works)),
-      h("div", { class: "cards" },
-        card(T.address, status.url),
-        card(T.data, status.storage.root, status.storage.reason),
-        card(T.workspace, status.paths.workspace),
-        card(T.modules, T.modulesOf(okModules, status.modules.length),
-             status.modules.map((m) => m.title).join(", ") || T.noModules)),
-    ];
-  },
+  home: () => [],  // пока пустая
   files: () => [h("h1", {}, T.files), placeholder(SECTIONS[1], T.filesSoon)],
   modules: () => [h("h1", {}, T.modules), placeholder(SECTIONS[2], T.modulesSoon)],
   log: () => [h("h1", {}, T.log), placeholder(SECTIONS[3], T.logSoon)],
@@ -277,7 +254,7 @@ async function start() {
   const poll = async () => {
     const hadStatus = status !== null;
     await refreshStatus();
-    if (currentPage() === "home" || !hadStatus) render();
+    if (!hadStatus && currentPage() === "settings") render();
     setTimeout(poll, 10000);
   };
   setTimeout(poll, 10000);
