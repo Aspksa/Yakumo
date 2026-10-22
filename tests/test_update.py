@@ -320,6 +320,46 @@ class UpdaterTest(unittest.TestCase):
             self.ctx.stop()
 
 
+class VersionMemoryTest(unittest.TestCase):
+    def test_finished_installs_go_to_memory_once(self):
+        from modules.brain import MemoryAPI
+        from modules.brain.store import Memory
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            (base / "app").mkdir()
+            ctx = Context(paths=SimpleNamespace(app=base / "app", data=base / "data", workspace=base / "ws"), config=Config())
+            ctx.memory = MemoryAPI(Memory(base / "memory.json"), lambda q, n: {})
+            updater = Updater(ctx, lambda token: mock.Mock())
+            jobs = {"1" * 32: {"phase": "done", "kind": "install", "started": 100, "finished": 110,
+                               "from_version": {"revision": "a" * 40}, "to_version": {"revision": "b" * 40, "title": "main"},
+                               "commits": [{"message": "Merge pull request #27 from x/y\n\nДиск: избранное"},
+                                           {"message": "Чат: повтор\n\nподробности"}]},
+                    "2" * 32: {"phase": "rolled_back", "kind": "install", "started": 200,
+                               "to_version": {"revision": "c" * 40}},
+                    "3" * 32: {"phase": "done", "kind": "rollback", "started": 300, "finished": 310,
+                               "to_version": {"revision": "a" * 40}}}
+            for job_id, job in jobs.items():
+                (updater.root / "jobs" / job_id).mkdir(parents=True)
+                installer.atomic_json(updater.root / "jobs" / job_id / "job.json", {**job, "app": str(updater.app)})
+            self.assertEqual(updater.remember_versions(), 2)
+            self.assertEqual(updater.remember_versions(), 0)
+            versions = ctx.memory.versions()
+            self.assertEqual([v["kind"] for v in versions], ["rollback", "install"])
+            self.assertEqual(versions[1]["changes"], ["Диск: избранное", "Чат: повтор"])
+            # Версия, поставленная мимо модуля (например, git pull), тоже запоминается после проверки.
+            installer.atomic_json(updater.root / "installed.json", {"app": str(updater.app), "files": {},
+                                  "revision": "d" * 40, "installed_at": 400, "message": "Новое ядро"})
+            self.assertEqual(updater.remember_versions(), 1)
+            self.assertEqual(ctx.memory.versions()[0]["changes"], ["Новое ядро"])
+
+    def test_without_brain_nothing_breaks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            (base / "app").mkdir()
+            ctx = Context(paths=SimpleNamespace(app=base / "app", data=base / "data", workspace=base / "ws"), config=Config())
+            self.assertEqual(Updater(ctx, lambda token: mock.Mock()).remember_versions(), 0)
+
+
 class RestartIntegrationTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix="yakumo-update-")

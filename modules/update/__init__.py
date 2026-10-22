@@ -31,6 +31,18 @@ def valid_id(value):
     return isinstance(value, str) and re.fullmatch(r"[a-f0-9]{32}", value) is not None
 
 
+def commit_titles(commits) -> list[str]:
+    """Заголовки коммитов для «истории меня»; у слияний PR берётся название PR, а не «Merge pull request»."""
+    titles = []
+    for item in commits if isinstance(commits, list) else []:
+        lines = [x.strip() for x in str(item.get("message", "") if isinstance(item, dict) else "").splitlines() if x.strip()]
+        if lines and lines[0].startswith("Merge ") and len(lines) > 1:
+            lines = lines[1:]
+        if lines and not lines[0].startswith("Merge ") and lines[0] not in titles:
+            titles.append(lines[0][:200])
+    return titles[:15]
+
+
 class Updater:
     def __init__(self, ctx, client_factory=GitHub):
         self.ctx = ctx
@@ -207,6 +219,7 @@ class Updater:
             installed = {**version_info(catalog), "app": str(self.app), "revision": catalog["revision"], "installed_at": time.time(), "files": {
                 rel: {**info, "sha256": digest(self.app / rel)} for rel, info in catalog["files"].items()}}
             atomic_json(self.root / "installed.json", installed)
+            self._remember()
         comparison, notes_warning = {}, None
         if current.get("revision") and current["revision"] != catalog["revision"]:
             try:
@@ -290,6 +303,7 @@ class Updater:
         shutil.copy2(Path(__file__).with_name("installer.py"), folder / "worker.py")
         job = {"id": job_id, "kind": kind, "stage": ready["id"], "revision": ready.get("revision"),
                "started": time.time(), "from_version": version_info(self._installed()), "to_version": version_info(ready["installed"]),
+               "commits": self._commits(ready.get("revision")) if kind == "install" else [],
                "files": ready["files"], "remove": ready["remove"], "installed": ready["installed"],
                "app": str(self.app), "root": str(self.root), "protected": self.protected,
                "parent_pid": os.getpid(), "command": list(command), "instance_info": str(info),
@@ -309,6 +323,49 @@ class Updater:
         timer.daemon = True
         timer.start()
         return self.state()
+
+    def _commits(self, revision) -> list[dict]:
+        checked = read_json(self.root / "checked.json")
+        commits = checked.get("comparison", {}).get("commits") if checked.get("revision") == revision else None
+        return [{"message": str(c.get("message", ""))[:2000]} for c in commits[:30] if isinstance(c, dict)] if isinstance(commits, list) else []
+
+    def _remember(self) -> None:
+        try:
+            self.remember_versions()
+        except Exception as exc:  # память не должна мешать обновлению
+            log.warning("Обновление: история версий не записана: %s", type(exc).__name__)
+
+    def remember_versions(self) -> int:
+        """Отдать «Мозгу» установленные версии: Yakumo помнит, когда и чем её обновили."""
+        memory = getattr(self.ctx, "memory", None)
+        if memory is None or not callable(getattr(memory, "version", None)):
+            return 0
+        added = 0
+        folders = sorted((p for p in (self.root / "jobs").glob("*") if p.is_dir() and valid_id(p.name)),
+                         key=lambda p: p.stat().st_mtime)
+        for folder in folders:
+            job = read_json(folder / "job.json")
+            if job.get("phase") != "done" or not same_app(job.get("app"), self.app):
+                continue
+            to = job.get("to_version") if isinstance(job.get("to_version"), dict) else {}
+            before = job.get("from_version") if isinstance(job.get("from_version"), dict) else {}
+            changes = commit_titles(job.get("commits"))
+            if not changes and job.get("kind") == "install" and isinstance(to.get("message"), str):
+                changes = commit_titles([{"message": to["message"]}])
+            added += bool(memory.version({
+                "key": "job:" + folder.name, "kind": "rollback" if job.get("kind") == "rollback" else "install",
+                "revision": to.get("revision") or job.get("revision"), "from_revision": before.get("revision"),
+                "title": to.get("title"), "date": to.get("date") or to.get("published_at"),
+                "at": job.get("finished") or job.get("started"), "changes": changes}))
+        current = self._installed()
+        known = memory.versions()
+        if current.get("revision") and (not known or known[0].get("revision") != current["revision"]):
+            info = version_info(current)
+            added += bool(memory.version({
+                "key": "seen:" + current["revision"], "kind": "seen", "revision": current["revision"],
+                "title": info.get("title"), "date": info.get("date") or info.get("published_at"),
+                "at": current.get("installed_at"), "changes": commit_titles([{"message": info.get("message") or ""}])}))
+        return added
 
     def _preview_body(self, request):
         body = request.read_json()
@@ -513,4 +570,5 @@ def setup(ctx):
     ctx.web("update.css", "update.js")
     ctx.status(lambda: {"current": updater._installed().get("revision"), "busy": updater._busy()})
     ctx.on_stop(updater.stop)
+    updater._remember()
     updater.start()

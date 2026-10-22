@@ -91,7 +91,9 @@ HEAD = {
            "mood": "В последние дни пользователю, похоже, непросто ({notes}). Будь бережнее; можешь мягко спросить, "
                    "как дела, но без нравоучений.",
            "screen": "Сейчас на экране у пользователя: {app} — «{title}».", "apps": "Сегодня за компьютером: {apps}.",
-           "min": "мин", "today": "сегодня", "tomorrow": "завтра", "in": "через {n} дн."},
+           "min": "мин", "today": "сегодня", "tomorrow": "завтра", "in": "через {n} дн.",
+           "versions": "Твои версии (история тебя, подробнее — my_versions):", "v_install": "обновление",
+           "v_rollback": "возврат к прошлой версии", "v_seen": "версия"},
     "en": {"now": "Now is {now}.", "facts": "What you know about the user:", "none": "Nothing yet.",
            "self": "What you remember about yourself and your relationship:", "talks": "Past conversations:",
            "promises": "Open promises (id, who, due):", "user": "user", "yakumo": "you",
@@ -100,7 +102,9 @@ HEAD = {
            "mood": "The user seems to have a hard time lately ({notes}). Be gentle; you may softly ask how they are, "
                    "no lecturing.",
            "screen": "On the user's screen now: {app} — “{title}”.", "apps": "Time at the computer today: {apps}.",
-           "min": "min", "today": "today", "tomorrow": "tomorrow", "in": "in {n} days"},
+           "min": "min", "today": "today", "tomorrow": "tomorrow", "in": "in {n} days",
+           "versions": "Your versions (your own history, more with my_versions):", "v_install": "update",
+           "v_rollback": "rolled back to the previous version", "v_seen": "version"},
 }
 
 
@@ -153,6 +157,13 @@ class MemoryAPI:
         if not self._memory.enabled or self._knowledge is None:
             return []
         return self._knowledge.search(query, limit)
+
+    def version(self, record: dict) -> dict | None:
+        """Модуль обновления сообщает об установленной версии: {"key", "kind", "revision", "title", "changes", ...}."""
+        return self._memory.version(record)
+
+    def versions(self) -> list[dict]:
+        return self._memory.versions()
 
     def authored(self, path: str, text: str) -> dict | None:
         """Yakumo написала файл на Диске: если пользователь его поправит, она поучится на правках."""
@@ -222,6 +233,11 @@ def setup(ctx):
 
     ctx.memory = MemoryAPI(memory, recall, knowledge=knowledge)
 
+    def version_line(v: dict, ln: str) -> str:
+        H = HEAD[ln]
+        head = f"- {_day(v['at'])}, {H['v_' + v['kind']]} {v['revision'][:7]}" + (f" «{v['title']}»" if v.get("title") else "")
+        return head + (": " + "; ".join(v["changes"][:5]) if v.get("changes") else "")
+
     # --- Подсказка чата ---
 
     def context(history: list[dict], chat_id: str) -> str | None:
@@ -248,6 +264,9 @@ def setup(ctx):
         lines += [line(f) for f in chosen] or [H["none"]]
         if own:
             lines += ["", H["self"], *(line(f) for f in own)]
+        versions = memory.versions()[:3]
+        if versions:
+            lines += ["", H["versions"], *(version_line(v, ln) for v in versions)]
         promises = memory.open_promises()[:10]
         if promises:
             lines += ["", H["promises"]]
@@ -321,6 +340,13 @@ def setup(ctx):
         fact = memory.add(str(args.get("text", "")), str(args.get("kind", "other")), 3, source="chat",
                           quote=last_quote(args), about=about, files=[file] if isinstance(file, str) else None)
         return {"ok": True, "id": fact["id"], "text": fact["text"]}
+
+    def versions_tool(args):
+        limit = args.get("limit")
+        limit = limit if type(limit) is int and 0 < limit <= 50 else 10
+        return {"versions": [{k: v.get(k) for k in ("kind", "revision", "from_revision", "title", "date", "changes", "total")}
+                             | {"installed": time.strftime("%Y-%m-%d %H:%M", time.localtime(v["at"]))}
+                             for v in memory.versions()[:limit]]}
 
     def forget(args):
         ids = args.get("ids")
@@ -489,6 +515,9 @@ def setup(ctx):
          lambda a: f"Запоминаю навык: {short(a, 'name')}" if ru() else f"Learning a skill: {short(a, 'name')}"),
         ("memory_skill", 'получить шаги навыка, чтобы выполнить его. args: {"name": "название"}', skill, False,
          lambda a: f"Вспоминаю навык: {short(a, 'name')}" if ru() else f"Recalling skill: {short(a, 'name')}"),
+        ("my_versions", 'история тебя: когда тебя обновляли или возвращали к прошлой версии и что изменилось. '
+         'args: {"limit": 10}', versions_tool, False,
+         lambda a: "Вспоминаю свои версии" if ru() else "Recalling my versions"),
         ("calc", 'точно посчитать выражение (всегда вместо счёта в уме): + - * / // % ** ^, проценты «15%», sqrt, '
          'log, sin, round, pi… args: {"expr": "2000 * 15% + sqrt(16)"}', calc_tool, False,
          lambda a: f"Считаю: {short(a, 'expr')}" if ru() else f"Calculating: {short(a, 'expr')}"),
@@ -536,7 +565,7 @@ def setup(ctx):
                 "facts": memory.facts(), "talks": memory.talks(), "entities": memory.entities(),
                 "promises": sorted(m["promises"], key=lambda p: (p.get("done", False), p.get("due") or "9999")),
                 "events": sorted(m["events"], key=lambda e: e["date"][5:] if e.get("yearly") else e["date"]),
-                "skills": m["skills"], "upcoming": memory.upcoming(7),
+                "skills": m["skills"], "upcoming": memory.upcoming(7), "versions": memory.versions(),
                 "mind": mind.status(), "knowledge": knowledge.status(),
                 "lessons": sorted(m["lessons"], key=lambda x: -x.get("seen", 1)),
                 "wishes": sorted(m["wishes"], key=lambda x: -x.get("count", 1)),

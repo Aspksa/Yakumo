@@ -32,6 +32,7 @@ MAX_ITEMS = 300     # обещаний, дат, навыков, людей и м
 MAX_TEXT = 300      # символов в одном факте
 MAX_SUMMARY = 1200  # символов в конспекте разговора
 MAX_DAYS = 400      # сколько дней хранить настроение и программы
+MAX_VERSIONS = 200  # записей «истории меня»: установленные версии Yakumo
 FADE_DAYS = 45      # за столько дней без упоминания факт теряет одно очко
 FORGET_DAYS = 180   # мелкие факты, которые не вспоминались так долго, забываются сами
 
@@ -131,7 +132,7 @@ class Memory:
             if type(data.get(key)) is not bool:
                 data[key] = default
         data["facts"] = [f for f in data.get("facts", []) if isinstance(f, dict) and isinstance(f.get("text"), str)]
-        for name in ("talks", "entities", "promises", "events", "skills", "inbox", *GROWTH):
+        for name in ("talks", "entities", "promises", "events", "skills", "inbox", "versions", *GROWTH):
             data[name] = [x for x in data.get(name, []) if isinstance(x, dict) and isinstance(x.get("id"), str)]
         for key in ("days", "meta", "chains", "style"):
             if not isinstance(data.get(key), dict):
@@ -752,6 +753,40 @@ class Memory:
                 raise BrainError("Такой версии нет")
             st["active"] = version_id
             self.save()
+
+    # --- История меня: свои версии ---
+
+    def version(self, record: dict) -> dict | None:
+        """Запомнить установленную версию Yakumo. Одна и та же установка (key) не записывается дважды."""
+        key = record.get("key") if isinstance(record, dict) else None
+        revision = record.get("revision") if isinstance(record, dict) else None
+        if not isinstance(key, str) or not key or not isinstance(revision, str) or not re.fullmatch(r"[a-f0-9]{40}", revision):
+            return None
+        kind = record.get("kind") if record.get("kind") in ("install", "rollback", "seen") else "seen"
+        at = record.get("at")
+        previous = record.get("from_revision")
+
+        def text(value, limit):
+            try:
+                return _clean(value, limit)
+            except BrainError:
+                return ""
+
+        changes = [c for c in (text(x, 200) for x in record.get("changes") or [] if isinstance(x, str)) if c][:15]
+        with self.lock:
+            if any(v.get("key") == key for v in self.data["versions"]):
+                return None
+            return self.add_item("versions", {
+                "key": key[:100], "kind": kind, "revision": revision,
+                "from_revision": previous if isinstance(previous, str) and re.fullmatch(r"[a-f0-9]{40}", previous) else None,
+                "title": text(record.get("title"), 200), "date": text(record.get("date"), 40),
+                "at": int(at) if isinstance(at, (int, float)) and at > 0 else int(time.time()),
+                "changes": changes, "total": record.get("total") if type(record.get("total")) is int else len(changes)},
+                MAX_VERSIONS)
+
+    def versions(self) -> list[dict]:
+        """Свои версии, новые сверху."""
+        return sorted(self.data["versions"], key=lambda v: -v.get("at", 0))
 
     # --- Всё сразу ---
 
