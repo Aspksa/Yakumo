@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru" data-accent="gold" data-bg="black" data-radius="normal" data-cards="solid">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -49,10 +49,9 @@
     <canvas class="fx fx-back" aria-hidden="true"></canvas>
     <!-- Вложенные обёртки двигаются с разными периодами: так движение не повторяется и выглядит живым -->
     <span class="av-fig"><span class="av-sway"><span class="av-pose">
-      <img class="av-img" src="avatar-600.webp" alt="" width="1254" height="1254" draggable="false" decoding="async"
-           srcset="avatar-400.webp 400w, avatar-600.webp 600w, avatar-900.webp 900w, avatar-1254.webp 1254w"
-           sizes="196px">
-      <img class="av-blink" src="avatar-blink.webp" alt="" draggable="false">
+      <!-- Картинку (образ из настроек) подставляет app.js -->
+      <img class="av-img" alt="" width="2508" height="2508" draggable="false" decoding="async" sizes="196px">
+      <img class="av-blink" alt="" draggable="false" hidden>
     </span></span></span>
     <canvas class="fx fx-front" aria-hidden="true"></canvas>
   </button>

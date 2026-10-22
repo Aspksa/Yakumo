@@ -1,8 +1,8 @@
 """Закрытые глаза для моргания аватара в режиме «Живая».
 
 Запуск: python tools/avatar_blink.py
-Берёт yakumo/web/static/avatar-1254.webp (исходник без потерь) и пишет рядом
-avatar-blink.webp: маленький кусок лица с сомкнутыми ресницами, который на
+Берёт yakumo/web/static/avatars/classic-1254.webp и пишет рядом
+classic-blink.webp: маленький кусок лица с сомкнутыми ресницами, который на
 мгновение кладётся поверх целой картинки. Нужен Pillow.
 """
 
@@ -12,7 +12,7 @@ from pathlib import Path
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
-STATIC = Path(__file__).resolve().parents[1] / "yakumo" / "web" / "static"
+STATIC = Path(__file__).resolve().parents[1] / "yakumo" / "web" / "static" / "avatars"
 
 # Глаза: где открытый глаз, откуда взять кожу (сдвиг вниз) и линия сомкнутых ресниц.
 EYES = [
@@ -67,8 +67,8 @@ def blink(src: Image.Image) -> Image.Image:
 
 
 def main() -> None:
-    src = Image.open(STATIC / "avatar-1254.webp").convert("RGBA")
-    blink(src).save(STATIC / "avatar-blink.webp", lossless=True, method=6)
+    src = Image.open(STATIC / "classic-1254.webp").convert("RGBA")
+    blink(src).save(STATIC / "classic-blink.webp", lossless=True, method=6)
 
 
 if __name__ == "__main__":

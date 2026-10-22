@@ -21,6 +21,19 @@ const TEXTS = {
                lanterns: "Фонарики", mist: "Золотой туман", meteors: "Падающие звёзды", hearts: "Сердечки",
                moon: "Луна", runes: "Иероглифы" },
     powers: { low: "Слабо", normal: "Обычно", high: "Сильно" },
+    avatarImage: "Образ", avatarImageHint: "Эффекты, сияние и движения работают с любым образом.",
+    images: { classic: "Классика", welcome: "Объятия", tender: "Нежность", prayer: "Молитва", shy: "Смущение",
+              invite: "Приглашение", bow: "Поклон", respect: "Почтение", sleep: "Сон" },
+    look: "Оформление", accent: "Цвет", background: "Фон", cardRadius: "Скругление карточек",
+    cardAlpha: "Прозрачность карточек",
+    accents: { gold: "Золото", silver: "Серебро", rose: "Розовый", jade: "Нефрит", azure: "Лазурь", violet: "Фиалка",
+               crimson: "Алый" },
+    backgrounds: { black: "Чёрный", gradient: "Градиент", image: "Картинка", blur: "Размытие" },
+    radii: { small: "Малое", normal: "Обычное", large: "Большое" },
+    alphas: { solid: "Нет", glass: "Стекло", clear: "Сильная" },
+    powerSave: "Экономия", powerSaveHint: "Анимации и эффекты останавливаются, когда окно Yakumo не активно.",
+    avatarLock: "Закрепить на месте", avatarLockHint: "Аватар нельзя перетащить; по нажатию чат открывается как обычно.",
+    fxMode: "Когда показывать эффекты", fxModes: { always: "Всегда", hover: "При наведении" },
     motions: { none: "Нет", float: "Парение", glide: "Мягкое парение", alive: "Живая" },
     glows: { off: "Нет", soft: "Мягкое", bright: "Яркое", pulse: "Мерцание" },
     speeds: { slow: "Медленно", normal: "Обычно", fast: "Быстро" },
@@ -78,6 +91,19 @@ const TEXTS = {
                lanterns: "Lanterns", mist: "Golden mist", meteors: "Shooting stars", hearts: "Hearts",
                moon: "Moon", runes: "Kanji" },
     powers: { low: "Low", normal: "Normal", high: "High" },
+    avatarImage: "Look", avatarImageHint: "Effects, glow and motion work with every look.",
+    images: { classic: "Classic", welcome: "Embrace", tender: "Tender", prayer: "Prayer", shy: "Shy",
+              invite: "Invitation", bow: "Bow", respect: "Respect", sleep: "Sleep" },
+    look: "Look and feel", accent: "Colour", background: "Background", cardRadius: "Card corners",
+    cardAlpha: "Card transparency",
+    accents: { gold: "Gold", silver: "Silver", rose: "Rose", jade: "Jade", azure: "Azure", violet: "Violet",
+               crimson: "Crimson" },
+    backgrounds: { black: "Black", gradient: "Gradient", image: "Picture", blur: "Blur" },
+    radii: { small: "Small", normal: "Normal", large: "Large" },
+    alphas: { solid: "None", glass: "Glass", clear: "Strong" },
+    powerSave: "Power saving", powerSaveHint: "Animations and effects stop while the Yakumo window is inactive.",
+    avatarLock: "Lock in place", avatarLockHint: "The avatar can't be dragged; clicking still opens the chat.",
+    fxMode: "When to show effects", fxModes: { always: "Always", hover: "On hover" },
     motions: { none: "None", float: "Float", glide: "Gentle float", alive: "Alive" },
     glows: { off: "None", soft: "Soft", bright: "Bright", pulse: "Pulse" },
     speeds: { slow: "Slow", normal: "Normal", fast: "Fast" },
@@ -132,6 +158,11 @@ const SETTINGS = { id: "settings", icon: "i-settings" };
 const content = document.getElementById("content");
 const avatarBtn = document.getElementById("avatar");
 const avatarImg = avatarBtn.querySelector(".av-img");
+const avatarBlink = avatarBtn.querySelector(".av-blink");
+// Картинки аватара лежат в avatars/: <образ>-<ширина>.webp. Моргание есть только у образов с открытыми глазами,
+// для которых сделан кусок с закрытыми глазами (tools/avatar_blink.py).
+const AVATAR_WIDTHS = [400, 600, 900, 1254, 1800, 2508];
+const BLINKS = new Set(["classic"]);
 const chatBox = document.getElementById("chat");
 const chatLog = document.getElementById("chat-log");
 const chatForm = document.getElementById("chat-form");
@@ -196,6 +227,11 @@ function applyLook() {
   document.documentElement.lang = v.language;
   document.documentElement.style.setProperty("--scale", v.font_scale / 100);
   document.body.classList.toggle("compact", v.compact);
+  Object.assign(document.documentElement.dataset,
+    { accent: v.accent, bg: v.background, radius: v.card_radius, cards: v.card_alpha });
+  // Фон «Картинка» и «Размытие» берут выбранный образ; для размытия хватает маленькой копии.
+  document.documentElement.style.setProperty("--bg-image",
+    `url(${avatarSrc(v.avatar_image, v.background === "blur" ? 400 : 1254)})`);
   applyAvatarLook(v);
   buildMenu();
   placeAvatar();
@@ -203,14 +239,50 @@ function applyLook() {
 }
 
 function applyAvatarLook(v) {
+  showAvatarImage(v.avatar_image);
   document.documentElement.style.setProperty("--avatar-size", v.avatar_size + "px");
   Object.assign(avatarBtn.dataset, { motion: v.avatar_motion, glow: v.avatar_glow, speed: v.avatar_speed });
   avatarBtn.hidden = !v.avatar_show;
-  avatarBtn.classList.toggle("fx-shine", v.avatar_effects.includes("shine"));
-  avatarBtn.classList.toggle("fx-aura", v.avatar_effects.includes("aura"));
-  AvatarFx.set(v.avatar_effects, v.avatar_fx_power);
+  avatarBtn.classList.toggle("locked", v.avatar_lock);
+  showEffects();
+  updatePaused();
   scheduleBlink();
   if (!v.avatar_show && !chatBox.hidden) setChatOpen(false);
+}
+
+// Эффекты «при наведении» включаются, пока курсор над аватаром или открыт чат.
+let avatarHover = false;
+function showEffects() {
+  const v = settings.values;
+  const on = v.avatar_fx_mode === "always" || avatarHover || !chatBox.hidden ? v.avatar_effects : [];
+  avatarBtn.classList.toggle("fx-shine", on.includes("shine"));
+  avatarBtn.classList.toggle("fx-aura", on.includes("aura"));
+  AvatarFx.set(on, v.avatar_fx_power);
+}
+
+// Экономия: окно свёрнуто, вкладка скрыта или окно не в фокусе — анимации и эффекты стоят.
+function isPaused() {
+  return Boolean(settings?.values.power_save) && (document.hidden || !document.hasFocus());
+}
+function updatePaused() {
+  const paused = isPaused();
+  avatarBtn.classList.toggle("paused", paused);
+  AvatarFx.pause(paused);
+}
+for (const ev of ["focus", "blur"]) window.addEventListener(ev, () => settings && updatePaused());
+document.addEventListener("visibilitychange", () => settings && updatePaused());
+
+function avatarSrc(id, w) { return `avatars/${id}-${w}.webp`; }
+
+function showAvatarImage(id) {
+  if (avatarBtn.dataset.image === id) return;
+  avatarBtn.dataset.image = id;
+  avatarImg.srcset = AVATAR_WIDTHS.map((w) => `${avatarSrc(id, w)} ${w}w`).join(", ");
+  avatarImg.src = avatarSrc(id, 600);
+  // По форме фигуры обрезается блик (эффект «Блик»).
+  avatarBtn.style.setProperty("--av-mask", `url(${avatarSrc(id, 400)})`);
+  avatarBlink.hidden = !BLINKS.has(id);
+  if (BLINKS.has(id)) avatarBlink.src = `avatars/${id}-blink.webp`;
 }
 
 // --- Страницы ---
@@ -270,13 +342,41 @@ function avatarSection() {
     h("h2", {}, T.avatarSection),
     toggle("avatar_show", T.avatarShow, T.avatarShowHint),
     on ? [
+      imagePicker(),
+      toggle("avatar_lock", T.avatarLock, T.avatarLockHint),
       sizeSlider(),
       choice("avatar_motion", T.avatarMotion, null, (v) => T.motions[v]),
       choice("avatar_glow", T.avatarGlow, null, (v) => T.glows[v]),
       choice("avatar_speed", T.avatarSpeed, null, (v) => T.speeds[v]),
       effectChips(),
       choice("avatar_fx_power", T.fxPower, null, (v) => T.powers[v]),
+      choice("avatar_fx_mode", T.fxMode, null, (v) => T.fxModes[v]),
     ] : []);
+}
+
+function accentPicker() {
+  const current = settings.values.accent;
+  return h("div", { class: "row" },
+    h("span", { class: "row-text" }, h("span", { class: "row-title" }, T.accent),
+      h("span", { class: "row-hint" }, T.accents[current])),
+    h("span", { class: "swatches", role: "radiogroup", "aria-label": T.accent },
+      settings.options.accent.map((id) => h("button", {
+        type: "button", role: "radio", "aria-checked": String(id === current), "data-accent": id,
+        title: T.accents[id], "aria-label": T.accents[id], onclick: () => id !== current && save({ accent: id }),
+      }))));
+}
+
+function imagePicker() {
+  const current = settings.values.avatar_image;
+  return h("div", { class: "row row-wide" },
+    h("span", { class: "row-text" }, h("span", { class: "row-title" }, T.avatarImage),
+      h("span", { class: "row-hint" }, T.avatarImageHint)),
+    h("span", { class: "looks", role: "radiogroup", "aria-label": T.avatarImage },
+      settings.options.avatar_image.map((id) => h("button", {
+        type: "button", role: "radio", "aria-checked": String(id === current), class: id === current ? "on" : "",
+        title: T.images[id], onclick: () => id !== current && save({ avatar_image: id }),
+      }, h("img", { src: `avatars/${id}-thumb.webp`, alt: "", width: 96, height: 96, loading: "lazy", draggable: "false" }),
+        h("span", {}, T.images[id])))));
 }
 
 function effectChips() {
@@ -388,6 +488,13 @@ const PAGES = {
         choice("language", T.language, T.languageHint, (v) => ({ ru: "Русский", en: "English" })[v]),
         choice("font_scale", T.fontSize, null, (v) => `${v}%`),
         toggle("compact", T.compact, T.compactHint)),
+      h("section", { class: "card group" },
+        h("h2", {}, T.look),
+        accentPicker(),
+        choice("background", T.background, null, (v) => T.backgrounds[v]),
+        choice("card_radius", T.cardRadius, null, (v) => T.radii[v]),
+        choice("card_alpha", T.cardAlpha, null, (v) => T.alphas[v]),
+        toggle("power_save", T.powerSave, T.powerSaveHint)),
       avatarSection(),
       cloudSection(),
       h("section", { class: "card group" },
@@ -604,6 +711,7 @@ for (const grip of chatBox.querySelectorAll(".grip")) {
 function setChatOpen(open) {
   chatBox.hidden = !open;
   avatarBtn.setAttribute("aria-expanded", String(open));
+  if (settings) showEffects();
   if (!open) return;
   if (!messages.length) addMessage("bot", T.greeting, { local: true });
   placeChat();
@@ -853,6 +961,7 @@ document.getElementById("chat-close").addEventListener("click", () => { setChatO
 let drag = null;
 avatarBtn.addEventListener("pointerdown", (e) => {
   if (e.button !== 0) return;
+  if (settings?.values.avatar_lock) { justDragged = false; return; }
   justDragged = false;
   drag = { x: e.clientX, y: e.clientY, left: avatarBtn.offsetLeft, top: avatarBtn.offsetTop, moved: false };
   avatarBtn.setPointerCapture(e.pointerId);
@@ -878,6 +987,12 @@ function endDrag() {
   avatarBtn.classList.remove("dragging");
 }
 avatarBtn.addEventListener("pointerup", endDrag);
+for (const [ev, on] of [["pointerenter", true], ["pointerleave", false]]) {
+  avatarBtn.addEventListener(ev, () => {
+    avatarHover = on;
+    if (settings?.values.avatar_fx_mode === "hover") showEffects();
+  });
+}
 avatarBtn.addEventListener("pointercancel", endDrag);
 avatarBtn.addEventListener("click", () => {
   // После перетаскивания браузер всё равно присылает click, его пропускаем.
@@ -916,7 +1031,7 @@ function scheduleBlink() {
   clearTimeout(blinkTimer);
   if (avatarBtn.dataset.motion !== "alive" || reducedMotion.matches) return;
   blinkTimer = setTimeout(() => {
-    if (!document.hidden && !avatarBtn.hidden) {
+    if (!document.hidden && !avatarBtn.hidden && !isPaused()) {
       blinkOnce();
       if (Math.random() < 0.2) setTimeout(blinkOnce, 260);
     }
@@ -924,6 +1039,7 @@ function scheduleBlink() {
   }, 2500 + Math.random() * 4500);
 }
 function blinkOnce() {
+  if (avatarBlink.hidden) return;
   avatarBtn.classList.add("blink");
   setTimeout(() => avatarBtn.classList.remove("blink"), 130);
 }
