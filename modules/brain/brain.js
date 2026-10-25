@@ -1432,6 +1432,60 @@
 
   // --- Страница ---
 
+  // Icons are local vector paths; no CDN or external requests at runtime.
+  const ICONS = {
+    brain:"M12 4c-2-3-7-1-7 3-3 1-3 6 0 8-1 5 4 8 7 6V4m0 0c2-3 7-1 7 3 3 1 3 6 0 8 1 5-4 8-7 6",
+    gem:"M6 3h12l4 6-10 12L2 9l4-6Zm-4 6h20M6 3l6 18 6-18",
+    network:"M5 5h5v5H5zM15 3h6v6h-6zM15 15h6v6h-6zM4 16h7v5H4zM10 8l5-2M10 10l5 7M11 19h4",
+    messages:"M4 5h16v11H9l-5 4V5Zm4 4h8m-8 4h6",
+    calendar:"M4 5h16v16H4zM8 3v5m8-5v5M4 10h16m-12 4h3m3 0h3",
+    spark:"m12 2 2.3 7.7L22 12l-7.7 2.3L12 22l-2.3-7.7L2 12l7.7-2.3L12 2Z",
+    activity:"M3 12h4l3-7 4 14 3-7h4",
+    growth:"M3 20h18M7 17l4-5 3 2 5-8M15 6h4v4",
+    flask:"M9 3h6m-5 0v7l-6 9c-1 2 0 3 2 3h12c2 0 3-1 2-3l-6-9V3M7 16h10"
+  };
+  function icon(name) {
+    const svg = document.createElementNS(SVG, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("class", "br-vector-icon");
+    svg.setAttribute("aria-hidden", "true");
+    const path = document.createElementNS(SVG, "path");
+    path.setAttribute("d", ICONS[name] || ICONS.spark);
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", "currentColor");
+    path.setAttribute("stroke-linecap", "round");
+    path.setAttribute("stroke-linejoin", "round");
+    path.setAttribute("stroke-width", "1.6");
+    svg.append(path);
+    return svg;
+  }
+  function liveMindBanner() {
+    const m = state.data.mind || {};
+    const active = (m.thoughts || []).filter(x => x.status === "running" || x.status === "queued");
+    return h("section", { class: "br-live-hero", "aria-label": "Монитор работы разума" },
+      h("div", { class: "br-live-orb", "data-mode": m.mode }, icon("brain")),
+      h("div", { class: "br-live-hero-copy" },
+        h("small", {}, "РАЗУМ В РЕАЛЬНОМ ВРЕМЕНИ"),
+        h("h3", {}, active[0]?.title || "Фоновые процессы спокойны"),
+        h("p", {}, active.length ? "Активных и ожидающих задач: " + active.length :
+          "Yakumo готова к следующей задаче. Новые события появятся ниже."),
+        h("div", { class: "br-live-progress", role: "progressbar",
+          "aria-label": "Использовано запросов за день",
+          "aria-valuemin": "0", "aria-valuemax": String(m.budget || 100),
+          "aria-valuenow": String(Math.min(m.used || 0, m.budget || 100)) },
+          h("i", { style: "width:" + (m.budget ? Math.min(100, 100 * (m.used || 0) / m.budget) : 0) + "%" }))),
+      h("div", { class: "br-live-hero-stat" },
+        h("strong", {}, String(m.running || 0)), h("small", {}, "выполняется")));
+  }
+  function mapObserverToolbar() {
+    const d = state.data;
+    return h("div", { class: "br-map-observer" },
+      h("div", {}, icon("network"), h("span", {}, "Живая карта связей"),
+        h("small", {}, "Перетаскивайте узлы, выбирайте связи и открывайте источники")),
+      h("span", {}, (d.entities || []).length + " сущностей · " +
+        (d.facts || []).length + " фактов"));
+  }
+
   function draw() {
     if (!state.data) {
       root.replaceChildren(h("h1", {}, L.title), state.error ? h("p", { class: "row-hint bad" }, state.error) : "");
@@ -1470,15 +1524,42 @@
       dashboard(),
       state.msg?.text ? h("p", { class: "row-hint br-msg " + (state.msg.bad ? "bad" : "good") }, state.msg.text) : "",
       settingsCard(),
-      h("div", { class: "br-tabs" },
-        h("div", { class: "br-tablist", role: "tablist" }, groups.map(([title, tabs], gi) => h("div", { class: "br-tabgroup" },
-          h("span", { class: "br-tabgroup-name", "aria-hidden": "true" }, title),
-          h("div", { class: "br-tabgroup-tabs" }, tabs.map(([id, label, n]) => h("button", {
-            type: "button", role: "tab", "aria-selected": String(state.tab === id), class: state.tab === id ? "on" : "",
-            "data-group": String(gi), onclick: () => { state.tab = id; state.open = null; draw(); } },
-            label, n ? h("span", {}, String(n)) : "")))))),
-        h("div", { class: "br-search" }, search)),
-      h("div", { class: "br-view" }, views[state.tab]()));
+      h("div", { class: "br-observatory" },
+        h("aside", { class: "br-rail", "aria-label": "Навигация мозга" },
+          h("div", { class: "br-rail-heading" }, icon("brain"), h("div", {},
+            h("strong", {}, "Нейрообсерватория"),
+            h("small", {}, "Центр наблюдения Yakumo"))),
+          ...groups.map(([title, tabs]) => h("div", { class: "br-rail-group" },
+            h("span", { class: "br-rail-caption" }, title),
+            ...tabs.map(([id, label, count]) => h("button", {
+              type: "button", class: "br-rail-link" + (state.tab === id ? " on" : ""),
+              "aria-current": state.tab === id ? "page" : null,
+              onclick: () => { state.tab = id; state.open = null; draw(); }
+            }, icon(({facts:"gem",map:"network",talks:"messages",plans:"calendar",skills:"spark",
+                       mind:"activity",grow:"growth",improve:"flask"})[id]),
+               h("span", {}, label), count ? h("em", {}, String(count)) : "")))),
+          h("div", { class: "br-rail-footer" }, h("span", { class: "br-live-beacon", "data-mode": d.mind.mode }),
+            L.modes[d.mind.mode] || d.mind.mode)),
+        h("main", { class: "br-workspace" },
+          h("header", { class: "br-workspace-head" },
+            h("div", {}, h("span", { class: "br-eyebrow" }, "YAKUMO / BRAIN"),
+              h("h2", {}, groups.flatMap(x => x[1]).find(x => x[0] === state.tab)?.[1] || L.title)),
+            h("div", { class: "br-workspace-tools" },
+              h("span", { class: "br-live-pill" }, h("i", { class: "br-live-beacon", "data-mode": d.mind.mode }),
+                L.modes[d.mind.mode] || d.mind.mode),
+              h("span", { class: "br-budget-pill" }, "◈ " + (d.mind.used || 0) + " / " +
+                (d.mind.budget || "∞")))),
+          h("div", { class: "br-observer-summary" },
+            h("div", {}, h("small", {}, "Память"), h("strong", {}, String(d.facts.length))),
+            h("div", {}, h("small", {}, "Нейросвязи"), h("strong", {}, String(growthNumbers().last.links))),
+            h("div", {}, h("small", {}, "Активные мысли"), h("strong", {}, String(d.mind.running || 0))),
+            h("div", {}, h("small", {}, "Новые улучшения"), h("strong", {},
+              String((d.improvements || []).filter(x => x.status === "new").length)))),
+          h("div", { class: "br-observer-filter" }, search),
+          state.tab === "mind" ? liveMindBanner() : "",
+          state.tab === "map" ? mapObserverToolbar() : "",
+          h("div", { class: "br-view" }, views[state.tab]()))));
+
     const list = root.querySelector(".br-tablist"), on = list?.querySelector("button.on");
     if (on && (on.offsetLeft < list.scrollLeft || on.offsetLeft + on.offsetWidth > list.scrollLeft + list.clientWidth)) {
       list.scrollLeft = on.offsetLeft - 24;  // только по горизонтали: страница не прыгает
