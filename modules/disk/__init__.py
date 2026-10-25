@@ -297,6 +297,13 @@ def setup(ctx):
         "/api/disk/shares": lambda _req: disk.shares(),
         "/api/disk/s": shared,
         "/api/disk/smart": smart,
+        "/api/disk/intelligence/status": lambda _req: index.intelligence.status(),
+        "/api/disk/intelligence/timeline": lambda r: {
+            "items": index.intelligence.timeline()},
+        "/api/disk/intelligence/discoveries": lambda r: {
+            "items": index.intelligence.discoveries()},
+        "/api/disk/intelligence/links": lambda r: {
+            "items": index.intelligence.links(query(r).get("path", ""))},
         "POST /api/disk/smart": smart_save,
         "POST /api/disk/upload": upload,
         "POST /api/disk/mkdir": lambda r: (d := body(r)) and disk.mkdir(d.get("path"), d.get("name")),
