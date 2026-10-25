@@ -332,6 +332,7 @@
     for(const item of gl.projectInterior?.nodes||[]) item.tag?.remove();
     gl.projectInterior=null;
     gl.projectSelected=null;
+    for(const sector of gl.projectSectors||[]) sector.tag?.classList.remove("active");
     if(hidePanel && view?.projectPanel) view.projectPanel.hidden=true;
   }
 
@@ -1497,14 +1498,21 @@
       const d = await Y.getJSON("/api/brain");
       const sig = x => x && JSON.stringify({
         facts:x.facts.map(f=>[f.id,f.updated,f.archived]),
-        entities:x.entities.map(e=>[e.id,e.area,e.latest,e.facts,(e.files||[]).length,(e.related||[]).length]),
+        entities:x.entities.map(e=>[e.id,e.name,e.relation,e.area,e.latest,e.facts,(e.files||[]).join("|"),
+          (e.related||[]).map(r=>r.id+":"+r.weight).join("|")]),
         promises:(x.promises||[]).map(p=>[p.id,p.done]),
         mind:(x.mind?.thoughts||[]).map(t=>[t.id,t.status,t.title,t.heartbeat,t.finished]),
         lessons:(x.lessons||[]).map(v=>[v.id,v.seen,v.updated]),
         skills:(x.skills||[]).map(v=>[v.id,v.used,v.name]),
         improvements:(x.improvements||[]).map(v=>[v.id,v.status,v.priority,v.last,v.title]),
         evolution:(x.evolution?.runs||[]).map(v=>[v.id,v.generation,v.winner,v.status]),
-        branches:x.branches, code:x.code?.map
+        branches:{
+          focus:[x.branches?.focus?.id,x.branches?.focus?.level,x.branches?.focus?.progress],
+          nodes:(x.branches?.branches||[]).map(v=>[v.id,v.level,v.progress,v.xp,v.last_growth]),
+          edges:(x.branches?.edges||[]).map(v=>[v.from,v.to,v.strength,v.uses,v.last_used])
+        },
+        code:(x.code?.map?.modules||[]).map(v=>[v.id,v.name,v.version,(v.files||[]).length]),
+        provenance:(x.provenance?.links||[]).map(v=>[v.id,v.source_id,v.target_id,v.relation])
       });
       const changed = !data || sig(d) !== sig(data);
       data = d;
