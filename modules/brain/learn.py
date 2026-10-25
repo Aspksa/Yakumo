@@ -327,7 +327,7 @@ class Learner:
                 continue
             files = [x for x in _list(item, "files") if isinstance(x, str)]
             self.memory.trace(item["kind"], item["text"], reason=item.get("reason", ""),
-                              result=item.get("result", ""), status=item.get("status", "done"),
+                              result=item.get("result", ""), status=item.get("status"),
                               files=files, about=_list(item, "about"), source="chat", talk=tid,
                               date=item.get("date"))
         title, summary = data.get("title"), data.get("summary")
