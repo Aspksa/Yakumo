@@ -175,7 +175,12 @@
     skills:{title:"Навыки",lead:"Сохранённые навыки пользователя и инструменты, которыми Yakumo умеет пользоваться."},
     improve:{title:"Улучшения",lead:"Конкретные задачи развития Yakumo — новые, выданные, завершённые и отклонённые."},
     evolution:{title:"Эволюция",lead:"Поколения лаборатории Evolution и стратегии-победители проверяемых экспериментов."},
-    code:{title:"Код проекта",lead:"Реальные модули и файлы текущей Yakumo из её read-only карты собственного кода."}
+    code:{title:"Код проекта",lead:"Реальные модули и файлы текущей Yakumo из карты собственного кода в режиме только чтения."}
+  };
+  const PROJECT_KIND_NAMES = {
+    entity:"Сущность",document:"Документ",thought:"Мысль",branch:"Ветка развития",
+    improvement:"Улучшение",generation:"Поколение",strategy:"Стратегия",skill:"Навык",
+    tool:"Инструмент",module:"Модуль"
   };
 
   function shortText(value, n=62) {
@@ -368,7 +373,7 @@
     body.push(trust);
     if(selected){
       const detail=el("div","gx-project-selected");
-      detail.append(el("span","gx-project-kind",selected.kind),
+      detail.append(el("span","gx-project-kind",PROJECT_KIND_NAMES[selected.kind]||selected.kind),
         el("p","",selected.detail||"Для этого узла нет дополнительного описания."));
       if(selected.path){
         const openDoc=el("a","btn","Открыть документ");
