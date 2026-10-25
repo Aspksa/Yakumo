@@ -871,9 +871,74 @@ class GrowthTest(BrainBase):
         edge = next(e for e in snap["edges"] if e["from"] == "memory" and e["to"] == "logic")
         self.assertGreater(edge["strength"], before["strength"])
         self.assertEqual(edge["uses"], before["uses"] + 1)
+        self.assertTrue(edge["history"])
+        self.assertEqual(edge["history"][-1]["strength"], edge["strength"])
         self.assertIn(snap["focus"]["id"], {b["id"] for b in snap["branches"] if b["available"]})
         self.assertIn(snap["focus"]["action"],
                       {"consolidate", "exam", "study", "code_refine", "foresee", "ideas"})
+
+    def test_observability_memory_versions_conflicts_and_entity_cards(self):
+        memory = self.memory()
+        rev = "a" * 40
+        memory.version({"key": "seen:a", "kind": "seen", "revision": rev, "title": "main", "at": 10})
+        memory.version({"key": "install:a", "kind": "install", "revision": rev, "title": "main",
+                        "at": 20, "changes": ["Добавлена карта"], "total": 1})
+        versions = memory.versions()
+        same = [v for v in versions if v["revision"] == rev]
+        self.assertEqual(len(same), 1)
+        self.assertEqual(same[0]["kind"], "install")
+        self.assertIn("Добавлена карта", same[0]["changes"])
+
+        a = memory.add("Аня работает инженером", "person", about=[{"name": "Аня", "type": "person"}])
+        b = memory.add("Аня работает водителем", "person", about=[{"name": "Аня", "type": "person"}])
+        conflicts = memory.conflicts()
+        self.assertTrue(any({x["a"], x["b"]} == {a["id"], b["id"]} for x in conflicts))
+        self.assertTrue(all(not x["verified"] and x["status"] == "needs_clarification" for x in conflicts))
+
+        e1 = memory.observe_entity("Toyota-Hilux", "thing", ["Гараж/путевой лист.docx"], relation="автомобиль")
+        e2 = memory.observe_entity("Toyota Hilux", "thing", ["Гараж/чек.pdf"], relation="автомобиль")
+        self.assertEqual(e1["id"], e2["id"])
+        card = next(e for e in memory.entities() if e["id"] == e1["id"])
+        self.assertIn("Toyota Hilux", card.get("aliases", []))
+        self.assertEqual(set(card["files"]), {"Гараж/путевой лист.docx", "Гараж/чек.pdf"})
+
+        trace = memory.trace("decision", "Выбрали локальный индекс", reason="не отправлять документы в облако",
+                             result="использовать SQLite", status="done", files=["Документы/решение.docx"])
+        self.assertIsNotNone(trace)
+        self.assertEqual(memory.timeline()[0]["kind"], "decision")
+        self.assertTrue(memory.activity_feed())
+
+    def test_learner_saves_causes_decisions_errors_and_unfinished_work(self):
+        FakeCloud.learned = {
+            "new": [], "seen": [], "outdated": [],
+            "traces": [
+                {"kind": "cause", "text": "Поиск был медленным", "reason": "индекс не был построен", "status": "done"},
+                {"kind": "decision", "text": "Решили перестроить индекс", "reason": "поиск был медленным",
+                 "result": "запустить переиндексацию", "status": "done"},
+                {"kind": "project_error", "text": "Индекс не обновлялся", "reason": "ошибка фоновой задачи",
+                 "result": "исправлен запуск", "status": "done"},
+                {"kind": "progress", "text": "Переделать поиск", "result": "осталось проверить PDF", "status": "open"},
+            ],
+            "title": "Работа над поиском", "summary": "Разобрали проблему индекса."
+        }
+        FakeCloud.replies = ["Поняла."]
+        self.chat([{"role": "user", "content": "Поиск тормозил из-за индекса. Решили его перестроить; PDF ещё проверить."}])
+        self.wait_for(lambda: len(self.get("/api/brain")["traces"]) == 4)
+        state = self.get("/api/brain")
+        self.assertEqual({x["kind"] for x in state["traces"]},
+                         {"cause", "decision", "project_error", "progress"})
+        self.assertEqual(state["diagnostics"]["memory"]["open_progress"], 1)
+        self.assertTrue(any(x["status"] == "open" for x in state["timeline"] if x["kind"] == "progress"))
+
+    def test_watchdog_stops_stale_thought_and_does_not_let_late_finish_revive_it(self):
+        mind = self.tick("Mind")
+        thought = mind.thought("doc", "Зависшее чтение")
+        thought["heartbeat"] = int(time.time()) - 16 * 60
+        self.assertEqual(mind.watchdog(), 1)
+        self.assertEqual(thought["status"], "failed")
+        self.assertTrue(thought["stale"])
+        self.assertFalse(mind.finish(thought, "done", "поздний ответ"))
+        self.assertEqual(thought["status"], "failed")
 
     def test_foresee_prepares_in_advance(self):
         self.memory().promise("Сдать отчёт по практике", due=time.strftime("%Y-%m-%d"))
