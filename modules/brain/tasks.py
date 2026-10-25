@@ -40,23 +40,28 @@ class Tasks:
         self.language = language
         self.queue: queue.Queue = queue.Queue()
         self.thread: threading.Thread | None = None
+        self.threads: list[threading.Thread] = []
         self.stopping = False
 
     def add(self, task: str, title: str = "") -> dict:
         task = " ".join(task.split())[:2000]
         item = self.mind.thought("task", " ".join(title.split()) or task[:80], "queued", task=task)
         self.queue.put(item["id"])
-        if self.thread is None or not self.thread.is_alive():
-            self.thread = threading.Thread(target=self._run, name="brain-tasks", daemon=True)
-            self.thread.start()
+        if not any(t.is_alive() for t in self.threads):
+            self._start_worker("brain-tasks")
         return item
 
+    def _start_worker(self, name: str = "brain-tasks") -> None:
+        thread = threading.Thread(target=self._run, name=name, daemon=True)
+        self.thread = thread
+        self.threads = [t for t in self.threads if t.is_alive()]
+        self.threads.append(thread)
+        thread.start()
+
     def retry(self, item: dict) -> None:
-        """Watchdog переочередил задачу; старый запуск не сможет записать поздний результат."""
+        """Watchdog переочередил задачу и запускает отдельного работника, даже если старый Cloud-вызов завис."""
         self.queue.put(item["id"])
-        if self.thread is None or not self.thread.is_alive():
-            self.thread = threading.Thread(target=self._run, name="brain-tasks", daemon=True)
-            self.thread.start()
+        self._start_worker("brain-tasks-retry")
 
     def resume(self) -> None:
         """После перезапуска: незаконченные задачи — снова в очередь."""
@@ -67,12 +72,16 @@ class Tasks:
                 item["heartbeat"] = int(__import__("time").time())
                 self.queue.put(item["id"])
         if not self.queue.empty():
-            self.thread = threading.Thread(target=self._run, name="brain-tasks", daemon=True)
-            self.thread.start()
+            self._start_worker("brain-tasks")
 
     def stop(self) -> None:
         self.stopping = True
-        self.queue.put(None)
+        alive = [t for t in self.threads if t.is_alive()]
+        for _ in alive or [None]:
+            self.queue.put(None)
+        for thread in alive:
+            if thread is not threading.current_thread():
+                thread.join(timeout=1)
 
     def _run(self) -> None:
         while not self.stopping:
