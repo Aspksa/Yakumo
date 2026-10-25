@@ -1019,6 +1019,51 @@
 
   const time = (t) => new Date(t * 1000).toLocaleString(lang(), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
+  function diagnosticsCard() {
+    const d = state.data.diagnostics || {};
+    const m = d.memory || {}, k = d.knowledge || {}, intel = d.intelligence || {};
+    const facts = Object.fromEntries((state.data.facts || []).map((f) => [f.id, f.text]));
+    const conflicts = state.data.conflicts || [];
+    return h("section", { class: "card br-diagnostics " + (d.ok ? "ok" : "warn") },
+      h("div", { class: "br-diag-head" }, h("strong", {}, L.diagnosticsTitle),
+        h("span", { class: "br-status-chip" }, d.ok ? L.diagnosticsOk : L.diagnosticsWarn)),
+      h("div", { class: "br-diag-grid" },
+        h("span", {}, `${m.facts || 0} · ${L.dFacts}`),
+        h("span", {}, L.vectorCoverage(k.vector_coverage ?? 100)),
+        h("span", {}, L.indexedDocs(intel.indexed || 0)),
+        h("span", {}, L.orphanRefs(m.orphan_entity_refs || 0))),
+      conflicts.length ? h("div", { class: "br-conflicts" }, h("strong", {}, `${L.conflictsTitle} · ${conflicts.length}`),
+        h("ul", { class: "br-mini-list" }, conflicts.slice(0, 6).map((c) => h("li", {},
+          h("span", { class: "br-status-chip warn" }, L.needsClarification), " ",
+          `${facts[c.a] || c.a} ↔ ${facts[c.b] || c.b}`)))) : "");
+  }
+
+  function activityCard() {
+    const items = state.data.activity_feed || [];
+    if (!items.length) return "";
+    return h("section", { class: "br-kind br-activity" }, h("h2", {}, L.activityTitle, h("span", {}, String(items.length))),
+      h("ul", { class: "br-mini-list" }, items.slice(0, 24).map((x) =>
+        h("li", {}, h("b", {}, L.traceKinds[x.kind] || L.kindsT[x.detail] || L.kindsT2[x.detail] || x.kind),
+          h("span", { class: "br-meta" }, ` · ${time(x.at)}`), h("div", {}, x.title),
+          x.detail && x.kind !== "thought" && x.detail !== x.title ? h("small", {}, x.detail) : ""))));
+  }
+
+  function journalCard() {
+    const items = state.data.timeline || [];
+    if (!items.length) return "";
+    return h("section", { class: "br-kind br-journal" }, h("h2", {}, L.journalTitle, h("span", {}, String(items.length))),
+      h("ul", { class: "br-mini-list" }, items.slice(0, 30).map((x) =>
+        h("li", { class: x.status === "open" ? "open" : "" },
+          h("div", {}, h("b", {}, L.traceKinds[x.kind] || x.kind),
+            x.status === "open" ? h("span", { class: "br-status-chip warn" }, L.openProgress) : ""),
+          h("div", {}, x.text || ""),
+          x.reason ? h("small", {}, `${L.reason}: ${x.reason}`) : "",
+          x.result ? h("small", {}, `${L.result}: ${x.result}`) : "",
+          x.files?.length ? h("div", { class: "br-chips" }, x.files.map((p) =>
+            h("a", { class: "br-chip file", target: "_blank", href: `/api/disk/file?path=${encodeURIComponent(p)}` },
+              "📄 " + p.split("/").pop()))) : ""))));
+  }
+
   function mindView() {
     const m = state.data.mind || {};
     const k = state.data.knowledge || {};
@@ -1038,6 +1083,9 @@
           budget),
         h("p", { class: "row-hint" }, k.available ? L.knowledge(k) : L.noDisk)),
       brainCard(),
+      diagnosticsCard(),
+      journalCard(),
+      activityCard(),
       versionsCard(),
       selfMapCard(),
       h("section", { class: "br-kind" }, h("h2", {}, L.thoughts, h("span", {}, String(thoughts.length))),
@@ -1051,7 +1099,8 @@
                                        onclick: () => { state.open = open ? null : t.id; draw(); } }, t.title)
                 : h("div", { class: "br-fact-text" }, t.title),
               h("div", { class: "br-meta" }, h("span", { class: "br-status-chip" }, L.statuses[t.status] || t.status),
-                ` · ${time(t.started || t.created)}`, t.steps?.length ? ` · ${t.steps.join(" → ")}` : ""),
+                ` · ${time(t.started || t.created)}`, t.steps?.length ? ` · ${t.steps.join(" → ")}` : "",
+                t.stale ? ` · ${L.staleThought}` : ""),
               open && t.result ? h("div", { class: "br-quote br-result" }, t.result) : ""),
             h("div", { class: "br-tools" }, live ? tool("■", L.stop, () => send("thought/cancel", { id: t.id }).then(load), "danger") : ""));
         })) : empty(L.noThoughts, L.noThoughtsHint)),
