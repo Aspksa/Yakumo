@@ -1653,6 +1653,12 @@
       + '<path d="M15 4.5a3 3 0 0 1 3 3 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-6 1"/><path d="M12 9h2.5M12 14h3"/>',
     title: { ru: TX.ru.title, en: TX.en.title },
     render() {
+      try {
+        const target = sessionStorage.getItem("yakumo.home.brain.tab");
+        sessionStorage.removeItem("yakumo.home.brain.tab");
+        if (["facts","map","talks","plans","skills","mind","grow","improve"].includes(target))
+          state.tab = target;
+      } catch { /* Private browser mode: navigation still works. */ }
       load();
       draw();
       return [root];

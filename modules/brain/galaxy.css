@@ -103,3 +103,12 @@ body[data-page="home"] .topbar:hover, body[data-page="home"] .topbar:focus-withi
 .gx.gx-contemplative .gx-minimap{opacity:.12}
 .gx.gx-contemplative .gx-minimap:hover{opacity:1}
 @media(max-width:640px){.gx-minimap{width:105px;height:72px;right:8px;bottom:120px}}
+
+
+.gx-project-sector{position:absolute;left:0;top:0;pointer-events:auto;z-index:2;
+ border:1px solid #d9bb8950;border-radius:18px;background:#0b1020c9;
+ color:#f1dfc4;padding:6px 10px;font-size:11px;white-space:nowrap;
+ box-shadow:0 0 16px #c9a87124;opacity:0;cursor:pointer;
+ transform-origin:0 0;transition:background .2s}
+.gx-project-sector:hover,.gx-project-sector:focus-visible{background:#372a37}
+.gx.gx-contemplative .gx-project-sector{display:none}
