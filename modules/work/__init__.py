@@ -100,8 +100,22 @@ def setup(ctx):
                     "refueled": con.execute("SELECT COALESCE(SUM(liters),0) FROM entries WHERE vehicle_id=? AND date BETWEEN ? AND ? "
                                             "AND kind IN ('opening','receipt') AND status='posted'", (car["id"], start, end)).fetchone()[0]}
 
+    def disk_candidates(_req):
+        """Только предложения из Диска: в учёт ничего не записывается без подтверждения пользователя."""
+        services = getattr(ctx, "services", {})
+        disk_service = services.get("disk") if isinstance(services, dict) else None
+        if disk_service is None or not hasattr(disk_service, "work_candidates"):
+            return {"items": [], "available": False}
+        try:
+            return {"items": disk_service.work_candidates(), "available": True,
+                    "warning": "Кандидаты требуют проверки по исходному документу"}
+        except Exception as exc:  # noqa: BLE001
+            ctx.log.warning("Работа: не удалось получить кандидатов Диска: %s", exc)
+            return {"items": [], "available": False, "error": str(exc)}
+
     routes = {
         "/api/work": state,
+        "/api/work/disk-candidates": disk_candidates,
         "POST /api/work/save": save,
         "POST /api/work/assignment": lambda r: work.assignment(body(r)),
         "POST /api/work/movement": lambda r: work.movement(body(r)),
