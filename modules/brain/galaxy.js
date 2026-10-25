@@ -314,8 +314,15 @@
 
   function populate() {
     const gl = view.gl, { THREE, scene, galaxy, tex, q } = gl;
-    for (const o of [...galaxy.children]) { galaxy.remove(o); o.geometry?.dispose?.(); }
-    for (const o of [...scene.children]) if (o !== galaxy) { scene.remove(o); o.geometry?.dispose?.(); }
+    const disposeTree = obj => obj.traverse(child => {
+      child.geometry?.dispose?.();
+      if (Array.isArray(child.material)) child.material.forEach(m => m.dispose?.());
+      else child.material?.dispose?.();
+    });
+    for (const o of [...galaxy.children]) { disposeTree(o); galaxy.remove(o); }
+    for (const o of [...scene.children]) if (o !== galaxy) { disposeTree(o); scene.remove(o); }
+    gl.meteors = [];
+    gl.flashes.clear();
     gl.mats.forEach((m) => m.dispose());
     gl.mats = [];
     const w = gl.world = buildWorld(data);
@@ -324,15 +331,22 @@
     // Пыль рукавов: цвет своей области жизни, к ядру — тёплое золото.
     const arms = w.areas.length ? w.areas : ["other", "other"];
     const dust = [];
+    // Три визуальных слоя в том же бюджете частиц: туманная вуаль,
+    // основной спиральный рукав и отдельные яркие нити.
     for (let i = 0; i < q.dust; i++) {
       const arm = i % w.arms, area = arms[arm % arms.length];
       const t = Math.pow(rand(), 0.7);
       const r = 40 + t * R * 1.08;
-      const spread = (rand() - 0.5) * (0.5 + t * 0.35) + (rand() - 0.5) * 0.25;
+      const layer = i % 3;
+      const spread = (rand() - 0.5) * (layer === 0 ? 0.8 : layer === 1 ? 0.3 : 0.12)
+        + (rand() - 0.5) * t * 0.16;
       const a = arm / w.arms * Math.PI * 2 + r * 0.0062 + spread;
       const color = rand() < 0.55 - t * 0.35 ? "#ffe2a8" : rand() < 0.75 ? AREA_HUE[area] : "#ffffff";
-      dust.push({ pos: [Math.cos(a) * r + (rand() - 0.5) * 22, (rand() - 0.5) * (46 - t * 28) * (rand() < 0.1 ? 3 : 1), Math.sin(a) * r + (rand() - 0.5) * 22],
-                  color, size: 1.6 + rand() * 3.2, bright: 0.35 + rand() * 0.5 });
+      dust.push({ pos: [Math.cos(a) * r + (rand() - 0.5) * 22,
+                    (rand() - 0.5) * (layer === 0 ? 80 : layer === 1 ? 26 : 8),
+                    Math.sin(a) * r + (rand() - 0.5) * 22],
+                  color, size: layer === 0 ? 3.7 + rand() * 3.4 : 1.5 + rand() * 2.2,
+                  bright: layer === 0 ? .18 + rand() * .18 : .46 + rand() * .44 });
     }
     // Ядро-мозг: плотный тёплый шар и «нейроны», которые пульсируют сильнее.
     for (let i = 0; i < q.dust / 6; i++) {
@@ -681,16 +695,24 @@
 
   // --- Кадр ---
   function frame(now) {
-    if (!view.alive) return;
-    if (!view.host.isConnected) { view.alive = false; return; }
-    requestAnimationFrame(frame);
-    const gl = view.gl;
-    if (!gl?.world) return;
+    if (!view?.alive) return;
+    view.raf = 0;
+    if (!view.host.isConnected) { stopScene(); return; }
     if (document.hidden) return;
+    const gl = view.gl;
+    if (!gl?.world) { view.raf = requestAnimationFrame(frame); return; }
+    const interacting = gl.keys.size || gl.flight || Math.abs(gl.spin.yaw) > 0.0002 ||
+      Math.abs(gl.spin.pitch) > 0.0002 || gl.meteors.length;
+    const limit = interacting ? 30 : 18;
+    if (gl.lastPaint && now - gl.lastPaint < 1000 / limit) {
+      view.raf = requestAnimationFrame(frame);
+      return;
+    }
     const dt = Math.min(0.05, (now - (gl.last || now)) / 1000);
     gl.last = now;
+    gl.lastPaint = now;
     gl.time += dt;
-    autoQuality(dt);
+    view.raf = requestAnimationFrame(frame);
     const w = view.stage.clientWidth, hgt = view.stage.clientHeight;
     if (w !== gl.w || hgt !== gl.h) {
       gl.renderer.setSize(w, hgt, false);
@@ -784,7 +806,9 @@
       });
       pos.needsUpdate = true;
     }
+    const renderStarted = performance.now();
     gl.renderer.render(gl.scene, gl.camera);
+    autoQuality(performance.now() - renderStarted, now);
     placeLabels();
   }
 
@@ -819,19 +843,55 @@
     if (show(gl.coreTag.tag, cw)) gl.coreTag.tag.style.opacity = dist < 2400 ? 0.75 : 0;
   }
 
-  // «Авто»: если кадры тяжёлые, качество понижается и запоминается для этого компьютера.
-  function autoQuality(dt) {
-    const gl = view.gl;
-    if (store.get("yakumo.galaxy.quality", "auto") !== "auto" || gl.qDone) return;
-    gl.frames.push(dt);
-    if (gl.frames.length < 150) return;
-    const avg = gl.frames.reduce((a, b) => a + b, 0) / gl.frames.length;
-    gl.frames = [];
+  // Проверяем фактическую стоимость отрисовки, а не интервалы между
+  // специально ограниченными кадрами. Сглаживание и cooldown исключают скачки.
+  function autoQuality(renderMs, now) {
+    const gl = view?.gl;
+    if (!gl || store.get("yakumo.galaxy.quality", "auto") !== "auto") return;
+    if (!gl.qSamples) gl.qSamples = [];
+    gl.qSamples.push(renderMs);
+    if (gl.qSamples.length < 90) return;
+    const avg = gl.qSamples.reduce((a,b) => a+b,0) / gl.qSamples.length;
+    gl.qSamples.length = 0;
+    if (now - (gl.qualityChanged || 0) < 20000) return;
     const cur = store.get("yakumo.galaxy.auto", "medium");
-    const next = avg > 0.034 ? (cur === "high" ? "medium" : "low") : avg < 0.012 && cur === "low" ? "medium" : null;
-    if (next && next !== cur) { store.set("yakumo.galaxy.auto", next); rebuild(); }
-    else gl.qDone = true;
+    const next = avg > 18 ? (cur === "high" ? "medium" : cur === "medium" ? "low" : null)
+      : avg < 5 ? (cur === "low" ? "medium" : cur === "medium" ? "high" : null) : null;
+    if (next && next !== cur) {
+      gl.qualityChanged = now;
+      store.set("yakumo.galaxy.auto", next);
+      rebuild();
+    }
   }
+
+  function stopScene() {
+    if (!view) return;
+    view.alive = false;
+    if (view.raf) { cancelAnimationFrame(view.raf); view.raf = 0; }
+    const gl = view.gl;
+    if (!gl) return;
+    gl.scene.traverse(o => {
+      o.geometry?.dispose?.();
+      if (Array.isArray(o.material)) o.material.forEach(m => m.dispose?.());
+      else o.material?.dispose?.();
+    });
+    Object.values(gl.tex || {}).forEach(t => t.dispose?.());
+    gl.renderer.dispose();
+    gl.renderer.domElement.remove();
+    view.gl = null;
+    view.starting = false;
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    if (!view?.alive) return;
+    if (document.hidden) {
+      if (view.raf) cancelAnimationFrame(view.raf);
+      view.raf = 0;
+    } else {
+      if (view.gl) { view.gl.last = 0; view.gl.lastPaint = 0; }
+      if (!view.raf) view.raf = requestAnimationFrame(frame);
+    }
+  });
 
   function rebuild() {
     if (!view?.gl) return;
@@ -860,7 +920,7 @@
 
   async function mount() {
     if (!view) makeView();
-    if (!view.alive) { view.alive = true; requestAnimationFrame(frame); }
+    if (!view.alive) { view.alive = true; if (!document.hidden) view.raf = requestAnimationFrame(frame); }
     view.ctl.place?.();
     load();
     if (view.gl || view.starting) return;
