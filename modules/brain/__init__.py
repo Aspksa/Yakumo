@@ -956,6 +956,9 @@ def setup(ctx):
     for path, handler in routes.items():
         ctx.route(path, handler)
     ctx.web("brain.css", "universe.css", "universe.js", "galaxy.css", "galaxy.js", "brain.js")
+    ctx.web("pixi-map.js")
+    if (__import__("pathlib").Path(__file__).with_name("pixi.min.js").is_file():
+        ctx.web("pixi.min.js")
     ctx.status(lambda: {"facts": len(memory.data["facts"]), "talks": len(memory.data["talks"]),
                         "enabled": memory.enabled, "mode": mind.mode()})
     ctx.log.info("Память: %s фактов, %s бесед", len(memory.data["facts"]), len(memory.data["talks"]))
