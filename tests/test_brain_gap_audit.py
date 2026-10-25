@@ -6,8 +6,8 @@ from modules.brain.improve import Improvements
 
 class FakeMemory:
     def __init__(self):
-        self.data = {"meta": {}}
         self.items = []
+        self.data = {"meta": {}, "improvements": self.items}
     def improvement(self, value):
         if any(x["key"] == value["key"] for x in self.items):
             return None
@@ -50,6 +50,9 @@ class AuditTests(unittest.TestCase):
         self.assertNotIn("test-secret", mind.prompt)
         self.assertIn("не проверено", m.items[0]["detail"])
         self.assertEqual(m.data["meta"]["last_gap_audit"], __import__("datetime").date.today().isoformat())
+        m.items[0]["status"] = "done"
+        self.assertEqual(improve.audit_gaps(force=True), 0)
+        self.assertEqual(m.items[0]["status"], "done")
 
 
 if __name__ == "__main__":
