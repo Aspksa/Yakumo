@@ -56,7 +56,7 @@ THINKING = {"ru": "Думаю…", "en": "Thinking…"}
 EMBEDDING = re.compile(r"embed|(^|[/_-])(bge|gte|e5)([/_-]|$)", re.I)
 VISION = re.compile(r"(^|[/_-])(vl|vision|visual|omni|llava|pixtral|internvl|minicpm-v)|gemma-?3", re.I)
 RERANK = re.compile(r"rerank|cross[-_ ]?encoder", re.I)
-AUDIO = re.compile(r"(^|[/_-])(asr|tts|speech|audio|whisper)([/_-]|$)|salutespeech", re.I)
+AUDIO = re.compile(r"asr|tts|speech|audio|whisper", re.I)
 IMAGE = re.compile(r"(^|[/_-])(image|flux|sdxl|kandinsky|kolors|diffusion|t2i)([/_-]|$)", re.I)
 
 
