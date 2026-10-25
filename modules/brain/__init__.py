@@ -725,6 +725,18 @@ def setup(ctx):
             raise BrainError("Ожидается объект")
         return data
 
+    def full_brain_audit():
+        """Failures in diagnostics must never break chat, plans or Brain API."""
+        try:
+            with memory.lock:
+                return brain_audit_summary(memory.data, mind=mind.status(),
+                                           knowledge=knowledge.status(),
+                                           branches=branches.snapshot())
+        except Exception as exc:  # noqa: BLE001
+            ctx.log.exception("Мозг: сводный аудит недоступен")
+            return {"version": 1, "read_only": True, "areas": {}, "issues": [],
+                    "error": type(exc).__name__}
+
     def state(_req=None):
         m = memory.data
         conflicts = memory.conflicts()
@@ -741,8 +753,7 @@ def setup(ctx):
                 "improvements": memory.improvements(), "traces": list(reversed(m["traces"][-100:])),
                 "conflicts": conflicts, "timeline": memory.timeline(), "activity_feed": memory.activity_feed(),
                 "diagnostics": diagnostics(conflicts),
-                "full_audit": brain_audit_summary(m, mind=mind.status(), knowledge=knowledge.status(),
-                                                  branches=branches.snapshot()),
+                "full_audit": full_brain_audit(),
                 "storage": memory.storage_status(), "memory_tiers": memory.tier_counts(), "branches": branches.snapshot(),
                 "mind": mind.status(), "knowledge": knowledge.status(),
                 "lessons": sorted(m["lessons"], key=lambda x: -x.get("seen", 1)),
