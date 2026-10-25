@@ -312,7 +312,10 @@
       const gl = view.gl;
       if (!gl?.world?.stars.length) return;
       const stars = [...gl.world.stars].sort((a,b) => b.facts.length - a.facts.length);
-      const next = stars[(gl.tourIndex = ((gl.tourIndex ?? -1) + 1) % stars.length)];
+      const links = (gl.world.edges || []).filter(e => e.from === gl.selected || e.to === gl.selected);
+      const related = links.map(e => e.from === gl.selected ? e.to : e.from);
+      const choices = related.length ? related : stars;
+      const next = choices[(gl.tourIndex = ((gl.tourIndex ?? -1) + 1) % choices.length)];
       jump(next);
     };
     const nebula = el("select", "gx-select");
@@ -328,10 +331,22 @@
       view.history.hidden = !view.history.hidden;
       renderObservations();
     };
+    const weakest = el("button", "gx-btn", "◇");
+    weakest.type = "button"; weakest.title = "Наименее заполненная область памяти";
+    weakest.onclick = () => {
+      const gl = view.gl;
+      if (!gl?.world?.stars?.length) return;
+      const buckets = new Map();
+      for (const star of gl.world.stars)
+        buckets.set(star.area, (buckets.get(star.area) || 0) + star.facts.length);
+      const least = [...buckets].sort((a,b) => a[1]-b[1])[0]?.[0];
+      const target = gl.world.stars.filter(x=>x.area===least).sort((a,b)=>a.facts.length-b.facts.length)[0];
+      if (target) jump(target);
+    };
     const stats = el("button", "gx-btn", "FPS");
     stats.type = "button"; stats.title = "Показать диагностику кадра";
     stats.onclick = () => view.observatory.classList.toggle("gx-observatory-open");
-    ctl.append(grip, reset, sel, nebula, flight, observe, history, stats, help, hint);
+    ctl.append(grip, reset, sel, nebula, flight, weakest, observe, history, stats, help, hint);
   }
 
   // --- WebGL ---
