@@ -96,9 +96,17 @@ class CloudService:
     def api_key(self) -> str:
         try:
             data = json.loads(self.secrets_path.read_text(encoding="utf-8-sig"))
-        except (OSError, ValueError):
+        except FileNotFoundError:
+            return ""  # Ключ ещё не настроен — нормальное состояние
+        except OSError as exc:
+            log.warning("Не удалось прочитать файл ключа Cloud.ru: %s", type(exc).__name__)
+            return ""
+        except ValueError:
+            log.warning("Повреждён JSON настроек ключа Cloud.ru")
             return ""
         key = data.get("cloud_api_key") if isinstance(data, dict) else None
+        if key is not None and not isinstance(key, str):
+            log.warning("Неверный формат поля cloud_api_key: ожидалась строка")
         return key if isinstance(key, str) else ""
 
     def save_key(self, key: str) -> None:
