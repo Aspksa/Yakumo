@@ -263,20 +263,22 @@ def setup(ctx):
         except Exception:  # noqa: BLE001
             ctx.log.exception("Мозг: не удалось синхронизировать сущности Диска")
             return {"observed": 0}
-        seen = set()
+        grouped: dict[tuple[str, str], dict] = {}
         for record in graph.get("entities", []):
             path = record.get("path")
             for name in record.get("people", []):
                 key = ("person", name)
-                if key not in seen:
-                    memory.observe_entity(name, "person", [path] if path else [], "disk")
-                    seen.add(key)
+                item = grouped.setdefault(key, {"name": name, "type": "person", "relation": "", "files": []})
+                if path and path not in item["files"]:
+                    item["files"].append(path)
             for name in record.get("vehicles", []):
                 key = ("thing", name)
-                if key not in seen:
-                    memory.observe_entity(name, "thing", [path] if path else [], "disk", "автомобиль")
-                    seen.add(key)
-        return {"observed": len(seen)}
+                item = grouped.setdefault(key, {"name": name, "type": "thing", "relation": "автомобиль", "files": []})
+                if path and path not in item["files"]:
+                    item["files"].append(path)
+        for item in grouped.values():
+            memory.observe_entity(item["name"], item["type"], item["files"], "disk", item["relation"])
+        return {"observed": len(grouped)}
 
     def diagnostics():
         k = knowledge.status()
