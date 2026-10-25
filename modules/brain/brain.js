@@ -1442,7 +1442,8 @@
     spark:"m12 2 2.3 7.7L22 12l-7.7 2.3L12 22l-2.3-7.7L2 12l7.7-2.3L12 2Z",
     activity:"M3 12h4l3-7 4 14 3-7h4",
     growth:"M3 20h18M7 17l4-5 3 2 5-8M15 6h4v4",
-    flask:"M9 3h6m-5 0v7l-6 9c-1 2 0 3 2 3h12c2 0 3-1 2-3l-6-9V3M7 16h10"
+    flask:"M9 3h6m-5 0v7l-6 9c-1 2 0 3 2 3h12c2 0 3-1 2-3l-6-9V3M7 16h10",
+    refresh:"M20 7v5h-5M4 17v-5h5M5.5 9A7 7 0 0 1 18 6l2 6M4 12l2 6a7 7 0 0 0 12-3"
   };
   function icon(name) {
     const svg = document.createElementNS(SVG, "svg");
@@ -1469,6 +1470,10 @@
         h("h3", {}, active[0]?.title || "Фоновые процессы спокойны"),
         h("p", {}, active.length ? "Активных и ожидающих задач: " + active.length :
           "Yakumo готова к следующей задаче. Новые события появятся ниже."),
+        h("div", { class: "br-live-states" },
+          h("span", {}, "● " + active.filter(t => t.status === "running").length + " выполняется"),
+          h("span", {}, "◷ " + active.filter(t => t.status === "queued").length + " в очереди"),
+          h("span", {}, "✓ " + (m.thoughts || []).filter(t => t.status === "done").length + " завершено")),
         h("div", { class: "br-live-progress", role: "progressbar",
           "aria-label": "Использовано запросов за день",
           "aria-valuemin": "0", "aria-valuemax": String(m.budget || 100),
@@ -1497,9 +1502,8 @@
                                   state.query = e.target.value;
                                   const pos = e.target.selectionStart;
                                   draw();
-                                  const again = root.querySelector(".br-search input");
-                                  again.focus();
-                                  again.setSelectionRange(pos, pos);
+                                  const again = root.querySelector(".br-observer-filter input");
+                                  if (again) { again.focus(); again.setSelectionRange(pos, pos); }
                                 } });
     const openPromises = d.promises.filter((p) => !p.done).length;
     const growing = d.suggestions.length + d.user_tools.length + d.lessons.length + (d.style.versions || []).length
@@ -1548,7 +1552,9 @@
               h("span", { class: "br-live-pill" }, h("i", { class: "br-live-beacon", "data-mode": d.mind.mode }),
                 L.modes[d.mind.mode] || d.mind.mode),
               h("span", { class: "br-budget-pill" }, "◈ " + (d.mind.used || 0) + " / " +
-                (d.mind.budget || "∞")))),
+                (d.mind.budget || "∞")),
+              h("button", { class: "br-refresh-btn", type: "button", title: "Обновить состояние",
+                "aria-label": "Обновить состояние", onclick: () => load() }, icon("refresh")))),
           h("div", { class: "br-observer-summary" },
             h("div", {}, h("small", {}, "Память"), h("strong", {}, String(d.facts.length))),
             h("div", {}, h("small", {}, "Нейросвязи"), h("strong", {}, String(growthNumbers().last.links))),
@@ -1560,10 +1566,7 @@
           state.tab === "map" ? mapObserverToolbar() : "",
           h("div", { class: "br-view" }, views[state.tab]()))));
 
-    const list = root.querySelector(".br-tablist"), on = list?.querySelector("button.on");
-    if (on && (on.offsetLeft < list.scrollLeft || on.offsetLeft + on.offsetWidth > list.scrollLeft + list.clientWidth)) {
-      list.scrollLeft = on.offsetLeft - 24;  // только по горизонтали: страница не прыгает
-    }
+
   }
 
   window.Yakumo.addPage({
