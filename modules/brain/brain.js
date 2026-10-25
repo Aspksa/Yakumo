@@ -106,6 +106,8 @@
       versionsHint: "Когда Yakumo обновили или вернули к прошлой версии и что в ней нового. Она помнит это и может рассказать в чате.",
       changesN: (n) => `изменений: ${n}`,
       brainHint: "Нейроны — всё, что Yakumo знает: факты, люди и места, уроки, конспекты, навыки, разговоры, фрагменты документов. Связи — ассоциации и ссылки между ними.",
+      branchesTitle: "Ветки развития", branchesHint: "Один общий мозг растёт по направлениям. Уровень считается из реального опыта, а не задаётся вручную.",
+      branchLevel: (n) => `уровень ${n}`, branchXp: (n) => `опыт ${n}`, branchItems: (n) => `узлов ${n}`, branchLinks: (n) => `связей ${n}`,
       best: (n) => `Ответов с 👍 (образцы для стиля): ${n}`,
       curiousNow: "Задать мне вопрос", consolidateNow: "Укрепить уроки", foreseeNow: "Подумать наперёд",
       emptyGrow: "Yakumo только начинает расти", emptyGrowHint: "Уроки, стиль, желания и конспекты появятся после разговоров и первого простоя.",
@@ -207,6 +209,8 @@
       versionsHint: "When Yakumo was updated or rolled back and what was new. She remembers it and can tell you in chat.",
       changesN: (n) => `changes: ${n}`,
       brainHint: "Neurons are everything Yakumo knows: facts, people and places, lessons, notes, skills, conversations, document chunks. Links are associations and references between them.",
+      branchesTitle: "Development branches", branchesHint: "One shared brain grows in several directions. Levels come from actual experience, not manual settings.",
+      branchLevel: (n) => `level ${n}`, branchXp: (n) => `XP ${n}`, branchItems: (n) => `nodes ${n}`, branchLinks: (n) => `links ${n}`,
       best: (n) => `Answers with 👍 (style examples): ${n}`,
       curiousNow: "Ask me a question", consolidateNow: "Strengthen lessons", foreseeNow: "Think ahead",
       emptyGrow: "Yakumo is just starting to grow", emptyGrowHint: "Lessons, style, wishes and notes appear after conversations and the first idle time.",
@@ -1128,6 +1132,24 @@
       hint ? h("p", { class: "row-hint br-section-hint" }, hint) : "", body);
   }
 
+  function branchesCard() {
+    const data = state.data.branches;
+    const items = data?.branches || [];
+    if (!items.length) return "";
+    return h("section", { class: "card br-branch-card" },
+      h("div", { class: "br-brain-head" }, h("strong", {}, L.branchesTitle)),
+      h("p", { class: "row-hint br-section-hint" }, L.branchesHint),
+      h("div", { class: "br-branches" }, items.map((b) =>
+        h("div", { class: "br-branch", "data-branch": b.id },
+          h("div", { class: "br-branch-head" },
+            h("strong", {}, b.name?.[lang()] || b.name?.ru || b.id),
+            h("span", { class: "br-status-chip" }, L.branchLevel(b.level))),
+          h("span", { class: "br-branch-progress", "aria-label": `${b.progress}%` },
+            h("b", { style: `width:${b.progress}%` })),
+          h("div", { class: "br-meta" },
+            [L.branchXp(b.xp), L.branchItems(b.items), L.branchLinks(b.links)].join(" · "))))));
+  }
+
   function growView() {
     const d = state.data;
     const cloud = d.cloud && d.enabled;
@@ -1140,6 +1162,7 @@
     const anything = d.suggestions.length + d.user_tools.length + d.lessons.length + styleVersions.length
       + d.wishes.length + d.notes.length + d.links.length;
     return [
+      branchesCard(),
       h("div", { class: "br-grow-actions" }, btn("exam", L.examNow), btn("style", L.styleNow), btn("study", L.studyNow),
         btn("curious", L.curiousNow), btn("consolidate", L.consolidateNow), btn("foresee", L.foreseeNow)),
       d.best ? h("p", { class: "row-hint" }, L.best(d.best)) : "",
