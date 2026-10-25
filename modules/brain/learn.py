@@ -242,7 +242,7 @@ class Learner:
         if not self.cloud or not self.cloud.api_key():
             return False
         lang = "en" if self.language() == "en" else "ru"
-        facts = self.memory.facts()[:KNOWN_FACTS]
+        facts = [f for f in self.memory.facts() if not f.get("archived")][:KNOWN_FACTS]
         promises = self.memory.open_promises()
         talk = self.memory.talk(tid)
         names = {"user": "Пользователь" if lang == "ru" else "User", "assistant": "Yakumo"}
