@@ -134,7 +134,20 @@
       if (members.length >= 3) constellations.push({ f, members });
     }
     constellations.splice(12);
-    return { areas, arms, stars, lost, hole, byId, comets, constellations };
+    // Actual pairwise links from facts, capped to avoid drawing dense graphs.
+    const edges = [], seenEdges = new Set();
+    for (const f of d.facts) {
+      if (f.archived || edges.length >= 180) continue;
+      const ids = [...new Set(f.about || [])].filter(id => byId[id] && !byId[id].lost).slice(0, 6);
+      for (let i = 0; i < ids.length && edges.length < 180; i++)
+        for (let j = i + 1; j < ids.length && edges.length < 180; j++) {
+          const key = [String(ids[i]), String(ids[j])].sort().join("|");
+          if (seenEdges.has(key)) continue;
+          seenEdges.add(key);
+          edges.push({from: byId[ids[i]], to: byId[ids[j]], created: f.created || 0});
+        }
+    }
+    return { areas, arms, stars, lost, hole, byId, comets, constellations, edges };
   }
 
   // --- Сцена ---
@@ -471,6 +484,19 @@
         galaxy.add(ring);
         s.ring = ring;
       }
+    }
+    // Связи по реальным общим фактам. Изогнутые линии статичны:
+    // движущиеся импульсы запускаются только событиями памяти.
+    for (const edge of w.edges) {
+      const a = new THREE.Vector3(...edge.from.pos), b = new THREE.Vector3(...edge.to.pos);
+      const midpoint = a.clone().add(b).multiplyScalar(.5);
+      midpoint.y += 35 + Math.min(120, a.distanceTo(b) * .08);
+      const curve = new THREE.QuadraticBezierCurve3(a, midpoint, b);
+      const mesh = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints(curve.getPoints(12)),
+        new THREE.LineBasicMaterial({color: 0xe2be7d,transparent:true,
+          opacity:.13,depthWrite:false,blending:THREE.AdditiveBlending}));
+      galaxy.add(mesh);
     }
     // Созвездия событий — тонкие золотые линии.
     if (w.constellations.length) {
