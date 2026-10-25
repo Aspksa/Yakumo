@@ -313,8 +313,12 @@ class Improvements:
                 if not title:
                     continue
                 evidence = str(idea.get("evidence") or "")[:200]
-                item = self.add({"key": "audit:" + hashlib.sha256((title.lower() + evidence).encode()).hexdigest()[:20],
-                                 "source": "idea", "title": title, "refined": True,
+                key = "audit:" + hashlib.sha256((title.lower() + evidence).encode()).hexdigest()[:20]
+                # Аудит — гипотеза, а не повтор пользовательской ошибки: повтор не должен
+                # переоткрывать done/rejected/given или менять их счётчики.
+                if any(x.get("key") == key for x in self.memory.data.get("improvements", [])):
+                    continue
+                item = self.add({"key": key, "source": "idea", "title": title, "refined": True,
                                  "detail": "Гипотеза внешнего ИИ, не проверено. " + evidence,
                                  **{k: str(idea[k])[:1200] for k in ("problem", "want", "module", "priority")
                                     if isinstance(idea.get(k), str)}})
