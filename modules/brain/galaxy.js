@@ -227,8 +227,10 @@
     const ctl = el("div", "gx-ctl gx-float");
     ctl.dataset.key = "ctl";
     const observatory = el("div", "gx-observatory");
-    host.append(stage, warp, labels, note, card, ctl, observatory);
-    view = { host, stage, labels, warp, note, card, ctl, observatory, alive: false, gl: null, contemplative: false };
+    const history = el("div", "gx-history");
+    history.hidden = true;
+    host.append(stage, warp, labels, note, card, ctl, observatory, history);
+    view = { host, stage, labels, warp, note, card, ctl, observatory, history, alive: false, gl: null, contemplative: false };
     buildControls();
     for (const box of [card, ctl]) floating(box);
     return view;
@@ -300,10 +302,23 @@
       const next = stars[(gl.tourIndex = ((gl.tourIndex ?? -1) + 1) % stars.length)];
       jump(next);
     };
+    const nebula = el("select", "gx-select");
+    nebula.title = "Детализация туманностей"; nebula.setAttribute("aria-label", nebula.title);
+    for (const [key, name] of [["normal","Туманности"],["low","Лёгкие туманности"]]) {
+      const option = el("option", "", name); option.value = key; nebula.append(option);
+    }
+    nebula.value = store.get("yakumo.galaxy.nebula", "normal");
+    nebula.onchange = () => { store.set("yakumo.galaxy.nebula", nebula.value); rebuild(); };
+    const history = el("button", "gx-btn", "◷");
+    history.type = "button"; history.title = "История наблюдений и изменений";
+    history.onclick = () => {
+      view.history.hidden = !view.history.hidden;
+      renderObservations();
+    };
     const stats = el("button", "gx-btn", "FPS");
     stats.type = "button"; stats.title = "Показать диагностику кадра";
     stats.onclick = () => view.observatory.classList.toggle("gx-observatory-open");
-    ctl.append(grip, reset, sel, flight, observe, stats, help, hint);
+    ctl.append(grip, reset, sel, nebula, flight, observe, history, stats, help, hint);
   }
 
   // --- WebGL ---
@@ -960,6 +975,49 @@
     if (data) populate();
   }
 
+  // A truthful timeline, not reconstructed snapshots: only observations made
+  // since this client started recording are stored. No private fact text persists.
+  function recordObservation(d) {
+    const history = store.get("yakumo.galaxy.observations", []);
+    const items = Array.isArray(history) ? history.slice(-79) : [];
+    const factIds = new Set((d.facts || []).map(f => String(f.id)));
+    const previous = store.get("yakumo.galaxy.observationIds", []);
+    const added = previous.length ? [...factIds].filter(id => !previous.includes(id)).length : 0;
+    store.set("yakumo.galaxy.observationIds", [...factIds].slice(-3000));
+    const entry = {time: Date.now(), facts: factIds.size,
+      entities: (d.entities || []).length, skills: (d.skills || []).length,
+      generations: d.evolution?.total_generations || 0, added};
+    const last = items[items.length - 1];
+    if (!last || [last.facts,last.entities,last.skills,last.generations].some((v,i) =>
+      v !== [entry.facts,entry.entities,entry.skills,entry.generations][i])) {
+      items.push(entry); store.set("yakumo.galaxy.observations", items.slice(-80));
+    }
+  }
+
+  function renderObservations() {
+    if (!view?.history) return;
+    const entries = store.get("yakumo.galaxy.observations", []);
+    const panel = view.history;
+    panel.replaceChildren(el("strong", "", "История наблюдений Yakumo"));
+    panel.append(el("p", "gx-muted",
+      "Только реально сохранённые наблюдения. Прошлое до включения этой функции недоступно."));
+    if (!Array.isArray(entries) || !entries.length) {
+      panel.append(el("p", "", "Пока нет наблюдений.")); return;
+    }
+    const first = entries[0], last = entries[entries.length - 1];
+    panel.append(el("p", "", "Изменение: факты " + (last.facts-first.facts >= 0 ? "+" : "") +
+      (last.facts-first.facts) + ", навыки " + (last.skills-first.skills >= 0 ? "+" : "") +
+      (last.skills-first.skills) + ", эволюция +" + (last.generations-first.generations)));
+    for (const x of [...entries].reverse().slice(0, 12)) {
+      const btn = el("button", "gx-history-event",
+        new Date(x.time).toLocaleString() + " · факты " + x.facts +
+        " · узлы " + x.entities + " · навыки " + x.skills + " · эксперименты " + x.generations);
+      btn.type = "button";
+      btn.onclick = () => { location.hash = "#/brain"; };
+      panel.append(btn);
+    }
+  }
+
   // --- Данные и монтирование ---
   async function load(force = false) {
     if (!force && Date.now() - lastLoad < 60000 && data) return;
@@ -969,6 +1027,7 @@
       const sig = (x) => x && `${x.facts.length}|${x.facts.filter((f) => f.archived).length}|${x.entities.map((e) => e.id + (e.area || "")).join()}|${(x.promises || []).length}`;
       const changed = !data || sig(d) !== sig(data);
       data = d;
+      recordObservation(d);
       if (changed && view.gl) populate();
     } catch {
       view.note.textContent = L.empty;
