@@ -176,7 +176,12 @@
       sprite.scale.set(210,210,1);group.add(sprite);
       const mark=el("button","gx-project-sector",item.name+" · "+item.count);
       mark.type="button";mark.title="Перейти к разделу «"+item.name+"»";
-      mark.onclick=()=>{ location.hash=item.href; };
+      mark.onclick=()=>{
+        const tab={mind:"mind",growth:"grow",skills:"skills",improve:"improve",
+          evolution:"mind",code:"mind"}[item.id]||"facts";
+        try{sessionStorage.setItem("yakumo.home.brain.tab",tab)}catch{}
+        location.hash=item.href;
+      };
       view.labels.append(mark);
       item.tag=mark;
     }
