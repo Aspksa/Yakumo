@@ -92,21 +92,22 @@ class Tasks:
             item = item_id and self.memory.item("thoughts", item_id)
             if not item or item["status"] != "queued":
                 continue
+            generation = int(item.get("generation", 0))
             try:
-                self.run(item)
+                self.run(item, generation)
             except Exception as exc:  # noqa: BLE001
                 log.warning("Память: фоновая задача не выполнена: %s", exc)
-                self.mind.finish(item, "failed", str(exc) or type(exc).__name__)
+                self.mind.finish(item, "failed", str(exc) or type(exc).__name__, generation=generation)
 
     def _listing(self) -> str:
         return "\n".join(f"- {t.name}: {t.description}" for t in self.tools.values()
                          if not t.change and t.name not in SKIP)
 
-    def run(self, item: dict) -> str | None:
+    def run(self, item: dict, generation: int | None = None) -> str | None:
         from yakumo.core.cloud import _tool_calls, _visible
 
         lang = "en" if self.language() == "en" else "ru"
-        generation = int(item.get("generation", 0))
+        generation = int(item.get("generation", 0)) if generation is None else int(generation)
         with self.memory.lock:
             item["status"] = "running"
             item["steps"] = []
@@ -154,7 +155,7 @@ class Tasks:
             return None
         answer = _visible(text).strip() or ("Не получилось довести задачу до конца." if lang == "ru"
                                             else "I couldn't finish the task.")
-        if not self.mind.finish(item, "done", answer):
+        if not self.mind.finish(item, "done", answer, generation=generation):
             return None
         head = "Готово: «{}»" if lang == "ru" else "Done: “{}”"
         self.memory.say(head.format(item["title"]) + "\n\n" + answer, "task")
