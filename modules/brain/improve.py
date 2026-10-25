@@ -277,11 +277,14 @@ class Improvements:
         if not force and meta.get("last_gap_audit") == today():
             return 0
         selected = []
+        seen_locations = set()
         for query in ("ошибка обработка исключений очередь retry", "память конфликт факт",
                       "авторизация API", "индекс SQLite обновление"):
-            for c in self.code.search(query, 1):
-                if c["path"] in {x["path"] for x in selected}:
+            for c in self.code.search(query, 3):
+                loc = (c["path"], c["start"], c["end"])
+                if loc in seen_locations:
                     continue
+                seen_locations.add(loc)
                 selected.append(c)
         if not selected:
             return 0
