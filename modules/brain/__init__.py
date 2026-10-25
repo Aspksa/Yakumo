@@ -42,7 +42,7 @@ from .think import DeepThink
 from .usertools import NAME as TOOL_NAME, ToolError, calc, check, sandbox
 
 NAME = "Мозг"
-VERSION = "3.4"
+VERSION = "3.5"
 
 PROMPT_FACTS = 30     # самые важные факты — в каждую подсказку
 PROMPT_RELEVANT = 10  # и ещё столько подходящих к последней реплике (по словам и по смыслу)
@@ -191,6 +191,7 @@ def setup(ctx):
     sleep = Sleep(memory, mind, lang, learner)
     activity = Activity(memory)
     tasks = Tasks(memory, mind, ctx.chat_tools, lang)
+    mind.retry_task = tasks.retry
     growth = Growth(memory, mind, lang, ctx.services, tasks)
     deep = DeepThink(memory, cloud, lang)
     docs = Docs(ctx.paths.data / "brain" / "docs.json", memory, mind, ctx.services, cloud, lang)
@@ -251,6 +252,57 @@ def setup(ctx):
         branches.tick()
         return {"branch": branch_id, "action": action, "ok": ok}
 
+    def sync_disk_entities():
+        """Документы дают наблюдаемые сущности, но не становятся фактами без подтверждения."""
+        service = ctx.services.get("disk") if isinstance(getattr(ctx, "services", None), dict) else None
+        if service is None or not hasattr(service, "entity_graph"):
+            return {"observed": 0}
+        try:
+            graph = service.entity_graph(700)
+        except Exception:  # noqa: BLE001
+            ctx.log.exception("Мозг: не удалось синхронизировать сущности Диска")
+            return {"observed": 0}
+        seen = set()
+        for record in graph.get("entities", []):
+            path = record.get("path")
+            for name in record.get("people", []):
+                key = ("person", name)
+                if key not in seen:
+                    memory.observe_entity(name, "person", [path] if path else [], "disk")
+                    seen.add(key)
+            for name in record.get("vehicles", []):
+                key = ("thing", name)
+                if key not in seen:
+                    memory.observe_entity(name, "thing", [path] if path else [], "disk", "автомобиль")
+                    seen.add(key)
+        return {"observed": len(seen)}
+
+    def diagnostics():
+        k = knowledge.status()
+        service = ctx.services.get("disk") if isinstance(getattr(ctx, "services", None), dict) else None
+        disk_status, intel = {}, {}
+        if service is not None:
+            try:
+                disk_status = service.status() if hasattr(service, "status") else {}
+                intel = service.intelligence() if hasattr(service, "intelligence") else {}
+            except Exception:  # noqa: BLE001
+                disk_status, intel = {}, {}
+        mem = memory.diagnostics()
+        chunks, vectors = int(k.get("chunks", 0) or 0), int(k.get("vectors", 0) or 0)
+        mstat = mind.status()
+        warnings = []
+        if mem["orphan_entity_refs"]:
+            warnings.append("orphan_entity_refs")
+        if mem["conflicts"]:
+            warnings.append("fact_conflicts")
+        if chunks and vectors < chunks:
+            warnings.append("vectors_incomplete")
+        if mstat.get("stale"):
+            warnings.append("stale_thoughts")
+        return {"ok": not warnings, "warnings": warnings, "memory": mem,
+                "knowledge": {**k, "vector_coverage": round(vectors * 100 / chunks) if chunks else 100},
+                "disk": disk_status, "intelligence": intel}
+
     mind.every("activity", "any", 60, activity.tick)
     mind.every("vectors", "any", 60, semantic.sync)
     mind.every("knowledge", "rest", 5 * 60, knowledge.sync)
@@ -266,6 +318,8 @@ def setup(ctx):
     mind.every("foresee", "rest", 30 * 60, growing(growth.foresee))
     mind.every("census", "any", 60 * 60, lambda: growth.census(len(knowledge.items)))
     mind.every("memory_tiers", "any", 60 * 60, memory.rebalance_tiers)
+    mind.every("thought_watchdog", "any", 60, mind.watchdog)
+    mind.every("disk_entities", "rest", 30 * 60, sync_disk_entities)
     mind.every("branches", "any", 60 * 60, branches.tick)
     mind.every("focus_train", "asleep", 30 * 60, growing(focus_train))
     universe = Universe(memory, mind, knowledge, lang)
@@ -660,7 +714,9 @@ def setup(ctx):
                 "events": sorted(m["events"], key=lambda e: e["date"][5:] if e.get("yearly") else e["date"]),
                 "skills": m["skills"], "upcoming": memory.upcoming(7), "versions": memory.versions(), "areas": list(AREAS),
                 "entity_docs": m["meta"].get("entity_docs") or {}, "code": {**code.status(), "map": code.map},
-                "improvements": memory.improvements(),
+                "improvements": memory.improvements(), "traces": list(reversed(m["traces"][-100:])),
+                "conflicts": memory.conflicts(), "timeline": memory.timeline(), "activity_feed": memory.activity_feed(),
+                "diagnostics": diagnostics(),
                 "storage": memory.storage_status(), "memory_tiers": memory.tier_counts(), "branches": branches.snapshot(),
                 "mind": mind.status(), "knowledge": knowledge.status(),
                 "lessons": sorted(m["lessons"], key=lambda x: -x.get("seen", 1)),
