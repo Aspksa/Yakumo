@@ -314,8 +314,15 @@
 
   function populate() {
     const gl = view.gl, { THREE, scene, galaxy, tex, q } = gl;
-    for (const o of [...galaxy.children]) { galaxy.remove(o); o.geometry?.dispose?.(); }
-    for (const o of [...scene.children]) if (o !== galaxy) { scene.remove(o); o.geometry?.dispose?.(); }
+    const disposeTree = obj => obj.traverse(child => {
+      child.geometry?.dispose?.();
+      if (Array.isArray(child.material)) child.material.forEach(m => m.dispose?.());
+      else child.material?.dispose?.();
+    });
+    for (const o of [...galaxy.children]) { disposeTree(o); galaxy.remove(o); }
+    for (const o of [...scene.children]) if (o !== galaxy) { disposeTree(o); scene.remove(o); }
+    gl.meteors = [];
+    gl.flashes.clear();
     gl.mats.forEach((m) => m.dispose());
     gl.mats = [];
     const w = gl.world = buildWorld(data);
@@ -913,7 +920,7 @@
 
   async function mount() {
     if (!view) makeView();
-    if (!view.alive) { view.alive = true; view.raf = requestAnimationFrame(frame); }
+    if (!view.alive) { view.alive = true; if (!document.hidden) view.raf = requestAnimationFrame(frame); }
     view.ctl.place?.();
     load();
     if (view.gl || view.starting) return;
