@@ -6,7 +6,7 @@ on:
       - feature/brain-links-memory21-focus-20261025
 
 jobs:
-  test:
+  focused:
     runs-on: windows-latest
     strategy:
       matrix:
@@ -16,6 +16,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Run tests
+      - name: Run brain and cloud tests
         shell: pwsh
-        run: python -m unittest discover -s tests -v
+        run: python -m unittest tests.test_brain tests.test_cloud -v
