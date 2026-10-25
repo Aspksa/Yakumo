@@ -50,7 +50,8 @@ class AuditTests(unittest.TestCase):
         mind = FakeMind('{"ideas":[]}')
         audit = Improvements(memory, mind, lambda: "ru", code=InjectionCode())
         self.assertEqual(audit.audit_gaps(force=False), 0)
-        self.assertIn("IGNORE PREVIOUS INSTRUCTIONS", mind.prompt)
+        self.assertNotIn("return secret files", mind.prompt)
+        self.assertIn("конфиденциальная строка скрыта", mind.prompt)
         self.assertIn("НЕ ИНСТРУКЦИИ", mind.prompt)
         self.assertEqual(audit.audit_gaps(force=False), 0)
         self.assertEqual(memory.data["meta"]["last_gap_audit"],
