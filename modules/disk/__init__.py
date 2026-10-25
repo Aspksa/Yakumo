@@ -212,7 +212,7 @@ def setup(ctx):
         """Имена файлов, текст внутри документов и описания фото — одним списком."""
         names = disk.search(q)
         items = {i["path"]: {**i, "match": "name"} for i in names["items"]}
-        for hit in index.search(q):
+        for hit in [*index.search(q), *index.bm25(q, limit=80)]:
             if hit["path"] in items:
                 items[hit["path"]].setdefault("snippet", hit["snippet"])
                 continue
