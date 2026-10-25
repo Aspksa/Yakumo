@@ -156,13 +156,142 @@
     const list = [
       {id:"memory",name:"Память",color:"#f2d6a1",count:(d.facts||[]).length,href:"#/brain"},
       {id:"mind",name:"Разум",color:"#c79bff",count:(mind.thoughts||[]).length,href:"#/brain"},
-      {id:"growth",name:"Рост",color:"#7cdbb1",count:(d.lessons||[]).length+(d.suggestions||[]).length,href:"#/brain"},
+      {id:"growth",name:"Рост",color:"#7cdbb1",count:((d.branches||{}).branches||[]).length,href:"#/brain"},
       {id:"skills",name:"Навыки",color:"#f8ca85",count:(d.skills||[]).length+(d.user_tools||[]).length,href:"#/brain"},
       {id:"improve",name:"Улучшения",color:"#ff9c90",count:(d.improvements||[]).length,href:"#/brain"},
       {id:"evolution",name:"Эволюция",color:"#8fb0ff",count:evolution.total_generations||0,href:"#/brain"},
       {id:"code",name:"Код проекта",color:"#75b9ce",count:Array.isArray(d.code?.files)?d.code.files.length:Math.max(0,Number(d.code?.files||d.code?.file_count||0)||0),href:"#/brain"}
     ];
     return list.map((item,i)=>({...item,pos:[Math.cos(i*Math.PI*2/list.length)*980,85,Math.sin(i*Math.PI*2/list.length)*980]}));
+  }
+
+  const PROJECT_TABS = {memory:"map",mind:"mind",growth:"grow",skills:"skills",
+    improve:"improve",evolution:"mind",code:"mind"};
+
+  const PROJECT_COPY = {
+    memory:{title:"Память",lead:"Люди, объекты и документы, которые Yakumo действительно связывает с памятью."},
+    mind:{title:"Разум",lead:"Живые и недавние мысли: очередь, работа, результат и состояние фонового разума."},
+    growth:{title:"Рост",lead:"Ветки развития и измеренные нейросвязи между ними. Толщина связи отражает её силу."},
+    skills:{title:"Навыки",lead:"Сохранённые навыки пользователя и инструменты, которыми Yakumo умеет пользоваться."},
+    improve:{title:"Улучшения",lead:"Конкретные задачи развития Yakumo — новые, выданные, завершённые и отклонённые."},
+    evolution:{title:"Эволюция",lead:"Поколения лаборатории Evolution и стратегии-победители проверяемых экспериментов."},
+    code:{title:"Код проекта",lead:"Реальные модули и файлы текущей Yakumo из карты собственного кода в режиме только чтения."}
+  };
+  const PROJECT_KIND_NAMES = {
+    entity:"Сущность",document:"Документ",thought:"Мысль",branch:"Ветка развития",
+    improvement:"Улучшение",generation:"Поколение",strategy:"Стратегия",skill:"Навык",
+    tool:"Инструмент",module:"Модуль"
+  };
+
+  function shortText(value, n=62) {
+    const text=String(value||"").replace(/\s+/g," ").trim();
+    return text.length>n ? text.slice(0,n-1)+"…" : text;
+  }
+  function shortPath(path) {
+    const parts=String(path||"").replace(/\\/g,"/").split("/");
+    return parts.slice(-2).join("/") || String(path||"");
+  }
+  function projectStatus(status) {
+    return ({running:"выполняется",queued:"в очереди",done:"готово",failed:"ошибка",cancelled:"остановлено",
+      new:"новое",given:"выдано",rejected:"отклонено",evaluated:"проверено",open:"открыто"})[status] || status || "";
+  }
+  function projectInterior(d, sectorId) {
+    const nodes=[], edges=[], stats=[];
+    const add=(node)=>{ if(node?.id && !nodes.some(x=>x.id===node.id)) nodes.push(node); return node; };
+    const edge=(from,to,weight=1,kind="link")=>{
+      if(from&&to&&from!==to&&!edges.some(x=>x.from===from&&x.to===to&&x.kind===kind))
+        edges.push({from,to,weight:Math.max(1,Number(weight)||1),kind});
+    };
+    if(sectorId==="memory"){
+      const allEntities=[...(d.entities||[])];
+      const entities=[...allEntities].sort((a,b)=>(b.facts||0)-(a.facts||0)||(b.latest||0)-(a.latest||0)).slice(0,14);
+      const ids=new Set(entities.map(e=>String(e.id)));
+      for(const e of entities) add({id:"entity:"+e.id,rawId:String(e.id),kind:"entity",label:e.name||"Без имени",
+        meta:[e.relation||e.type,(e.facts||0)+" факт."].filter(Boolean).join(" · "),weight:1+(e.facts||0),
+        detail:(e.files||[]).length ? "Документов: "+e.files.length : "Без связанных документов",files:e.files||[]});
+      const docs=new Map();
+      for(const e of allEntities) for(const p of e.files||[]){
+        const key=String(p); const item=docs.get(key)||{path:key,entities:[]};
+        item.entities.push(String(e.id)); docs.set(key,item);
+      }
+      for(const doc of [...docs.values()].sort((a,b)=>b.entities.length-a.entities.length||a.path.localeCompare(b.path)).slice(0,10)){
+        add({id:"doc:"+doc.path,kind:"document",label:shortPath(doc.path),meta:"Документ · "+doc.entities.length+" связ.",
+          detail:doc.path,path:doc.path,weight:1+doc.entities.length});
+        for(const eid of doc.entities) if(ids.has(eid)) edge("entity:"+eid,"doc:"+doc.path,2,"source");
+      }
+      const byId=Object.fromEntries(entities.map(e=>[String(e.id),e]));
+      for(const e of entities) for(const r of e.related||[])
+        if(byId[String(r.id)]) edge("entity:"+e.id,"entity:"+r.id,r.weight||1,"memory");
+      stats.push(["Сущностей",(d.entities||[]).length],["Фактов",(d.facts||[]).length],["Документов",docs.size]);
+    } else if(sectorId==="mind"){
+      const thoughts=[...((d.mind||{}).thoughts||[])].sort((a,b)=>{
+        const rank={running:0,queued:1,failed:2,done:3,cancelled:4};
+        const status=(rank[a.status]??5)-(rank[b.status]??5);
+        return status || Number(b.started||b.created||0)-Number(a.started||a.created||0);
+      }).slice(0,18);
+      for(const t of thoughts) add({id:"thought:"+t.id,kind:"thought",label:shortText(t.title||t.kind||"Мысль",55),
+        meta:[projectStatus(t.status),t.kind].filter(Boolean).join(" · "),status:t.status,
+        detail:shortText(t.result||"",180),weight:t.status==="running"?5:t.status==="queued"?4:2});
+      stats.push(["Выполняется",thoughts.filter(x=>x.status==="running").length],
+        ["В очереди",thoughts.filter(x=>x.status==="queued").length],["Всего",((d.mind||{}).thoughts||[]).length]);
+    } else if(sectorId==="growth"){
+      const branches=(d.branches||{}).branches||[], focus=(d.branches||{}).focus||{};
+      for(const b of branches) add({id:"branch:"+b.id,rawId:b.id,kind:"branch",
+        label:b.name?.ru||b.id,meta:"Ур. "+b.level+" · "+b.progress+"%",detail:"XP "+b.xp+" · объектов "+b.items,
+        weight:3+(b.level||1),focus:b.id===focus.id});
+      for(const e of (d.branches||{}).edges||[]) edge("branch:"+e.from,"branch:"+e.to,e.strength||1,"growth");
+      stats.push(["Веток",branches.length],["Связей",((d.branches||{}).edges||[]).length],
+        ["Фокус",focus.name?.ru||focus.id||"—"]);
+    } else if(sectorId==="improve"){
+      const rank={new:0,given:1,done:2,rejected:3};
+      const items=[...(d.improvements||[])].sort((a,b)=>(rank[a.status]??9)-(rank[b.status]??9)||
+        ({high:0,normal:1,low:2}[a.priority]??1)-({high:0,normal:1,low:2}[b.priority]??1)||
+        (b.last||0)-(a.last||0)).slice(0,18);
+      for(const x of items) add({id:"improvement:"+x.id,kind:"improvement",label:shortText(x.title||x.problem||"Улучшение",58),
+        meta:[projectStatus(x.status),x.priority,x.module].filter(Boolean).join(" · "),status:x.status,
+        detail:shortText(x.problem||x.want||x.detail||"",200),weight:x.priority==="high"?5:x.status==="new"?4:2});
+      stats.push(["Новых",(d.improvements||[]).filter(x=>x.status==="new").length],
+        ["Завершено",(d.improvements||[]).filter(x=>x.status==="done").length],["Всего",(d.improvements||[]).length]);
+    } else if(sectorId==="evolution"){
+      const evo=d.evolution||{}, runs=(evo.runs||[]).slice(0,12), strategies=new Map();
+      for(const r of runs){
+        const gid="generation:"+r.id;
+        add({id:gid,kind:"generation",label:"Поколение "+(r.generation||"—"),
+          meta:[projectStatus(r.status),r.winner].filter(Boolean).join(" · "),
+          detail:"Выборка "+(r.sample_size||0)+" · "+(r.warning||""),weight:4});
+        if(r.winner){
+          const sid="strategy:"+r.winner;
+          if(!strategies.has(sid)){strategies.set(sid,true);add({id:sid,kind:"strategy",label:r.winner,
+            meta:"Стратегия-победитель",detail:"Побеждала в проверяемых поколениях",weight:3});}
+          edge(gid,sid,4,"winner");
+        }
+      }
+      stats.push(["Поколений",evo.total_generations||0],["Стратегий",(evo.policies||[]).length],
+        ["Автоприменение",evo.auto_apply?"вкл":"выкл"]);
+    } else if(sectorId==="skills"){
+      for(const x of (d.skills||[]).slice(0,14)) {
+        const steps=Array.isArray(x.steps)?x.steps:(x.steps?[x.steps]:[]);
+        add({id:"skill:"+x.id,kind:"skill",label:shortText(x.name||"Навык",55),
+          meta:[x.when,x.used?"использовался":""].filter(Boolean).join(" · "),
+          detail:shortText(steps.join(" → "),180),weight:3});
+      }
+      for(const x of (d.user_tools||[]).slice(0,8)) add({id:"tool:"+x.id,kind:"tool",label:shortText(x.name||x.title||"Инструмент",55),
+        meta:"Инструмент Yakumo",detail:shortText(x.description||x.about||"",180),weight:3});
+      stats.push(["Навыков",(d.skills||[]).length],["Инструментов",(d.user_tools||[]).length],["Показано",nodes.length]);
+    } else if(sectorId==="code"){
+      const map=d.code?.map||{}, modules=Array.isArray(map.modules)?map.modules:[];
+      for(const m of modules.slice(0,16)) add({id:"module:"+m.id,kind:"module",label:m.name||m.id,
+        meta:[m.version,(m.files||[]).length+" файл."].filter(Boolean).join(" · "),detail:shortText(m.about||"",190),
+        weight:2+Math.min(5,(m.files||[]).length)});
+      stats.push(["Модулей",modules.length],["Файлов",Number(map.files||d.code?.files||0)||0],["Фрагментов",Number(map.chunks||d.code?.chunks||0)||0]);
+    }
+    return {nodes,edges,stats,copy:PROJECT_COPY[sectorId]||{title:sectorId,lead:""}};
+  }
+
+  function projectTab(id) { return PROJECT_TABS[id]||"facts"; }
+  function openProjectSector(id) {
+    try{sessionStorage.setItem("yakumo.home.brain.tab",projectTab(id))}catch{}
+    location.hash="#/brain";
   }
 
   function drawProvenanceLinks(gl,d) {
@@ -187,6 +316,167 @@
     }
   }
 
+  const PROJECT_KIND_COLORS = {
+    entity:"#f6d99b",document:"#8bc8ff",thought:"#caa2ff",branch:"#78dfb3",
+    improvement:"#ff9e93",generation:"#91afff",strategy:"#ffe08a",skill:"#f6c878",
+    tool:"#89e1c5",module:"#76bfd4"
+  };
+
+  function projectDispose(object) {
+    if(!object) return;
+    object.traverse?.(child=>{
+      child.geometry?.dispose?.();
+      if(Array.isArray(child.material)) child.material.forEach(m=>m.dispose?.());
+      else child.material?.dispose?.();
+    });
+    object.parent?.remove(object);
+  }
+
+  function clearProjectInterior(gl, hidePanel=true) {
+    projectDispose(gl.projectInterior?.group);
+    for(const item of gl.projectInterior?.nodes||[]) item.tag?.remove();
+    gl.projectInterior=null;
+    gl.projectSelected=null;
+    for(const sector of gl.projectSectors||[]) sector.tag?.classList.remove("active");
+    if(hidePanel && view?.projectPanel) view.projectPanel.hidden=true;
+  }
+
+  function projectNodeLayout(sector,nodes) {
+    const first=Math.min(9,nodes.length), outer=Math.max(0,nodes.length-first);
+    return nodes.map((node,i)=>{
+      const outerRing=i>=first, index=outerRing?i-first:i, total=outerRing?Math.max(1,outer):Math.max(1,first);
+      const radius=outerRing?330:205;
+      const angle=index/total*Math.PI*2 + (outerRing?0.27:-0.13);
+      const lift=(Math.sin(angle*2+hash(node.id)%7)*34) + (node.focus?42:0);
+      return {...node,pos:[sector.pos[0]+Math.cos(angle)*radius,sector.pos[1]+lift,
+        sector.pos[2]+Math.sin(angle)*radius]};
+    });
+  }
+
+  function renderProjectPanel(sector,model,selectedId=null) {
+    const panel=view.projectPanel;
+    if(!panel) return;
+    const selected=model.nodes.find(x=>x.id===selectedId)||null;
+    panel.hidden=false;
+    const head=el("div","gx-project-panel-head");
+    const grip=el("span","gx-grip","⋮⋮");
+    const titles=el("div","gx-project-panel-title");
+    titles.append(el("small","","HOME GALAXY / "+sector.name.toUpperCase()),
+      el("strong","",selected?.label||model.copy.title),
+      el("span","",selected?.meta||model.copy.lead));
+    const close=el("button","gx-btn","×"); close.type="button"; close.title="Свернуть сектор";
+    close.onclick=()=>{ clearProjectInterior(view.gl); store.set("yakumo.galaxy.projectSector",""); };
+    head.append(grip,titles,close);
+    const body=[head];
+    const trust=el("div","gx-project-trust","● Реальные данные Yakumo");
+    trust.title="Узлы построены только из текущего /api/brain. Неподтверждённая причинность не добавляется.";
+    body.push(trust);
+    if(selected){
+      const detail=el("div","gx-project-selected");
+      detail.append(el("span","gx-project-kind",PROJECT_KIND_NAMES[selected.kind]||selected.kind),
+        el("p","",selected.detail||"Для этого узла нет дополнительного описания."));
+      if(selected.path){
+        const openDoc=el("a","btn","Открыть документ");
+        openDoc.href="/api/disk/file?path="+encodeURIComponent(selected.path);openDoc.target="_blank";openDoc.rel="noopener";
+        detail.append(openDoc);
+      }
+      body.push(detail);
+    }
+    if(model.stats.length){
+      const stats=el("div","gx-project-stats");
+      for(const [name,value] of model.stats){
+        const box=el("div","");box.append(el("strong","",String(value)),el("span","",name));stats.append(box);
+      }
+      body.push(stats);
+    }
+    const list=el("div","gx-project-list");
+    for(const node of model.nodes.slice(0,18)){
+      const btn=el("button","gx-project-row"+(node.id===selectedId?" on":""));
+      btn.type="button";
+      const dot=el("i","gx-project-dot");dot.style.background=PROJECT_KIND_COLORS[node.kind]||sector.color;
+      const copy=el("span","");copy.append(el("b","",node.label),el("small","",node.meta||node.kind));
+      btn.append(dot,copy);
+      btn.onclick=()=>selectProjectNode(node.id);
+      list.append(btn);
+    }
+    if(model.nodes.length) body.push(el("div","gx-project-list-title","Внутренние узлы · "+model.nodes.length),list);
+    else body.push(el("p","gx-muted","В этом секторе пока нет данных для раскрытия."));
+    const actions=el("div","gx-project-actions");
+    const open=el("button","btn primary","Открыть раздел");open.type="button";open.onclick=()=>openProjectSector(sector.id);
+    const collapse=el("button","btn","Свернуть");collapse.type="button";
+    collapse.onclick=()=>{clearProjectInterior(view.gl);store.set("yakumo.galaxy.projectSector","");};
+    actions.append(open,collapse);body.push(actions);
+    panel.replaceChildren(...body);
+  }
+
+  function drawProjectInterior(gl,d,sectorId,selectedId=null) {
+    clearProjectInterior(gl,false);
+    const sector=(gl.projectSectors||[]).find(x=>x.id===sectorId);
+    if(!sector) return;
+    const T=gl.THREE, model=projectInterior(d,sectorId);
+    const nodes=projectNodeLayout(sector,model.nodes), byId=Object.fromEntries(nodes.map(x=>[x.id,x]));
+    const group=new T.Group();group.name="yakumo-project-interior";
+    const ringPts=Array.from({length:65},(_,i)=>{
+      const a=i/64*Math.PI*2;return new T.Vector3(sector.pos[0]+Math.cos(a)*205,sector.pos[1],sector.pos[2]+Math.sin(a)*205);
+    });
+    group.add(new T.Line(new T.BufferGeometry().setFromPoints(ringPts),
+      new T.LineBasicMaterial({color:new T.Color(sector.color),transparent:true,opacity:.16,depthWrite:false})));
+    for(const node of nodes){
+      const color=new T.Color(PROJECT_KIND_COLORS[node.kind]||sector.color);
+      if(node.status==="failed"||node.status==="rejected") color.set("#ff776f");
+      if(node.status==="running") color.set("#ffffff");
+      const material=new T.SpriteMaterial({map:gl.tex.soft,color,transparent:true,
+        opacity:node.status==="done"?.48:.78,blending:T.AdditiveBlending,depthWrite:false});
+      const sprite=new T.Sprite(material);sprite.position.set(...node.pos);
+      const base=48+Math.min(42,Math.sqrt(Math.max(1,node.weight||1))*12)+(node.focus?18:0);
+      sprite.scale.set(base,base,1);sprite.userData.baseScale=base;sprite.userData.pulse=node.focus||node.status==="running";
+      group.add(sprite);node.sprite=sprite;
+      const line=new T.Line(new T.BufferGeometry().setFromPoints([
+        new T.Vector3(...sector.pos),new T.Vector3(...node.pos)]),
+        new T.LineBasicMaterial({color,transparent:true,opacity:.08,depthWrite:false}));
+      group.add(line);
+      const tag=el("button","gx-project-node kind-"+node.kind+(node.focus?" focus":"")+
+        (node.status?" status-"+node.status:""),node.label);
+      tag.type="button";tag.title=[node.meta,node.detail].filter(Boolean).join("\n");
+      tag.onclick=()=>selectProjectNode(node.id);tag.ondblclick=()=>{
+        if(node.path) window.open("/api/disk/file?path="+encodeURIComponent(node.path),"_blank","noopener");
+        else openProjectSector(sector.id);
+      };
+      view.labels.append(tag);node.tag=tag;
+    }
+    for(const e of model.edges){
+      const a=byId[e.from],b=byId[e.to];if(!a||!b) continue;
+      const color=e.kind==="growth"?"#78dfb3":e.kind==="winner"?"#ffe08a":sector.color;
+      const opacity=e.kind==="growth"?Math.min(.65,.16+(e.weight||1)/180):.22;
+      const material=new T.LineBasicMaterial({color:new T.Color(color),transparent:true,opacity,depthWrite:false});
+      const line=new T.Line(new T.BufferGeometry().setFromPoints([new T.Vector3(...a.pos),new T.Vector3(...b.pos)]),material);
+      if(e.kind==="growth") line.userData.strength=e.weight||1;
+      group.add(line);
+    }
+    gl.scene.add(group);
+    gl.projectInterior={sector,model,group,nodes,selectedId:selectedId||null};
+    gl.projectSelected=selectedId||null;
+    for(const p of gl.projectSectors||[]) p.tag?.classList.toggle("active",p.id===sectorId);
+    renderProjectPanel(sector,{...model,nodes},selectedId);
+  }
+
+  function expandProjectSector(id,fly=true) {
+    const gl=view?.gl;if(!gl) return;
+    const sector=(gl.projectSectors||[]).find(x=>x.id===id);if(!sector) return;
+    store.set("yakumo.galaxy.projectSector",id);
+    drawProjectInterior(gl,data,id);
+    if(fly) flyTo(sector.pos,560,1100,true);
+  }
+
+  function selectProjectNode(id) {
+    const gl=view?.gl, interior=gl?.projectInterior;if(!interior) return;
+    const node=interior.nodes.find(x=>x.id===id);if(!node) return;
+    gl.projectSelected=id;interior.selectedId=id;
+    for(const x of interior.nodes) x.tag?.classList.toggle("on",x.id===id);
+    renderProjectPanel(interior.sector,{...interior.model,nodes:interior.nodes},id);
+    flyTo(node.pos,300,850,false);
+  }
+
   function drawProjectSectors(gl,d) {
     const T=gl.THREE, group=new T.Group();
     const sectors=projectSectors(d);
@@ -196,19 +486,18 @@
       const color=new T.Color(item.color);
       const material=mat.clone();material.color=color;
       const sprite=new T.Sprite(material);sprite.position.set(...item.pos);
-      sprite.scale.set(210,210,1);group.add(sprite);
-      const mark=el("button","gx-project-sector",item.name+" · "+item.count);
-      mark.type="button";mark.title="Перейти к разделу «"+item.name+"»";
-      mark.onclick=()=>{
-        const tab={memory:"facts",mind:"mind",growth:"grow",skills:"skills",improve:"improve",
-          evolution:"mind",code:"mind"}[item.id]||"facts";
-        try{sessionStorage.setItem("yakumo.home.brain.tab",tab)}catch{}
-        location.hash=item.href;
-      };
-      view.labels.append(mark);
-      item.tag=mark;
+      sprite.scale.set(210,210,1);group.add(sprite);item.sprite=sprite;
+      const mark=el("button","gx-project-sector");
+      mark.type="button";mark.title="Раскрыть «"+item.name+"». Двойной клик — открыть раздел.";
+      mark.append(el("span","gx-project-sector-name",item.name),el("b","gx-project-sector-count",String(item.count)),
+        el("span","gx-project-sector-open","⌄"));
+      mark.onclick=()=>expandProjectSector(item.id,true);
+      mark.ondblclick=(ev)=>{ev.preventDefault();openProjectSector(item.id);};
+      view.labels.append(mark);item.tag=mark;
     }
     gl.scene.add(group);gl.projectSectors=sectors;gl.projectGroup=group;
+    const remembered=store.get("yakumo.galaxy.projectSector","");
+    if(remembered&&sectors.some(x=>x.id===remembered)) drawProjectInterior(gl,d,remembered);
   }
 
   // --- Сцена ---
@@ -291,6 +580,11 @@
 
   function makeView() {
     const host = el("div", "gx");
+    host.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape" || !view?.gl?.projectInterior) return;
+      e.preventDefault(); e.stopPropagation();
+      clearProjectInterior(view.gl); store.set("yakumo.galaxy.projectSector","");
+    });
     const stage = el("div", "gx-stage");
     const labels = el("div", "gx-labels");
     const warp = el("div", "gx-warp");
@@ -298,6 +592,9 @@
     const card = el("aside", "gx-card gx-float");
     card.hidden = true;
     card.dataset.key = "card";
+    const projectPanel = el("aside", "gx-project-panel gx-float");
+    projectPanel.hidden = true;
+    projectPanel.dataset.key = "project";
     const ctl = el("div", "gx-ctl gx-float");
     ctl.dataset.key = "ctl";
     const observatory = el("div", "gx-observatory");
@@ -316,10 +613,11 @@
         (a.pos[0]-mx)**2+(a.pos[2]-mz)**2-( (b.pos[0]-mx)**2+(b.pos[2]-mz)**2 ))[0];
       if (star) jump(star);
     });
-    host.append(stage, warp, labels, note, card, ctl, observatory, history, minimap);
-    view = { host, stage, labels, warp, note, card, ctl, observatory, history, minimap, alive: false, gl: null, contemplative: false };
+    host.append(stage, warp, labels, note, card, projectPanel, ctl, observatory, history, minimap);
+    view = { host, stage, labels, warp, note, card, projectPanel, ctl, observatory, history, minimap,
+      alive: false, gl: null, contemplative: false };
     buildControls();
-    for (const box of [card, ctl]) floating(box);
+    for (const box of [card, projectPanel, ctl]) floating(box);
     return view;
   }
 
@@ -367,6 +665,14 @@
     const reset = el("button", "gx-btn", "⌂");
     reset.type = "button"; reset.title = L.reset; reset.setAttribute("aria-label", L.reset);
     reset.onclick = () => view.gl && flyTo([0, 0, 0], 900);
+    const overview = el("button", "gx-btn", "◎");
+    overview.type = "button"; overview.title = "Обзор проекта: свернуть внутренний сектор";
+    overview.setAttribute("aria-label", overview.title);
+    overview.onclick = () => {
+      if (!view.gl) return;
+      clearProjectInterior(view.gl); store.set("yakumo.galaxy.projectSector","");
+      flyTo([0,0,0],1650,900,false);
+    };
     const help = el("button", "gx-btn", "?");
     help.type = "button"; help.title = L.help; help.setAttribute("aria-label", L.help);
     const hint = el("p", "gx-hint", L.hint);
@@ -420,7 +726,7 @@
     const stats = el("button", "gx-btn", "FPS");
     stats.type = "button"; stats.title = "Показать диагностику кадра";
     stats.onclick = () => view.observatory.classList.toggle("gx-observatory-open");
-    ctl.append(grip, reset, sel, nebula, flight, weakest, observe, history, stats, help, hint);
+    ctl.append(grip, reset, overview, sel, nebula, flight, weakest, observe, history, stats, help, hint);
   }
 
   // --- WebGL ---
@@ -488,6 +794,12 @@
         const x = 80 + star.pos[0] * .102, y = 55 + star.pos[2] * .102;
         mini.beginPath(); mini.arc(x,y,Math.min(3,1+star.facts.length*.18),0,Math.PI*2);
         mini.fillStyle = AREA_HUE[star.area] || "#e3bd82"; mini.fill();
+      }
+      // Сектора проекта — отдельное внешнее кольцо на той же мини-карте.
+      for (const sector of projectSectors(data)) {
+        const x=80+sector.pos[0]*.065, y=55+sector.pos[2]*.045;
+        mini.beginPath(); mini.arc(x,y,3.2,0,Math.PI*2);
+        mini.strokeStyle=sector.color; mini.lineWidth=1.5; mini.stroke();
       }
     }
 
@@ -864,7 +1176,9 @@
       e.preventDefault();
       gl.orbit.dist = Math.max(60, Math.min(5200, gl.orbit.dist * (e.deltaY > 0 ? 1.12 : 1 / 1.12)));
     }, { passive: false });
-    cv.addEventListener("keydown", (e) => { gl.keys.add(e.key.toLowerCase()); if (e.key === "Shift") gl.keys.add("shift"); });
+    cv.addEventListener("keydown", (e) => {
+      gl.keys.add(e.key.toLowerCase()); if (e.key === "Shift") gl.keys.add("shift");
+    });
     cv.addEventListener("keyup", (e) => { gl.keys.delete(e.key.toLowerCase()); if (e.key === "Shift") gl.keys.delete("shift"); });
     cv.addEventListener("blur", () => gl.keys.clear());
   }
@@ -912,13 +1226,30 @@
       gl.camera.updateProjectionMatrix();
       if (!gl.sized && !gl.flight) gl.orbit.dist = 1500 * Math.max(1, Math.sqrt(0.9 / gl.camera.aspect));  // на узком экране — дальше
       gl.w = w; gl.h = hgt; gl.sized = true;
-      view.card.place?.(); view.ctl.place?.();
+      view.card.place?.(); view.projectPanel.place?.(); view.ctl.place?.();
     }
     for (const m of gl.mats) { m.uniforms.time.value = gl.time; m.uniforms.ratio.value = gl.renderer.getPixelRatio(); }
     // Галактика медленно вращается; ядро дышит.
     if (!reduced) gl.galaxy.rotation.y += dt * 0.012;
     gl.core.material.opacity = 0.75 + Math.sin(gl.time * 1.3) * 0.15;
     if (gl.disk) gl.disk.rotation.y += dt * 0.9;
+    // Внутренние узлы проекта пульсируют только при реальном активном состоянии/автофокусе.
+    for (const node of gl.projectInterior?.nodes || []) {
+      if (!node.sprite) continue;
+      const pulse = node.sprite.userData.pulse && !reduced ? 1 + Math.sin(gl.time * 2.2 + (hash(node.id)%17)) * .09 : 1;
+      const base = node.sprite.userData.baseScale || 54;
+      const selected = gl.projectSelected === node.id ? 1.18 : 1;
+      node.sprite.scale.set(base*pulse*selected, base*pulse*selected, 1);
+      if (node.sprite.material) node.sprite.material.opacity =
+        gl.projectSelected === node.id ? .98 : node.status === "done" ? .48 : .78;
+    }
+    for (const sector of gl.projectSectors || []) {
+      if (!sector.sprite) continue;
+      const active = gl.projectInterior?.sector?.id === sector.id;
+      const size = 210 * (active && !reduced ? 1 + Math.sin(gl.time*1.35)*.035 : 1);
+      sector.sprite.scale.set(size,size,1);
+      sector.sprite.material.opacity = active ? .48 : .28;
+    }
     // Инерция вращения после отпускания мыши.
     gl.orbit.yaw += gl.spin.yaw; gl.orbit.pitch = Math.max(-1.45, Math.min(1.45, gl.orbit.pitch + gl.spin.pitch));
     gl.spin.yaw *= 0.92; gl.spin.pitch *= 0.92;
@@ -1006,10 +1337,12 @@
     if (now - (gl.lastStats || 0) >= 1000) {
       gl.lastStats = now;
       const observed = gl.lastPaintGap ? Math.round(1000 / gl.lastPaintGap) : 0;
+      const project = gl.projectInterior;
       view.observatory.textContent = "FPS: " + observed + " · кадр: " +
         cost.toFixed(1) + " мс · качество: " + quality() +
         " · звёзд памяти: " + gl.world.stars.length +
-        " · поколений: " + (data?.evolution?.total_generations || 0);
+        " · поколений: " + (data?.evolution?.total_generations || 0) +
+        (project ? " · сектор: " + project.sector.name + " · внутренних узлов: " + project.nodes.length : "");
     }
     placeLabels();
   }
@@ -1034,7 +1367,20 @@
     }
     for (const p of gl.projectSectors || []) {
       const wp = new gl.THREE.Vector3(...p.pos);
-      if (show(p.tag,wp)) p.tag.style.opacity = .87;
+      if (show(p.tag,wp)) {
+        const active = gl.projectInterior?.sector?.id === p.id;
+        p.tag.style.opacity = active ? 1 : .87;
+        p.tag.style.pointerEvents = "auto";
+      }
+    }
+    for (const node of gl.projectInterior?.nodes || []) {
+      const wp = new gl.THREE.Vector3(...node.pos);
+      const d = wp.distanceTo(gl.camera.position);
+      const v = show(node.tag,wp);
+      if (!v) continue;
+      const visible = d < 2200 || gl.projectSelected === node.id;
+      node.tag.style.opacity = visible ? (gl.projectSelected === node.id ? 1 : .82) : 0;
+      node.tag.style.pointerEvents = visible ? "auto" : "none";
     }
     for (const a of gl.areaTags) {
       const wp = new gl.THREE.Vector3(...a.pos).applyMatrix4(gl.galaxy.matrixWorld);
@@ -1158,11 +1504,22 @@
     try {
       const d = await Y.getJSON("/api/brain");
       const sig = x => x && JSON.stringify({
-        facts:x.facts.map(f=>[f.id,f.updated,f.archived]),entities:x.entities.map(e=>[e.id,e.area]),
-        promises:(x.promises||[]).map(p=>[p.id,p.done]),mind:(x.mind?.thoughts||[]).map(t=>[t.id,t.status]),
-        lessons:(x.lessons||[]).length,skills:(x.skills||[]).length,
-        improvements:(x.improvements||[]).map(v=>[v.id,v.status]),
-        generations:x.evolution?.total_generations||0, branches:x.branches
+        facts:x.facts.map(f=>[f.id,f.updated,f.archived]),
+        entities:x.entities.map(e=>[e.id,e.name,e.relation,e.area,e.latest,e.facts,(e.files||[]).join("|"),
+          (e.related||[]).map(r=>r.id+":"+r.weight).join("|")]),
+        promises:(x.promises||[]).map(p=>[p.id,p.done]),
+        mind:(x.mind?.thoughts||[]).map(t=>[t.id,t.status,t.title,t.heartbeat,t.finished]),
+        lessons:(x.lessons||[]).map(v=>[v.id,v.seen,v.updated]),
+        skills:(x.skills||[]).map(v=>[v.id,v.used,v.name]),
+        improvements:(x.improvements||[]).map(v=>[v.id,v.status,v.priority,v.last,v.title]),
+        evolution:(x.evolution?.runs||[]).map(v=>[v.id,v.generation,v.winner,v.status]),
+        branches:{
+          focus:[x.branches?.focus?.id,x.branches?.focus?.level,x.branches?.focus?.progress],
+          nodes:(x.branches?.branches||[]).map(v=>[v.id,v.level,v.progress,v.xp,v.last_growth]),
+          edges:(x.branches?.edges||[]).map(v=>[v.from,v.to,v.strength,v.uses,v.last_used])
+        },
+        code:(x.code?.map?.modules||[]).map(v=>[v.id,v.name,v.version,(v.files||[]).length]),
+        provenance:(x.provenance?.links||[]).map(v=>[v.id,v.source_id,v.target_id,v.relation])
       });
       const changed = !data || sig(d) !== sig(data);
       data = d;
