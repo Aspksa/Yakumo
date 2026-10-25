@@ -92,8 +92,12 @@ class Mind:
                 item["heartbeat"] = int(time.time())
                 self.memory.save()
 
-    def finish(self, item: dict, status: str = "done", result: str | None = None) -> bool:
+    def finish(self, item: dict, status: str = "done", result: str | None = None,
+               generation: int | None = None) -> bool:
         with self.memory.lock:
+            # Ответ/ошибка старого запуска не может менять состояние уже начатого повтора.
+            if generation is not None and int(item.get("generation", 0)) != generation:
+                return False
             # Поздний ответ уже остановленной/отменённой операции не должен воскресить её как «готово».
             if status == "done" and item.get("status") in ("failed", "cancelled"):
                 return False
