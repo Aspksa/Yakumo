@@ -179,6 +179,15 @@ class Index:
                 self.db.executemany("DELETE FROM files WHERE path = ?", [(p,) for p in gone])
                 self.db.commit()
         self.intelligence.remove_missing()
+        # Backfill documents indexed by older Yakumo versions without re-reading files.
+        with self.lock:
+            legacy = self.db.execute("""SELECT f.path,f.text,ifnull(f.photo,''),ifnull(f.ocr,'')
+                FROM files f LEFT JOIN intelligence_docs i ON i.path=f.path
+                WHERE i.path IS NULL""").fetchall()
+        for p, t, photo, ocr in legacy:
+            if self.stopping:
+                return
+            self.intelligence.update(p, t or "", photo, ocr)
         self.state.update(queue=len(todo), done=0)
         for rel, path, mtime, size in todo:
             if self.stopping:
