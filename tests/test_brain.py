@@ -931,7 +931,7 @@ class GrowthTest(BrainBase):
         self.assertTrue(any(x["status"] == "open" for x in state["timeline"] if x["kind"] == "progress"))
 
     def test_watchdog_stops_stale_thought_and_does_not_let_late_finish_revive_it(self):
-        mind = self.tick("Mind")
+        mind = self.mind
         thought = mind.thought("doc", "Зависшее чтение")
         thought["heartbeat"] = int(time.time()) - 16 * 60
         self.assertEqual(mind.watchdog(), 1)
