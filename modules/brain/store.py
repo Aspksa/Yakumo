@@ -1171,7 +1171,34 @@ class Memory:
             raise BrainError("Это не файл памяти Yakumo")
         facts = talks = 0
         with self.lock:
-            entity_names = {e.get("id"): e for e in data.get("entities", []) if isinstance(e, dict)}
+            raw_entities = data.get("entities", [])
+            raw_entities = raw_entities if isinstance(raw_entities, list) else []
+            entity_names = {e.get("id"): e for e in raw_entities if isinstance(e, dict)}
+            for source_entity in raw_entities[:MAX_ITEMS]:
+                if not isinstance(source_entity, dict) or not isinstance(source_entity.get("name"), str):
+                    continue
+                try:
+                    restored_entity = self.entity(source_entity["name"], source_entity.get("type", "thing"),
+                                                  source_entity.get("relation", ""))
+                except BrainError:
+                    continue
+                aliases = [a for a in source_entity.get("aliases", []) if isinstance(a, str) and a.strip()]
+                restored_entity["aliases"] = list(dict.fromkeys([*restored_entity.get("aliases", []), *aliases]))[-20:]
+                files = [p.replace("\\", "/").strip("/") for p in source_entity.get("files", [])
+                         if isinstance(p, str) and p.strip()]
+                restored_entity["files"] = list(dict.fromkeys([*restored_entity.get("files", []), *files]))[-50:]
+                sources = [str(x)[:40] for x in source_entity.get("sources", []) if isinstance(x, str) and x]
+                restored_entity["sources"] = list(dict.fromkeys([*restored_entity.get("sources", []), *sources]))[-20:]
+                if source_entity.get("observed") is True:
+                    restored_entity["observed"] = True
+                if source_entity.get("keep") is True:
+                    restored_entity["keep"] = True
+                if isinstance(source_entity.get("created"), int):
+                    restored_entity["created"] = min(int(restored_entity.get("created", source_entity["created"])),
+                                                     source_entity["created"])
+                if isinstance(source_entity.get("last_seen"), int):
+                    restored_entity["last_seen"] = max(int(restored_entity.get("last_seen", 0) or 0),
+                                                       source_entity["last_seen"])
             for f in data.get("facts", [])[:MAX_FACTS]:
                 if isinstance(f, dict) and isinstance(f.get("text"), str) and f["text"].strip():
                     before = len(self.data["facts"])
