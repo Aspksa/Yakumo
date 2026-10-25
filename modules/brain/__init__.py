@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
 from pathlib import Path
 
@@ -318,7 +319,6 @@ def setup(ctx):
     mind.every("foresee", "rest", 30 * 60, growing(growth.foresee))
     mind.every("census", "any", 60 * 60, lambda: growth.census(len(knowledge.items)))
     mind.every("memory_tiers", "any", 60 * 60, memory.rebalance_tiers)
-    mind.every("thought_watchdog", "any", 60, mind.watchdog)
     mind.every("disk_entities", "rest", 30 * 60, sync_disk_entities)
     mind.every("branches", "any", 60 * 60, branches.tick)
     mind.every("focus_train", "asleep", 30 * 60, growing(focus_train))
@@ -334,6 +334,24 @@ def setup(ctx):
     learner.ticks = [mind.tick]
     learner.start()
     tasks.resume()
+
+    # Отдельный наблюдатель: основной learner может сам зависнуть внутри Cloud.ru, поэтому следить за ним из mind.tick нельзя.
+    watchdog_stop = threading.Event()
+    def watchdog_loop():
+        while not watchdog_stop.wait(60):
+            try:
+                mind.watchdog()
+            except Exception:  # noqa: BLE001
+                ctx.log.exception("Мозг: ошибка watchdog")
+    watchdog_thread = threading.Thread(target=watchdog_loop, name="brain-watchdog", daemon=True)
+    watchdog_thread.start()
+
+    def stop_watchdog():
+        watchdog_stop.set()
+        if watchdog_thread.is_alive() and watchdog_thread is not threading.current_thread():
+            watchdog_thread.join(timeout=2)
+
+    ctx.on_stop(stop_watchdog)
     ctx.on_stop(learner.stop)
     ctx.on_stop(tasks.stop)
 
