@@ -279,7 +279,7 @@ class BrainTest(BrainBase):
                 self.post(path, data)
             self.assertEqual(err.exception.code, 400, path)
 
-    def test_old_minor_facts_fade_and_are_forgotten(self):
+    def test_old_minor_facts_fade_and_move_to_archive(self):
         store = sys.modules["yakumo_modules.brain.store"]
         memory = store.Memory(self.data / "m.json")
         old = time.time() - 200 * 86400
@@ -289,8 +289,11 @@ class BrainTest(BrainBase):
         for f in (minor, keep, mine):
             f["last_seen"] = int(old)
         self.assertLess(memory.score(minor), memory.score(keep))
-        memory.add("Новый факт", source="auto")  # при добавлении память чистится
-        self.assertEqual({f["text"] for f in memory.facts()}, {"Зовут Аня", "Любит котов", "Новый факт"})
+        memory.add("Новый факт", source="auto")  # Engine 2.1 переносит слабое в архив
+        texts = {f["text"] for f in memory.facts()}
+        self.assertEqual(texts, {"Смотрел вчера фильм", "Зовут Аня", "Любит котов", "Новый факт"})
+        self.assertTrue(memory.fact(minor["id"])["archived"])
+        self.assertEqual(memory.fact(minor["id"])["tier"], "archive")
 
 
     # --- Граф, источники, обещания, даты, настроение ---
