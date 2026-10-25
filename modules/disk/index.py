@@ -85,7 +85,8 @@ class Index:
             data = json.loads(self.settings_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             data = {}
-        return {"photos": data.get("photos") is True, "ocr": data.get("ocr") is True}
+        return {"photos": data.get("photos") is True, "ocr": data.get("ocr") is True,
+                "semantic": data.get("semantic") is True}
 
     def _store(self, **changes) -> None:
         tmp = self.settings_path.with_suffix(".tmp")
