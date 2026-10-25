@@ -158,12 +158,19 @@ class DevelopmentBranches:
             da, db = deltas[a], deltas[b]
             if da > 0 and db > 0:
                 boost = 2 + min(10, int(math.sqrt(da * db)))
-                edge["strength"] = min(100, int(edge.get("strength", 10)) + boost)
+                before = int(edge.get("strength", 10))
+                edge["strength"] = min(100, before + boost)
                 edge["uses"] = int(edge.get("uses", 0)) + 1
                 edge["last_used"] = now
+                edge.setdefault("history", []).append({"at": now, "strength": edge["strength"],
+                                                        "delta": edge["strength"] - before})
+                del edge["history"][:-60]
                 changed = True
             elif edge.get("last_used") and now - int(edge["last_used"]) > 14 * 86400 and edge.get("strength", 10) > 5:
-                edge["strength"] = int(edge["strength"]) - 1
+                before = int(edge["strength"])
+                edge["strength"] = before - 1
+                edge.setdefault("history", []).append({"at": now, "strength": edge["strength"], "delta": -1})
+                del edge["history"][:-60]
                 changed = True
 
         current = {key: int(item["xp"]) for key, item in raw.items()}
@@ -205,6 +212,7 @@ class DevelopmentBranches:
             edges.append({
                 "from": a, "to": b, "strength": int(saved.get("strength", 10)),
                 "uses": int(saved.get("uses", 0)), "last_used": int(saved.get("last_used", 0)),
+                "history": list(saved.get("history", []))[-60:],
             })
         return {
             "branches": branches, "edges": edges, "focus": self._focus(raw),
