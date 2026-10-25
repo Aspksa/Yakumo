@@ -280,7 +280,7 @@ def setup(ctx):
             memory.observe_entity(item["name"], item["type"], item["files"], "disk", item["relation"])
         return {"observed": len(grouped)}
 
-    def diagnostics():
+    def diagnostics(conflicts=None):
         k = knowledge.status()
         service = ctx.services.get("disk") if isinstance(getattr(ctx, "services", None), dict) else None
         disk_status, intel = {}, {}
@@ -290,7 +290,7 @@ def setup(ctx):
                 intel = service.intelligence() if hasattr(service, "intelligence") else {}
             except Exception:  # noqa: BLE001
                 disk_status, intel = {}, {}
-        mem = memory.diagnostics()
+        mem = memory.diagnostics(conflicts)
         chunks, vectors = int(k.get("chunks", 0) or 0), int(k.get("vectors", 0) or 0)
         mstat = mind.status()
         warnings = []
@@ -724,6 +724,7 @@ def setup(ctx):
 
     def state(_req=None):
         m = memory.data
+        conflicts = memory.conflicts()
         return {**{k: m[k] for k in SETTINGS},
                 "cloud": bool(cloud and cloud.api_key()), "busy": learner.busy or bool(learner.pending) or sleep.busy,
                 "error": learner.last_error, "kinds": list(KINDS), "entity_types": list(ENTITY_TYPES),
@@ -735,8 +736,8 @@ def setup(ctx):
                 "skills": m["skills"], "upcoming": memory.upcoming(7), "versions": memory.versions(), "areas": list(AREAS),
                 "entity_docs": m["meta"].get("entity_docs") or {}, "code": {**code.status(), "map": code.map},
                 "improvements": memory.improvements(), "traces": list(reversed(m["traces"][-100:])),
-                "conflicts": memory.conflicts(), "timeline": memory.timeline(), "activity_feed": memory.activity_feed(),
-                "diagnostics": diagnostics(),
+                "conflicts": conflicts, "timeline": memory.timeline(), "activity_feed": memory.activity_feed(),
+                "diagnostics": diagnostics(conflicts),
                 "storage": memory.storage_status(), "memory_tiers": memory.tier_counts(), "branches": branches.snapshot(),
                 "mind": mind.status(), "knowledge": knowledge.status(),
                 "lessons": sorted(m["lessons"], key=lambda x: -x.get("seen", 1)),
