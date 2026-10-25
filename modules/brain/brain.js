@@ -1109,6 +1109,35 @@
               "📄 " + p.split("/").pop()))) : ""))));
   }
 
+  function evolutionCard() {
+    const e = state.data.evolution || {};
+    const runs = e.runs || [];
+    return h("section", { class: "card br-evolution" },
+      h("div", { class: "br-evolution-head" },
+        h("div", {}, h("span", { class: "br-eyebrow" }, "YAKUMO / EVOLUTION"),
+          h("h3", {}, "Эволюционная лаборатория"),
+          h("p", { class: "row-hint" }, "Четыре стратегии поиска соревнуются на одинаковых синтетических запросах. Код, веса и действующий поиск не меняются.")),
+        h("button", { class: "btn primary", type: "button", onclick: () => send("evolution/compete", {}) },
+          "Провести экзамен")),
+      h("div", { class: "br-evolution-stats" },
+        h("span", {}, "Поколений: " + (e.total_generations || 0)),
+        h("span", {}, "Кандидатов: " + (e.policies || []).length),
+        h("span", {}, "Автоприменение: отключено")),
+      runs.length ? h("div", { class: "br-evolution-runs" }, ...runs.slice(0, 5).map(run =>
+        h("div", { class: "br-evolution-run" },
+          h("div", { class: "br-evolution-row" },
+            h("strong", {}, "Поколение " + run.generation),
+            h("span", {}, "Лучший: " + run.winner)),
+          h("div", { class: "row-hint" }, "Образцов: " + run.sample_size + " · " + (run.warning || "")),
+          h("div", { class: "br-evolution-candidates" }, ...(run.candidates || []).map(c =>
+            h("div", { class: "br-evolution-candidate" },
+              h("span", {}, c.name),
+              h("meter", { min: "0", max: "1", value: String(c.accuracy), "aria-label": c.name }),
+              h("strong", {}, Math.round(c.accuracy * 100) + "%"),
+              h("small", {}, c.latency_ms + " мс")))))) :
+        h("p", { class: "row-hint" }, "Поколений пока нет. Экзамен работает на копии ограниченного набора фактов.")));
+  }
+
   function mindView() {
     const m = state.data.mind || {};
     const k = state.data.knowledge || {};
@@ -1128,6 +1157,7 @@
           budget),
         h("p", { class: "row-hint" }, k.available ? L.knowledge(k) : L.noDisk)),
       brainCard(),
+      evolutionCard(),
       diagnosticsCard(),
       journalCard(),
       activityCard(),
@@ -1376,6 +1406,7 @@
       + d.wishes.length + d.notes.length + d.links.length;
     return [
       branchesCard(),
+      evolutionCard(),
       h("div", { class: "br-grow-actions" }, btn("exam", L.examNow), btn("style", L.styleNow), btn("study", L.studyNow),
         btn("curious", L.curiousNow), btn("consolidate", L.consolidateNow), btn("foresee", L.foreseeNow)),
       d.best ? h("p", { class: "row-hint" }, L.best(d.best)) : "",
