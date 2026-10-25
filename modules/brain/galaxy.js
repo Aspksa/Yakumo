@@ -134,7 +134,20 @@
       if (members.length >= 3) constellations.push({ f, members });
     }
     constellations.splice(12);
-    return { areas, arms, stars, lost, hole, byId, comets, constellations };
+    // Actual pairwise links from facts, capped to avoid drawing dense graphs.
+    const edges = [], seenEdges = new Set();
+    for (const f of d.facts) {
+      if (f.archived || edges.length >= 180) continue;
+      const ids = [...new Set(f.about || [])].filter(id => byId[id] && !byId[id].lost).slice(0, 6);
+      for (let i = 0; i < ids.length && edges.length < 180; i++)
+        for (let j = i + 1; j < ids.length && edges.length < 180; j++) {
+          const key = [String(ids[i]), String(ids[j])].sort().join("|");
+          if (seenEdges.has(key)) continue;
+          seenEdges.add(key);
+          edges.push({from: byId[ids[i]], to: byId[ids[j]], created: f.created || 0});
+        }
+    }
+    return { areas, arms, stars, lost, hole, byId, comets, constellations, edges };
   }
 
   // --- Сцена ---
@@ -226,8 +239,24 @@
     card.dataset.key = "card";
     const ctl = el("div", "gx-ctl gx-float");
     ctl.dataset.key = "ctl";
-    host.append(stage, warp, labels, note, card, ctl);
-    view = { host, stage, labels, warp, note, card, ctl, alive: false, gl: null };
+    const observatory = el("div", "gx-observatory");
+    const history = el("div", "gx-history");
+    history.hidden = true;
+    const minimap = document.createElement("canvas");
+    minimap.className = "gx-minimap"; minimap.width = 160; minimap.height = 110;
+    minimap.title = "Мини-карта: выберите область";
+    minimap.setAttribute("aria-label", minimap.title);
+    minimap.addEventListener("click", e => {
+      if (!view?.gl?.world?.stars.length) return;
+      const bounds = minimap.getBoundingClientRect();
+      const mx = ((e.clientX - bounds.left) / bounds.width - .5) * 1550;
+      const mz = ((e.clientY - bounds.top) / bounds.height - .5) * 1065;
+      const star = [...view.gl.world.stars].sort((a,b) =>
+        (a.pos[0]-mx)**2+(a.pos[2]-mz)**2-( (b.pos[0]-mx)**2+(b.pos[2]-mz)**2 ))[0];
+      if (star) jump(star);
+    });
+    host.append(stage, warp, labels, note, card, ctl, observatory, history, minimap);
+    view = { host, stage, labels, warp, note, card, ctl, observatory, history, minimap, alive: false, gl: null, contemplative: false };
     buildControls();
     for (const box of [card, ctl]) floating(box);
     return view;
@@ -282,7 +311,55 @@
     const hint = el("p", "gx-hint", L.hint);
     hint.hidden = store.get("yakumo.galaxy.hintSeen", false);
     help.onclick = () => { hint.hidden = !hint.hidden; store.set("yakumo.galaxy.hintSeen", true); };
-    ctl.append(grip, reset, sel, help, hint);
+    const observe = el("button", "gx-btn", "◉");
+    observe.type = "button"; observe.title = "Созерцание: скрыть панели"; observe.setAttribute("aria-label", observe.title);
+    observe.onclick = () => {
+      view.contemplative = !view.contemplative;
+      view.host.classList.toggle("gx-contemplative", view.contemplative);
+      observe.title = view.contemplative ? "Вернуть панели" : "Созерцание: скрыть панели";
+      observe.setAttribute("aria-label", observe.title);
+    };
+    const flight = el("button", "gx-btn", "✧");
+    flight.type = "button"; flight.title = "Полёт по созвездиям"; flight.setAttribute("aria-label", flight.title);
+    flight.onclick = () => {
+      const gl = view.gl;
+      if (!gl?.world?.stars.length) return;
+      const stars = [...gl.world.stars].sort((a,b) => b.facts.length - a.facts.length);
+      const links = (gl.world.edges || []).filter(e => e.from === gl.selected || e.to === gl.selected);
+      const related = links.map(e => e.from === gl.selected ? e.to : e.from);
+      const choices = related.length ? related : stars;
+      const next = choices[(gl.tourIndex = ((gl.tourIndex ?? -1) + 1) % choices.length)];
+      jump(next);
+    };
+    const nebula = el("select", "gx-select");
+    nebula.title = "Детализация туманностей"; nebula.setAttribute("aria-label", nebula.title);
+    for (const [key, name] of [["normal","Туманности"],["low","Лёгкие туманности"]]) {
+      const option = el("option", "", name); option.value = key; nebula.append(option);
+    }
+    nebula.value = store.get("yakumo.galaxy.nebula", "normal");
+    nebula.onchange = () => { store.set("yakumo.galaxy.nebula", nebula.value); rebuild(); };
+    const history = el("button", "gx-btn", "◷");
+    history.type = "button"; history.title = "История наблюдений и изменений";
+    history.onclick = () => {
+      view.history.hidden = !view.history.hidden;
+      renderObservations();
+    };
+    const weakest = el("button", "gx-btn", "◇");
+    weakest.type = "button"; weakest.title = "Наименее заполненная область памяти";
+    weakest.onclick = () => {
+      const gl = view.gl;
+      if (!gl?.world?.stars?.length) return;
+      const buckets = new Map();
+      for (const star of gl.world.stars)
+        buckets.set(star.area, (buckets.get(star.area) || 0) + star.facts.length);
+      const least = [...buckets].sort((a,b) => a[1]-b[1])[0]?.[0];
+      const target = gl.world.stars.filter(x=>x.area===least).sort((a,b)=>a.facts.length-b.facts.length)[0];
+      if (target) jump(target);
+    };
+    const stats = el("button", "gx-btn", "FPS");
+    stats.type = "button"; stats.title = "Показать диагностику кадра";
+    stats.onclick = () => view.observatory.classList.toggle("gx-observatory-open");
+    ctl.append(grip, reset, sel, nebula, flight, weakest, observe, history, stats, help, hint);
   }
 
   // --- WebGL ---
@@ -299,6 +376,20 @@
     renderer.setPixelRatio(Math.min(devicePixelRatio || 1, q.ratio));
     renderer.setClearColor(0x05040a, 1);
     view.stage.replaceChildren(renderer.domElement);
+    renderer.domElement.addEventListener("webglcontextlost", e => {
+      e.preventDefault();
+      view.note.textContent = "WebGL-контекст потерян. Ожидаю восстановление…";
+      view.note.hidden = false;
+      if (view.raf) cancelAnimationFrame(view.raf);
+      view.raf = 0;
+    });
+    renderer.domElement.addEventListener("webglcontextrestored", () => {
+      // Renderer owns the newly restored GPU context; rebuild buffers explicitly.
+      if (view.gl?.renderer !== renderer) return;
+      if (data) populate();
+      view.note.hidden = true;
+      if (view.alive && !document.hidden && !view.raf) view.raf = requestAnimationFrame(frame);
+    });
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(60, 1, 1, 20000);
     const tex = { soft: spriteTexture(THREE, "soft"), flare: spriteTexture(THREE, "flare"), ring: spriteTexture(THREE, "ring") };
@@ -323,13 +414,27 @@
     for (const o of [...scene.children]) if (o !== galaxy) { disposeTree(o); scene.remove(o); }
     gl.meteors = [];
     gl.flashes.clear();
+    gl.comets = [];
     gl.mats.forEach((m) => m.dispose());
     gl.mats = [];
     const w = gl.world = buildWorld(data);
+    // One static minimap redraw per graph update, no extra WebGL scene.
+    const mini = view.minimap.getContext("2d");
+    if (mini) {
+      mini.clearRect(0,0,160,110);
+      mini.fillStyle = "#09101e"; mini.fillRect(0,0,160,110);
+      for (const star of w.stars) {
+        const x = 80 + star.pos[0] * .102, y = 55 + star.pos[2] * .102;
+        mini.beginPath(); mini.arc(x,y,Math.min(3,1+star.facts.length*.18),0,Math.PI*2);
+        mini.fillStyle = AREA_HUE[star.area] || "#e3bd82"; mini.fill();
+      }
+    }
+
     const mat = (o) => { const m = pointsMaterial(THREE, o); gl.mats.push(m); return m; };
     const rand = rng(7);
     // Пыль рукавов: цвет своей области жизни, к ядру — тёплое золото.
     const arms = w.areas.length ? w.areas : ["other", "other"];
+    const nebulaMultiplier = store.get("yakumo.galaxy.nebula", "normal") === "low" ? .5 : 1;
     const dust = [];
     // Три визуальных слоя в том же бюджете частиц: туманная вуаль,
     // основной спиральный рукав и отдельные яркие нити.
@@ -369,9 +474,19 @@
     coreGlow.scale.set(420, 420, 1);
     galaxy.add(coreGlow);
     gl.core = coreGlow;
+    for (let i = 0; i < 3; i++) {
+      const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: tex.soft, color: i === 0 ? 0xffd487 : i === 1 ? 0xffbc68 : 0xa69df1,
+        transparent: true, opacity: .16 - i * .035, blending: THREE.AdditiveBlending, depthWrite: false
+      }));
+      const radius = 520 + i * 220;
+      halo.scale.set(radius, radius * .75, 1);
+      halo.position.y = -15 * i;
+      galaxy.add(halo);
+    }
     // Туманности: облака газа вдоль рукавов своих областей.
     w.areas.forEach((area, ai) => {
-      for (let k = 0; k < 7; k++) {
+      for (let k = 0; k < Math.ceil(7 * nebulaMultiplier); k++) {
         const r = 150 + k * 70 + rand() * 40, a = ai / w.arms * Math.PI * 2 + r * 0.0062 + (rand() - 0.5) * 0.2;
         const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex.soft, color: AREA_HUE[area], transparent: true,
                                                                opacity: 0.075 + rand() * 0.06, blending: THREE.AdditiveBlending, depthWrite: false }));
@@ -409,6 +524,19 @@
         galaxy.add(ring);
         s.ring = ring;
       }
+    }
+    // Связи по реальным общим фактам. Изогнутые линии статичны:
+    // движущиеся импульсы запускаются только событиями памяти.
+    for (const edge of w.edges) {
+      const a = new THREE.Vector3(...edge.from.pos), b = new THREE.Vector3(...edge.to.pos);
+      const midpoint = a.clone().add(b).multiplyScalar(.5);
+      midpoint.y += 35 + Math.min(120, a.distanceTo(b) * .08);
+      const curve = new THREE.QuadraticBezierCurve3(a, midpoint, b);
+      const mesh = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints(curve.getPoints(12)),
+        new THREE.LineBasicMaterial({color: 0xe2be7d,transparent:true,
+          opacity:.13,depthWrite:false,blending:THREE.AdditiveBlending}));
+      galaxy.add(mesh);
     }
     // Созвездия событий — тонкие золотые линии.
     if (w.constellations.length) {
@@ -710,6 +838,7 @@
     }
     const dt = Math.min(0.05, (now - (gl.last || now)) / 1000);
     gl.last = now;
+    gl.lastPaintGap = gl.lastPaint ? now - gl.lastPaint : 0;
     gl.lastPaint = now;
     gl.time += dt;
     view.raf = requestAnimationFrame(frame);
@@ -808,7 +937,17 @@
     }
     const renderStarted = performance.now();
     gl.renderer.render(gl.scene, gl.camera);
-    autoQuality(performance.now() - renderStarted, now);
+    const cost = performance.now() - renderStarted;
+    autoQuality(cost, now);
+    gl.lastRenderMs = cost;
+    if (now - (gl.lastStats || 0) >= 1000) {
+      gl.lastStats = now;
+      const observed = gl.lastPaintGap ? Math.round(1000 / gl.lastPaintGap) : 0;
+      view.observatory.textContent = "FPS: " + observed + " · кадр: " +
+        cost.toFixed(1) + " мс · качество: " + quality() +
+        " · звёзд памяти: " + gl.world.stars.length +
+        " · поколений: " + (data?.evolution?.total_generations || 0);
+    }
     placeLabels();
   }
 
@@ -902,6 +1041,49 @@
     if (data) populate();
   }
 
+  // A truthful timeline, not reconstructed snapshots: only observations made
+  // since this client started recording are stored. No private fact text persists.
+  function recordObservation(d) {
+    const history = store.get("yakumo.galaxy.observations", []);
+    const items = Array.isArray(history) ? history.slice(-79) : [];
+    const factIds = new Set((d.facts || []).map(f => String(f.id)));
+    const previous = store.get("yakumo.galaxy.observationIds", []);
+    const added = previous.length ? [...factIds].filter(id => !previous.includes(id)).length : 0;
+    store.set("yakumo.galaxy.observationIds", [...factIds].slice(-3000));
+    const entry = {time: Date.now(), facts: factIds.size,
+      entities: (d.entities || []).length, skills: (d.skills || []).length,
+      generations: d.evolution?.total_generations || 0, added};
+    const last = items[items.length - 1];
+    if (!last || [last.facts,last.entities,last.skills,last.generations].some((v,i) =>
+      v !== [entry.facts,entry.entities,entry.skills,entry.generations][i])) {
+      items.push(entry); store.set("yakumo.galaxy.observations", items.slice(-80));
+    }
+  }
+
+  function renderObservations() {
+    if (!view?.history) return;
+    const entries = store.get("yakumo.galaxy.observations", []);
+    const panel = view.history;
+    panel.replaceChildren(el("strong", "", "История наблюдений Yakumo"));
+    panel.append(el("p", "gx-muted",
+      "Только реально сохранённые наблюдения. Прошлое до включения этой функции недоступно."));
+    if (!Array.isArray(entries) || !entries.length) {
+      panel.append(el("p", "", "Пока нет наблюдений.")); return;
+    }
+    const first = entries[0], last = entries[entries.length - 1];
+    panel.append(el("p", "", "Изменение: факты " + (last.facts-first.facts >= 0 ? "+" : "") +
+      (last.facts-first.facts) + ", навыки " + (last.skills-first.skills >= 0 ? "+" : "") +
+      (last.skills-first.skills) + ", эволюция +" + (last.generations-first.generations)));
+    for (const x of [...entries].reverse().slice(0, 12)) {
+      const btn = el("button", "gx-history-event",
+        new Date(x.time).toLocaleString() + " · факты " + x.facts +
+        " · узлы " + x.entities + " · навыки " + x.skills + " · эксперименты " + x.generations);
+      btn.type = "button";
+      btn.onclick = () => { location.hash = "#/brain"; };
+      panel.append(btn);
+    }
+  }
+
   // --- Данные и монтирование ---
   async function load(force = false) {
     if (!force && Date.now() - lastLoad < 60000 && data) return;
@@ -911,6 +1093,7 @@
       const sig = (x) => x && `${x.facts.length}|${x.facts.filter((f) => f.archived).length}|${x.entities.map((e) => e.id + (e.area || "")).join()}|${(x.promises || []).length}`;
       const changed = !data || sig(d) !== sig(data);
       data = d;
+      recordObservation(d);
       if (changed && view.gl) populate();
     } catch {
       view.note.textContent = L.empty;

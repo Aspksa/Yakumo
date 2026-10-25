@@ -73,3 +73,33 @@ body[data-page="home"] .topbar:hover, body[data-page="home"] .topbar:focus-withi
   .gx-ctl { left: 8px; bottom: 8px; width: calc(100% - 16px); }
 }
 @media (prefers-reduced-motion: reduce) { .gx-warp.on { animation: none; } }
+
+
+/* Home observatory: unobtrusive controls, observable historical facts only. */
+.gx-observatory{position:absolute;top:12px;right:12px;z-index:4;padding:8px 12px;
+ background:#080d19de;border:1px solid #d2af724a;border-radius:12px;
+ color:#eadab9;font-size:12px;pointer-events:none;opacity:0;transition:opacity .2s}
+.gx-observatory.gx-observatory-open{opacity:1}
+.gx-history{position:absolute;right:12px;bottom:78px;width:min(430px,calc(100% - 24px));
+ max-height:55%;overflow:auto;z-index:7;background:#0a0e1bf2;
+ border:1px solid #d2af7266;box-shadow:0 16px 55px #0009;
+ border-radius:18px;padding:16px;color:#f2e2c7}
+.gx-history[hidden]{display:none}
+.gx-history p{font-size:12px;line-height:1.5}
+.gx-history-event{display:block;width:100%;text-align:left;margin:7px 0;padding:8px 10px;
+ border-radius:9px;border:1px solid #ffffff20;background:#ffffff08;color:inherit;cursor:pointer;font-size:12px}
+.gx-history-event:hover{background:#d2af7222}
+.gx.gx-contemplative .gx-card,.gx.gx-contemplative .gx-labels{display:none!important}
+.gx.gx-contemplative .gx-history{display:none!important}
+.gx.gx-contemplative .gx-ctl{opacity:.12;transition:opacity .25s}
+.gx.gx-contemplative .gx-ctl:hover,.gx.gx-contemplative .gx-ctl:focus-within{opacity:1}
+@media(max-width:640px){.gx-observatory{top:54px;left:8px;right:auto;font-size:11px}
+.gx-history{bottom:115px;right:8px;width:calc(100% - 16px)}}
+
+
+.gx-minimap{position:absolute;right:14px;bottom:14px;width:160px;height:110px;
+ background:#09101eea;border:1px solid #d2af7260;border-radius:12px;z-index:4;cursor:crosshair;opacity:.75;transition:opacity .2s}
+.gx-minimap:hover,.gx-minimap:focus{opacity:1}
+.gx.gx-contemplative .gx-minimap{opacity:.12}
+.gx.gx-contemplative .gx-minimap:hover{opacity:1}
+@media(max-width:640px){.gx-minimap{width:105px;height:72px;right:8px;bottom:120px}}
