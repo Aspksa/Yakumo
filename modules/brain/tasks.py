@@ -41,22 +41,33 @@ class Tasks:
         self.queue: queue.Queue = queue.Queue()
         self.thread: threading.Thread | None = None
         self.threads: list[threading.Thread] = []
+        self.worker_lock = threading.RLock()
+        self.busy_workers: set[int] = set()
         self.stopping = False
 
     def add(self, task: str, title: str = "") -> dict:
         task = " ".join(task.split())[:2000]
         item = self.mind.thought("task", " ".join(title.split()) or task[:80], "queued", task=task)
         self.queue.put(item["id"])
-        if not any(t.is_alive() for t in self.threads):
+        if not self._has_idle_worker():
             self._start_worker("brain-tasks")
         return item
 
+    def _has_idle_worker(self) -> bool:
+        """Живой поток, застрявший в Cloud-вызове, не считается способным взять новую задачу."""
+        with self.worker_lock:
+            self.threads = [t for t in self.threads if t.is_alive()]
+            live_ids = {t.ident for t in self.threads if t.ident is not None}
+            self.busy_workers.intersection_update(live_ids)
+            return any(t.ident is not None and t.ident not in self.busy_workers for t in self.threads)
+
     def _start_worker(self, name: str = "brain-tasks") -> None:
         thread = threading.Thread(target=self._run, name=name, daemon=True)
-        self.thread = thread
-        self.threads = [t for t in self.threads if t.is_alive()]
-        self.threads.append(thread)
-        thread.start()
+        with self.worker_lock:
+            self.thread = thread
+            self.threads = [t for t in self.threads if t.is_alive()]
+            self.threads.append(thread)
+            thread.start()
 
     def retry(self, item: dict) -> None:
         """Watchdog переочередил задачу и запускает отдельного работника, даже если старый Cloud-вызов завис."""
@@ -93,11 +104,18 @@ class Tasks:
             if not item or item["status"] != "queued":
                 continue
             generation = int(item.get("generation", 0))
+            worker_id = threading.get_ident()
+            with self.worker_lock:
+                self.busy_workers.add(worker_id)
             try:
-                self.run(item, generation)
-            except Exception as exc:  # noqa: BLE001
-                log.warning("Память: фоновая задача не выполнена: %s", exc)
-                self.mind.finish(item, "failed", str(exc) or type(exc).__name__, generation=generation)
+                try:
+                    self.run(item, generation)
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("Память: фоновая задача не выполнена: %s", exc)
+                    self.mind.finish(item, "failed", str(exc) or type(exc).__name__, generation=generation)
+            finally:
+                with self.worker_lock:
+                    self.busy_workers.discard(worker_id)
 
     def _listing(self) -> str:
         return "\n".join(f"- {t.name}: {t.description}" for t in self.tools.values()
