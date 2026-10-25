@@ -533,6 +533,13 @@ class Memory:
                 if fixed != files:
                     f["files"] = fixed
                     count += 1
+            for collection in (self.data["entities"], self.data["traces"]):
+                for item in collection:
+                    files = item.get("files", [])
+                    fixed = [new + p[len(old):] if p == old or p.startswith(old + "/") else p for p in files]
+                    if fixed != files:
+                        item["files"] = fixed
+                        count += 1
             for d in self.data["drafts"]:
                 if d["path"] == old or d["path"].startswith(old + "/"):
                     d["path"] = new + d["path"][len(old):]
@@ -876,7 +883,7 @@ class Memory:
 
     # --- Структурная память: причины, решения, ошибки и незавершённая работа ---
 
-    def trace(self, kind: str, text: str, *, reason: str = "", result: str = "", status: str = "done",
+    def trace(self, kind: str, text: str, *, reason: str = "", result: str = "", status: str | None = None,
               files=None, about=None, source: str = "chat", talk: str | None = None, date: str | None = None) -> dict | None:
         if kind not in TRACE_KINDS:
             return None
@@ -1213,7 +1220,7 @@ class Memory:
                     try:
                         before = len(self.data["traces"])
                         restored = self.trace(x["kind"], x["text"], reason=x.get("reason", ""), result=x.get("result", ""),
-                                              status=x.get("status", "done"), files=x.get("files"), about=about,
+                                              status=x.get("status"), files=x.get("files"), about=about,
                                               source=x.get("source", "import"), date=x.get("date"))
                         if restored is not None and len(self.data["traces"]) > before:
                             if isinstance(x.get("created"), int):
