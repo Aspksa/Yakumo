@@ -16,6 +16,7 @@ from yakumo.core.cloud import CloudService
 from yakumo.core.config import Config
 from yakumo.core.modules import Context, load_all
 from yakumo.web.server import create_server
+from modules.brain.tasks import Tasks
 
 MODULES = Path(__file__).resolve().parents[1] / "modules"
 KEY = "good-key-1234567"
@@ -871,9 +872,209 @@ class GrowthTest(BrainBase):
         edge = next(e for e in snap["edges"] if e["from"] == "memory" and e["to"] == "logic")
         self.assertGreater(edge["strength"], before["strength"])
         self.assertEqual(edge["uses"], before["uses"] + 1)
+        self.assertTrue(edge["history"])
+        self.assertEqual(edge["history"][-1]["strength"], edge["strength"])
         self.assertIn(snap["focus"]["id"], {b["id"] for b in snap["branches"] if b["available"]})
         self.assertIn(snap["focus"]["action"],
                       {"consolidate", "exam", "study", "code_refine", "foresee", "ideas"})
+
+    def test_observability_memory_versions_conflicts_and_entity_cards(self):
+        memory = self.memory()
+        rev = "a" * 40
+        memory.version({"key": "seen:a", "kind": "seen", "revision": rev, "title": "main", "at": 10})
+        memory.version({"key": "install:a", "kind": "install", "revision": rev, "title": "main",
+                        "at": 20, "changes": ["Добавлена карта"], "total": 1})
+        versions = memory.versions()
+        same = [v for v in versions if v["revision"] == rev]
+        self.assertEqual(len(same), 1)
+        self.assertEqual(same[0]["kind"], "install")
+        self.assertIn("Добавлена карта", same[0]["changes"])
+        memory.version({"key": "rollback:a", "kind": "rollback", "revision": rev, "title": "main",
+                        "at": 30, "changes": ["Исправлен watchdog"], "total": 3})
+        same = [v for v in memory.versions() if v["revision"] == rev]
+        self.assertEqual(len(same), 1)
+        self.assertEqual(same[0]["kind"], "rollback")
+        self.assertEqual(set(same[0]["changes"]), {"Добавлена карта", "Исправлен watchdog"})
+        self.assertEqual(same[0]["total"], 3)
+
+        a = memory.add("Аня работает инженером", "person", about=[{"name": "Аня", "type": "person"}])
+        b = memory.add("Аня работает водителем", "person", about=[{"name": "Аня", "type": "person"}])
+        conflicts = memory.conflicts()
+        self.assertTrue(any({x["a"], x["b"]} == {a["id"], b["id"]} for x in conflicts))
+        self.assertTrue(all(not x["verified"] and x["status"] == "needs_clarification" for x in conflicts))
+
+        e1 = memory.observe_entity("Toyota-Hilux", "thing", ["Гараж/путевой лист.docx"], relation="автомобиль")
+        e2 = memory.observe_entity("Toyota Hilux", "thing", ["Гараж/чек.pdf"], relation="автомобиль")
+        self.assertEqual(e1["id"], e2["id"])
+        card = next(e for e in memory.entities() if e["id"] == e1["id"])
+        self.assertIn("Toyota Hilux", card.get("aliases", []))
+        self.assertEqual(set(card["files"]), {"Гараж/путевой лист.docx", "Гараж/чек.pdf"})
+        source_trace = memory.trace("decision", "Источник переезжает", files=["Гараж/чек.pdf"])
+        memory.moved("Гараж", "Архив/Гараж")
+        card = next(e for e in memory.entities() if e["id"] == e1["id"])
+        self.assertEqual(set(card["files"]), {"Архив/Гараж/путевой лист.docx", "Архив/Гараж/чек.pdf"})
+        self.assertEqual(source_trace["files"], ["Архив/Гараж/чек.pdf"])
+        cpp = memory.entity("C++", "project")
+        csharp = memory.entity("C#", "project")
+        self.assertNotEqual(cpp["id"], csharp["id"])
+
+        trace = memory.trace("decision", "Выбрали локальный индекс", reason="не отправлять документы в облако",
+                             result="использовать SQLite", status="done", files=["Документы/решение.docx"])
+        self.assertIsNotNone(trace)
+        progress_default = memory.trace("progress", "Проверить оставшиеся документы")
+        self.assertEqual(progress_default["status"], "open")
+        self.assertEqual(memory.timeline()[0]["kind"], "decision")
+        self.assertTrue(memory.activity_feed())
+
+        alpha = memory.trace("progress", "Перестроить индекс", status="open",
+                             about=[{"name": "Проект Alpha", "type": "project"}])
+        beta = memory.trace("progress", "Перестроить индекс", status="done",
+                            about=[{"name": "Проект Beta", "type": "project"}])
+        self.assertNotEqual(alpha["id"], beta["id"])
+        self.assertEqual(alpha["status"], "open")
+        self.assertEqual(beta["status"], "done")
+
+        only_trace = memory.trace("project_error", "Ошибка отдельного проекта", status="done",
+                                  about=[{"name": "Проект Gamma", "type": "project"}])
+        gamma_id = only_trace["about"][0]
+        memory.add("Новый несвязанный факт", "other")
+        self.assertTrue(any(e["id"] == gamma_id for e in memory.entities()))
+
+        old_event = memory.event("Старое событие", "2020-01-01")
+        recent = memory.trace("decision", "Недатированное свежее решение", status="done")
+        timeline = memory.timeline(500)
+        positions = {x["id"]: i for i, x in enumerate(timeline)}
+        self.assertLess(positions[recent["id"]], positions[old_event["id"]])
+
+    def test_observed_entity_survives_backup_round_trip(self):
+        memory = self.memory()
+        entity = memory.observe_entity("Н954МУ125", "thing", ["Документы/путевой лист.docx"],
+                                       source="disk", relation="автомобиль")
+        entity["aliases"] = ["Н 954 МУ 125"]
+        exported = memory.export()
+        memory.clear()
+        memory.import_(exported)
+        restored = next(e for e in memory.entities() if e["name"] == "Н954МУ125")
+        self.assertTrue(restored.get("observed"))
+        self.assertTrue(restored.get("keep"))
+        self.assertEqual(restored.get("relation"), "автомобиль")
+        self.assertIn("Н 954 МУ 125", restored.get("aliases", []))
+        self.assertEqual(restored.get("files"), ["Документы/путевой лист.docx"])
+        self.assertIn("disk", restored.get("sources", []))
+
+    def test_trace_export_import_preserves_entity_scope(self):
+        memory = self.memory()
+        alpha = memory.trace("progress", "Перестроить индекс", status="open",
+                             about=[{"name": "Проект Alpha", "type": "project"}])
+        beta = memory.trace("progress", "Перестроить индекс", status="done",
+                            about=[{"name": "Проект Beta", "type": "project"}])
+        alpha["created"], alpha["updated"] = 100, 150
+        beta["created"], beta["updated"] = 200, 250
+        exported = memory.export()
+        memory.clear()
+        memory.import_(exported)
+        traces = [x for x in memory.data["traces"] if x["text"] == "Перестроить индекс"]
+        self.assertEqual(len(traces), 2)
+        names = {e["id"]: e["name"] for e in memory.entities()}
+        scopes = [{names[i] for i in x.get("about", [])} for x in traces]
+        self.assertIn({"Проект Alpha"}, scopes)
+        self.assertIn({"Проект Beta"}, scopes)
+        self.assertEqual({x["status"] for x in traces}, {"open", "done"})
+        by_name = {next(iter({names[i] for i in x.get("about", [])})): x for x in traces}
+        self.assertEqual((by_name["Проект Alpha"]["created"], by_name["Проект Alpha"]["updated"]), (100, 150))
+        self.assertEqual((by_name["Проект Beta"]["created"], by_name["Проект Beta"]["updated"]), (200, 250))
+
+    def test_conflicts_group_by_entity_and_state_reuses_result(self):
+        memory = self.memory()
+        now = int(time.time())
+        memory.data["facts"] = [
+            {"id": f"u{i}", "text": f"Уникальная запись номер {i}", "kind": "other",
+             "about": [f"entity-{i}"], "created": now, "last_seen": now, "seen": 1, "importance": 2}
+            for i in range(1000)
+        ]
+        memory.data["facts"] += [
+            {"id": "ca", "text": "Проект общий статус красный", "kind": "work",
+             "about": ["shared"], "created": now, "last_seen": now, "seen": 1, "importance": 2},
+            {"id": "cb", "text": "Проект общий статус зелёный", "kind": "work",
+             "about": ["shared"], "created": now, "last_seen": now, "seen": 1, "importance": 2},
+        ]
+        store_module = sys.modules[memory.__class__.__module__]
+        original_alike = store_module.alike
+        calls = {"n": 0}
+        def counted_alike(a, b):
+            calls["n"] += 1
+            return original_alike(a, b)
+        store_module.alike = counted_alike
+        try:
+            found = memory.conflicts()
+        finally:
+            store_module.alike = original_alike
+        self.assertEqual(calls["n"], 1)
+        self.assertEqual({found[0]["a"], found[0]["b"]}, {"ca", "cb"})
+
+        original_conflicts = memory.conflicts
+        state_calls = {"n": 0}
+        def counted_conflicts(limit=30):
+            state_calls["n"] += 1
+            return original_conflicts(limit)
+        memory.conflicts = counted_conflicts
+        try:
+            self.get("/api/brain")
+        finally:
+            memory.conflicts = original_conflicts
+        self.assertEqual(state_calls["n"], 1)
+
+    def test_learner_saves_causes_decisions_errors_and_unfinished_work(self):
+        FakeCloud.learned = {
+            "new": [], "seen": [], "outdated": [],
+            "traces": [
+                {"kind": "cause", "text": "Поиск был медленным", "reason": "индекс не был построен", "status": "done"},
+                {"kind": "decision", "text": "Решили перестроить индекс", "reason": "поиск был медленным",
+                 "result": "запустить переиндексацию", "status": "done"},
+                {"kind": "project_error", "text": "Индекс не обновлялся", "reason": "ошибка фоновой задачи",
+                 "result": "исправлен запуск", "status": "done"},
+                {"kind": "progress", "text": "Переделать поиск", "result": "осталось проверить PDF"},
+            ],
+            "title": "Работа над поиском", "summary": "Разобрали проблему индекса."
+        }
+        FakeCloud.replies = ["Поняла."]
+        self.chat([{"role": "user", "content": "Поиск тормозил из-за индекса. Решили его перестроить; PDF ещё проверить."}])
+        self.wait_for(lambda: len(self.get("/api/brain")["traces"]) == 4)
+        state = self.get("/api/brain")
+        self.assertEqual({x["kind"] for x in state["traces"]},
+                         {"cause", "decision", "project_error", "progress"})
+        self.assertEqual(state["diagnostics"]["memory"]["open_progress"], 1)
+        self.assertTrue(any(x["status"] == "open" for x in state["timeline"] if x["kind"] == "progress"))
+
+    def test_watchdog_stops_stale_thought_and_does_not_let_late_finish_revive_it(self):
+        mind = self.mind
+        thought = mind.thought("doc", "Зависшее чтение")
+        thought["heartbeat"] = int(time.time()) - 16 * 60
+        self.assertEqual(mind.watchdog(), 1)
+        self.assertEqual(thought["status"], "failed")
+        self.assertTrue(thought["stale"])
+        self.assertFalse(mind.finish(thought, "done", "поздний ответ"))
+        self.assertEqual(thought["status"], "failed")
+
+        task = mind.thought("task", "Повторяемая задача", "running", task="проверка")
+        old_generation = int(task["generation"])
+        task["generation"] = old_generation + 1
+        self.assertFalse(mind.finish(task, "failed", "поздняя ошибка старого запуска",
+                                     generation=old_generation))
+        self.assertEqual(task["status"], "running")
+
+    def test_background_tasks_replace_alive_but_blocked_workers(self):
+        tasks = Tasks(self.memory(), self.mind, {}, lambda: "ru")
+        blocked1 = SimpleNamespace(ident=101, is_alive=lambda: True)
+        blocked2 = SimpleNamespace(ident=102, is_alive=lambda: True)
+        tasks.threads = [blocked1, blocked2]
+        tasks.busy_workers = {101, 102}
+        started = []
+        tasks._start_worker = lambda name="brain-tasks": started.append(name)
+        item = tasks.add("Следующая задача после двух зависших запросов")
+        self.assertEqual(item["status"], "queued")
+        self.assertEqual(started, ["brain-tasks"])
+        self.assertFalse(tasks._has_idle_worker())
 
     def test_foresee_prepares_in_advance(self):
         self.memory().promise("Сдать отчёт по практике", due=time.strftime("%Y-%m-%d"))
@@ -892,6 +1093,31 @@ class GrowthTest(BrainBase):
         self.assertIn("foresee", kinds)
         self.assertIn("task", kinds)
         self.assertEqual(self.tick("Growth").foresee(), [])  # раз в день
+
+    def test_disk_entity_sync_accumulates_all_source_documents(self):
+        calls = {"n": 0}
+        def graph(_limit):
+            calls["n"] += 1
+            return {"entities": [
+                {"path": "Документы/а.docx", "people": ["Анна Иванова"], "vehicles": ["Н954МУ125"]},
+                {"path": "Документы/б.pdf", "people": ["Анна Иванова"], "vehicles": ["Н954МУ125"]},
+            ]}
+        self.ctx.services["disk"] = SimpleNamespace(entity_graph=graph)
+        sync = next(fn for name, _mode, _every, fn in self.mind.jobs if name == "disk_entities")
+        memory = self.memory()
+        memory.settings(enabled=False, docs=False)
+        self.assertEqual(sync()["observed"], 0)
+        self.assertEqual(calls["n"], 0)
+        self.assertEqual(memory.entities(), [])
+        memory.settings(enabled=True, docs=True)
+        self.assertEqual(sync()["observed"], 2)
+        self.assertEqual(calls["n"], 1)
+        entities = memory.entities()
+        person = next(e for e in entities if e["name"] == "Анна Иванова")
+        vehicle = next(e for e in entities if e["name"] == "Н954МУ125")
+        expected = {"Документы/а.docx", "Документы/б.pdf"}
+        self.assertEqual(set(person["files"]), expected)
+        self.assertEqual(set(vehicle["files"]), expected)
 
     # --- Мозг и Диск ---
 

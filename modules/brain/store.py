@@ -20,6 +20,7 @@ from .storage import BrainDB
 # о человеке, вкусы, дела и планы, прочее, о самой Yakumo и ваших отношениях
 KINDS = ("person", "likes", "work", "other", "self")
 ENTITY_TYPES = ("person", "pet", "place", "project", "org", "thing")
+TRACE_KINDS = ("cause", "decision", "project_error", "progress")
 SETTINGS = {"enabled": True,    # использовать память в чате
             "auto": True,       # самой запоминать из разговоров
             "sleep": True,      # «сон»: ночная уборка памяти и утреннее сообщение
@@ -109,6 +110,13 @@ def _id() -> str:
     return uuid.uuid4().hex[:10]
 
 
+def _entity_key(value: str) -> str:
+    """Консервативный ключ: нормализуем только явные разделители, не стираем смысловые символы C++/C#."""
+    value = value.casefold().replace("ё", "е")
+    value = re.sub(r"[\s._\-‐‑‒–—―]+", " ", value, flags=re.U)
+    return " ".join(value.split())
+
+
 def _ids(value) -> list[str]:
     if isinstance(value, str):
         return [value]
@@ -139,7 +147,7 @@ class Memory:
             if type(data.get(key)) is not bool:
                 data[key] = default
         data["facts"] = [f for f in data.get("facts", []) if isinstance(f, dict) and isinstance(f.get("text"), str)]
-        for name in ("talks", "entities", "promises", "events", "skills", "inbox", "versions", "improvements", *GROWTH):
+        for name in ("talks", "entities", "promises", "events", "skills", "inbox", "versions", "improvements", "traces", *GROWTH):
             data[name] = [x for x in data.get(name, []) if isinstance(x, dict) and isinstance(x.get("id"), str)]
         for key in ("days", "meta", "chains", "style"):
             if not isinstance(data.get(key), dict):
@@ -239,14 +247,18 @@ class Memory:
     # --- Люди, места, проекты (граф) ---
 
     def entity(self, name: str, etype: str = "thing", relation: str = "") -> dict:
-        """Найти по имени или создать. Тип и отношение («сестра») уточняются, если были неизвестны."""
+        """Найти или создать сущность, безопасно объединяя только нормализованные варианты имени."""
         name = _clean(name, 60)
         etype = etype if etype in ENTITY_TYPES else "thing"
         relation = " ".join(relation.split())[:40] if isinstance(relation, str) else ""
         with self.lock:
-            key = name.lower()
+            key = _entity_key(name)
             for e in self.data["entities"]:
-                if e["name"].lower() == key or key in (a.lower() for a in e.get("aliases", [])):
+                aliases = [e.get("name", ""), *e.get("aliases", [])]
+                if key and any(_entity_key(str(a)) == key for a in aliases):
+                    if name != e.get("name") and name not in e.get("aliases", []):
+                        e.setdefault("aliases", []).append(name)
+                        e["aliases"] = e["aliases"][-20:]
                     if relation and not e.get("relation"):
                         e["relation"] = relation
                     if etype != "thing" and e.get("type") == "thing":
@@ -254,6 +266,22 @@ class Memory:
                     return e
             e = {"id": _id(), "name": name, "type": etype, "relation": relation, "created": int(time.time())}
             self.data["entities"].append(e)
+            return e
+
+    def observe_entity(self, name: str, etype: str = "thing", files=None, source: str = "disk",
+                       relation: str = "") -> dict:
+        """Добавить наблюдаемую сущность без превращения гипотезы Диска в факт."""
+        with self.lock:
+            e = self.entity(name, etype, relation)
+            e["keep"] = True
+            e["observed"] = True
+            e["last_seen"] = int(time.time())
+            sources = e.setdefault("sources", [])
+            if source and source not in sources:
+                sources.append(str(source)[:40])
+            clean_files = [str(p).replace("\\", "/").strip("/") for p in files or [] if isinstance(p, str) and p.strip()]
+            e["files"] = list(dict.fromkeys([*e.get("files", []), *clean_files]))[-50:]
+            self.save()
             return e
 
     def _about(self, about) -> list[str]:
@@ -274,13 +302,30 @@ class Memory:
         return ids[:8]
 
     def entities(self) -> list[dict]:
-        """Люди и места с числом фактов о них (для карты памяти)."""
+        """Сущности с фактами, документами и ближайшими связями для карточки/карты."""
         with self.lock:
             counts: dict[str, int] = {}
+            files: dict[str, list[str]] = {}
+            related: dict[str, dict[str, int]] = {}
+            latest: dict[str, int] = {}
             for f in self.data["facts"]:
-                for i in f.get("about", []):
+                ids = [i for i in f.get("about", []) if isinstance(i, str)]
+                for i in ids:
                     counts[i] = counts.get(i, 0) + 1
-            return [dict(e, facts=counts.get(e["id"], 0)) for e in self.data["entities"]]
+                    latest[i] = max(latest.get(i, 0), int(f.get("updated", f.get("created", 0)) or 0))
+                    files[i] = list(dict.fromkeys([*files.get(i, []), *f.get("files", [])]))[-50:]
+                    for j in ids:
+                        if j != i:
+                            related.setdefault(i, {})[j] = related.setdefault(i, {}).get(j, 0) + 1
+            result = []
+            for e in self.data["entities"]:
+                eid = e["id"]
+                rel = sorted(related.get(eid, {}).items(), key=lambda x: (-x[1], x[0]))[:8]
+                result.append(dict(e, facts=counts.get(eid, 0),
+                                   files=list(dict.fromkeys([*e.get("files", []), *files.get(eid, [])]))[-50:],
+                                   related=[{"id": rid, "weight": weight} for rid, weight in rel],
+                                   latest=latest.get(eid, int(e.get("last_seen", e.get("created", 0)) or 0))))
+            return result
 
     def edit_entity(self, entity_id: str, name=None, etype=None, relation=None) -> dict:
         with self.lock:
@@ -311,6 +356,7 @@ class Memory:
     def _prune_entities(self) -> None:
         used = {i for f in self.data["facts"] for i in f.get("about", [])}
         used |= {i for x in self.data["events"] + self.data["promises"] for i in x.get("about", [])}
+        used |= {i for x in self.data["traces"] for i in x.get("about", [])}
         self.data["entities"] = [e for e in self.data["entities"] if e["id"] in used or e.get("keep")]
 
     # --- Факты ---
@@ -487,6 +533,13 @@ class Memory:
                 if fixed != files:
                     f["files"] = fixed
                     count += 1
+            for collection in (self.data["entities"], self.data["traces"]):
+                for item in collection:
+                    files = item.get("files", [])
+                    fixed = [new + p[len(old):] if p == old or p.startswith(old + "/") else p for p in files]
+                    if fixed != files:
+                        item["files"] = fixed
+                        count += 1
             for d in self.data["drafts"]:
                 if d["path"] == old or d["path"].startswith(old + "/"):
                     d["path"] = new + d["path"][len(old):]
@@ -828,10 +881,134 @@ class Memory:
             st["active"] = version_id
             self.save()
 
+    # --- Структурная память: причины, решения, ошибки и незавершённая работа ---
+
+    def trace(self, kind: str, text: str, *, reason: str = "", result: str = "", status: str | None = None,
+              files=None, about=None, source: str = "chat", talk: str | None = None, date: str | None = None) -> dict | None:
+        if kind not in TRACE_KINDS:
+            return None
+        text = _clean(text, 400)
+        reason = " ".join(str(reason or "").split())[:500]
+        result = " ".join(str(result or "").split())[:500]
+        status = status if status in ("open", "done", "failed") else ("open" if kind == "progress" else "done")
+        clean_files = [p.replace("\\", "/").strip("/") for p in files or [] if isinstance(p, str) and p.strip()][:20]
+        about_ids = self._about(about)
+        scope = frozenset(about_ids)
+        with self.lock:
+            # Одинаковый текст у разных проектов/людей — разные следы. Дедупликация только в том же scope.
+            same = next((x for x in reversed(self.data["traces"][-500:])
+                         if x.get("kind") == kind
+                         and frozenset(x.get("about", [])) == scope
+                         and alike(x.get("text", ""), text)), None)
+            if same:
+                same.update(text=text, reason=reason or same.get("reason", ""),
+                            result=result or same.get("result", ""), status=status,
+                            updated=int(time.time()))
+                same["files"] = list(dict.fromkeys([*same.get("files", []), *clean_files]))[-20:]
+                same["about"] = list(dict.fromkeys([*same.get("about", []), *about_ids]))[:12]
+                self.save()
+                return same
+            item = {"id": _id(), "kind": kind, "text": text, "reason": reason, "result": result,
+                    "status": status, "source": str(source)[:40], "created": int(time.time())}
+            if date and _date(date):
+                item["date"] = _date(date)
+            if clean_files:
+                item["files"] = clean_files
+            if about_ids:
+                item["about"] = about_ids
+            if talk:
+                item["talk"] = str(talk)[:80]
+            self.data["traces"].append(item)
+            del self.data["traces"][:-MAX_ITEMS]
+            self.save()
+            return item
+
+    def conflicts(self, limit: int = 30) -> list[dict]:
+        """Кандидаты на противоречие только внутри одной сущности и вида факта."""
+        active = [f for f in self.data["facts"] if not f.get("archived") and not f.get("superseded")]
+        groups: dict[tuple[str, str], list[dict]] = {}
+        word_cache: dict[str, set[str]] = {}
+        for fact in active:
+            about = set(fact.get("about", []))
+            if not about:
+                continue
+            word_cache[fact["id"]] = words(fact.get("text", ""))
+            for entity_id in about:
+                groups.setdefault((entity_id, fact.get("kind", "other")), []).append(fact)
+
+        out, seen_pairs = [], set()
+        cap = max(1, min(int(limit), 200))
+        for facts in groups.values():
+            for i, a in enumerate(facts):
+                wa = word_cache[a["id"]]
+                for b in facts[i + 1:]:
+                    pair = tuple(sorted((a["id"], b["id"])))
+                    if pair in seen_pairs:
+                        continue
+                    seen_pairs.add(pair)
+                    if alike(a.get("text", ""), b.get("text", "")):
+                        continue
+                    common = wa & word_cache[b["id"]]
+                    if len(common) < 2:
+                        continue
+                    out.append({"a": a["id"], "b": b["id"], "status": "needs_clarification",
+                                "shared": sorted(common)[:8], "verified": False})
+                    if len(out) >= cap:
+                        return out
+        return out
+
+    def timeline(self, limit: int = 100) -> list[dict]:
+        """Единая временная память без выдумывания причинности."""
+        rows = []
+        for x in self.data["traces"]:
+            rows.append({"kind": x.get("kind"), "text": x.get("text"), "at": int(x.get("updated", x.get("created", 0)) or 0),
+                         "date": x.get("date"), "status": x.get("status"), "reason": x.get("reason", ""),
+                         "result": x.get("result", ""), "files": x.get("files", []), "id": x.get("id")})
+        for e in self.data["events"]:
+            rows.append({"kind": "event", "text": e.get("text"), "at": int(e.get("created", 0) or 0),
+                         "date": e.get("date"), "id": e.get("id")})
+        for p in self.data["promises"]:
+            rows.append({"kind": "promise", "text": p.get("text"), "at": int(p.get("done_at", p.get("created", 0)) or 0),
+                         "date": p.get("due"), "status": "done" if p.get("done") else "open", "id": p.get("id")})
+        def effective_at(item: dict) -> float:
+            value = item.get("date")
+            if isinstance(value, str):
+                try:
+                    day = dt.date.fromisoformat(value)
+                    return dt.datetime.combine(day, dt.time.min).timestamp()
+                except ValueError:
+                    pass
+            return float(item.get("at", 0) or 0)
+
+        return sorted(rows, key=effective_at, reverse=True)[:max(1, min(int(limit), 1000))]
+
+    def activity_feed(self, limit: int = 50) -> list[dict]:
+        rows = []
+        for t in self.data["thoughts"]:
+            at = int(t.get("finished", t.get("started", t.get("created", 0))) or 0)
+            rows.append({"kind": "thought", "title": t.get("title", ""), "status": t.get("status"), "at": at,
+                         "detail": t.get("kind", "")})
+        for v in self.versions():
+            rows.append({"kind": "version", "title": v.get("title") or v.get("revision", "")[:7],
+                         "status": v.get("kind"), "at": int(v.get("at", 0) or 0), "detail": v.get("revision", "")[:7]})
+        for x in self.data["traces"]:
+            rows.append({"kind": x.get("kind"), "title": x.get("text", ""), "status": x.get("status"),
+                         "at": int(x.get("updated", x.get("created", 0)) or 0), "detail": x.get("reason", "")})
+        return sorted(rows, key=lambda x: -x.get("at", 0))[:max(1, min(int(limit), 200))]
+
+    def diagnostics(self, conflicts: list[dict] | None = None) -> dict:
+        ids = {e["id"] for e in self.data["entities"]}
+        orphan_refs = sum(1 for f in self.data["facts"] for i in f.get("about", []) if i not in ids)
+        tiers = self.tier_counts()
+        conflict_items = self.conflicts(100) if conflicts is None else conflicts
+        return {"ok": not orphan_refs, "facts": len(self.data["facts"]), "entities": len(self.data["entities"]),
+                "tiers": tiers, "conflicts": len(conflict_items), "orphan_entity_refs": orphan_refs,
+                "open_progress": sum(x.get("kind") == "progress" and x.get("status") == "open" for x in self.data["traces"])}
+
     # --- История меня: свои версии ---
 
     def version(self, record: dict) -> dict | None:
-        """Запомнить установленную версию Yakumo. Одна и та же установка (key) не записывается дважды."""
+        """Запомнить версию; seen и install одного SHA схлопываются в одну карточку."""
         key = record.get("key") if isinstance(record, dict) else None
         revision = record.get("revision") if isinstance(record, dict) else None
         if not isinstance(key, str) or not key or not isinstance(revision, str) or not re.fullmatch(r"[a-f0-9]{40}", revision):
@@ -847,20 +1024,47 @@ class Memory:
                 return ""
 
         changes = [c for c in (text(x, 200) for x in record.get("changes") or [] if isinstance(x, str)) if c][:15]
+        payload = {
+            "key": key[:100], "kind": kind, "revision": revision,
+            "from_revision": previous if isinstance(previous, str) and re.fullmatch(r"[a-f0-9]{40}", previous) else None,
+            "title": text(record.get("title"), 200), "date": text(record.get("date"), 40),
+            "at": int(at) if isinstance(at, (int, float)) and at > 0 else int(time.time()),
+            "changes": changes, "total": record.get("total") if type(record.get("total")) is int else len(changes)}
         with self.lock:
             if any(v.get("key") == key for v in self.data["versions"]):
                 return None
-            return self.add_item("versions", {
-                "key": key[:100], "kind": kind, "revision": revision,
-                "from_revision": previous if isinstance(previous, str) and re.fullmatch(r"[a-f0-9]{40}", previous) else None,
-                "title": text(record.get("title"), 200), "date": text(record.get("date"), 40),
-                "at": int(at) if isinstance(at, (int, float)) and at > 0 else int(time.time()),
-                "changes": changes, "total": record.get("total") if type(record.get("total")) is int else len(changes)},
-                MAX_VERSIONS)
+            same = [v for v in self.data["versions"] if v.get("revision") == revision]
+            if same:
+                rank = {"seen": 0, "install": 1, "rollback": 2}
+                keep = max(same, key=lambda v: (rank.get(v.get("kind"), 0), v.get("at", 0)))
+                old_changes = list(dict.fromkeys(c for v in same for c in v.get("changes", []) if isinstance(c, str)))
+                old_total = max([int(v.get("total", 0) or 0) for v in same] + [len(old_changes)])
+                if rank.get(kind, 0) >= rank.get(keep.get("kind"), 0):
+                    keep.update({k: v for k, v in payload.items() if v not in (None, "", [])})
+                keep["changes"] = list(dict.fromkeys([*old_changes, *changes]))[:15]
+                keep["total"] = max(old_total, int(payload.get("total", 0) or 0), len(keep["changes"]))
+                self.data["versions"] = [v for v in self.data["versions"] if v is keep or v.get("revision") != revision]
+                self.save()
+                return keep
+            return self.add_item("versions", payload, MAX_VERSIONS)
 
     def versions(self) -> list[dict]:
-        """Свои версии, новые сверху."""
-        return sorted(self.data["versions"], key=lambda v: -v.get("at", 0))
+        """Свои версии, новые сверху; старые дубли одного SHA скрываются без потери деталей."""
+        rank = {"seen": 0, "install": 1, "rollback": 2}
+        grouped: dict[str, dict] = {}
+        for v in self.data["versions"]:
+            rev = v.get("revision") or v.get("id")
+            current = grouped.get(rev)
+            if current is None or (rank.get(v.get("kind"), 0), v.get("at", 0)) > (
+                    rank.get(current.get("kind"), 0), current.get("at", 0)):
+                base, other = dict(v), current
+            else:
+                base, other = dict(current), v
+            if other:
+                base["changes"] = list(dict.fromkeys([*base.get("changes", []), *other.get("changes", [])]))[:15]
+                base["total"] = max(int(base.get("total", 0) or 0), int(other.get("total", 0) or 0), len(base["changes"]))
+            grouped[rev] = base
+        return sorted(grouped.values(), key=lambda v: -v.get("at", 0))
 
     # --- Улучшения: что доработать в самой Yakumo ---
 
@@ -925,7 +1129,7 @@ class Memory:
 
     def clear(self) -> None:
         with self.lock:
-            for name in ("facts", "talks", "entities", "promises", "events", "skills", "inbox", *GROWTH):
+            for name in ("facts", "talks", "entities", "promises", "events", "skills", "inbox", "traces", *GROWTH):
                 self.data[name] = []
             self.data["days"], self.data["chains"], self.data["style"] = {}, {}, {}
             self.save()
@@ -957,7 +1161,7 @@ class Memory:
     def export(self) -> dict:
         with self.lock:
             out = {"yakumo_memory": 1, "exported": int(time.time())}
-            for name in ("facts", "talks", "entities", "promises", "events", "skills"):
+            for name in ("facts", "talks", "entities", "promises", "events", "skills", "traces"):
                 out[name] = list(self.data[name])
             return out
 
@@ -967,7 +1171,34 @@ class Memory:
             raise BrainError("Это не файл памяти Yakumo")
         facts = talks = 0
         with self.lock:
-            entity_names = {e.get("id"): e for e in data.get("entities", []) if isinstance(e, dict)}
+            raw_entities = data.get("entities", [])
+            raw_entities = raw_entities if isinstance(raw_entities, list) else []
+            entity_names = {e.get("id"): e for e in raw_entities if isinstance(e, dict)}
+            for source_entity in raw_entities[:MAX_ITEMS]:
+                if not isinstance(source_entity, dict) or not isinstance(source_entity.get("name"), str):
+                    continue
+                try:
+                    restored_entity = self.entity(source_entity["name"], source_entity.get("type", "thing"),
+                                                  source_entity.get("relation", ""))
+                except BrainError:
+                    continue
+                aliases = [a for a in source_entity.get("aliases", []) if isinstance(a, str) and a.strip()]
+                restored_entity["aliases"] = list(dict.fromkeys([*restored_entity.get("aliases", []), *aliases]))[-20:]
+                files = [p.replace("\\", "/").strip("/") for p in source_entity.get("files", [])
+                         if isinstance(p, str) and p.strip()]
+                restored_entity["files"] = list(dict.fromkeys([*restored_entity.get("files", []), *files]))[-50:]
+                sources = [str(x)[:40] for x in source_entity.get("sources", []) if isinstance(x, str) and x]
+                restored_entity["sources"] = list(dict.fromkeys([*restored_entity.get("sources", []), *sources]))[-20:]
+                if source_entity.get("observed") is True:
+                    restored_entity["observed"] = True
+                if source_entity.get("keep") is True:
+                    restored_entity["keep"] = True
+                if isinstance(source_entity.get("created"), int):
+                    restored_entity["created"] = min(int(restored_entity.get("created", source_entity["created"])),
+                                                     source_entity["created"])
+                if isinstance(source_entity.get("last_seen"), int):
+                    restored_entity["last_seen"] = max(int(restored_entity.get("last_seen", 0) or 0),
+                                                       source_entity["last_seen"])
             for f in data.get("facts", [])[:MAX_FACTS]:
                 if isinstance(f, dict) and isinstance(f.get("text"), str) and f["text"].strip():
                     before = len(self.data["facts"])
@@ -1005,6 +1236,24 @@ class Memory:
                 if isinstance(s, dict) and isinstance(s.get("name"), str) and isinstance(s.get("steps"), list):
                     try:
                         self.skill(s["name"], s["steps"], s.get("when", ""))
+                    except BrainError:
+                        pass
+            raw_traces = data.get("traces", [])
+            for x in (raw_traces if isinstance(raw_traces, list) else [])[:MAX_ITEMS]:
+                if isinstance(x, dict) and x.get("kind") in TRACE_KINDS and isinstance(x.get("text"), str):
+                    about = [{"name": entity_names[i]["name"], "type": entity_names[i].get("type", "thing"),
+                              "relation": entity_names[i].get("relation", "")}
+                             for i in x.get("about", []) if i in entity_names and isinstance(entity_names[i].get("name"), str)]
+                    try:
+                        before = len(self.data["traces"])
+                        restored = self.trace(x["kind"], x["text"], reason=x.get("reason", ""), result=x.get("result", ""),
+                                              status=x.get("status"), files=x.get("files"), about=about,
+                                              source=x.get("source", "import"), date=x.get("date"))
+                        if restored is not None and len(self.data["traces"]) > before:
+                            if isinstance(x.get("created"), int):
+                                restored["created"] = x["created"]
+                            if isinstance(x.get("updated"), int):
+                                restored["updated"] = x["updated"]
                     except BrainError:
                         pass
             self.save()

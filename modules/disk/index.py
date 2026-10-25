@@ -326,6 +326,16 @@ class Index:
                 "timeline": timeline(records)[:limit],
                 "warning": "Обнаруженные связи требуют проверки по исходным документам"}
 
+    def work_candidates(self, limit: int = 300) -> list[dict]:
+        """Read-only мост Диск → Работа: извлечённые кандидаты, без изменения учёта."""
+        from .entities import extract_entities, work_candidates
+        with self.lock:
+            rows = self.db.execute("""SELECT path,ifnull(text,''),ifnull(ocr,''),ifnull(photo,'')
+                FROM files ORDER BY path LIMIT 1500""").fetchall()
+        records = [extract_entities(path, " ".join([text, ocr, photo]))
+                   for path, text, ocr, photo in rows]
+        return work_candidates(records)[:max(1, min(int(limit), 1000))]
+
     def similar(self, rel: str, limit: int = 8) -> list[dict]:
         """Похожие документы: общие редкие слова текста и имени (без нейросети)."""
         data = self.text_of(rel)

@@ -75,7 +75,7 @@
       notes: "Конспекты по вашим темам", links: "Ассоциации",
       linksHint: "Связи между фактами, которые Yakumo нашла, пока вы не работали. На карте — пунктиром.",
       good: "Хороший ответ", bad: "Плохой ответ", whyBad: "Что было не так? (можно пропустить)",
-      kindsT2: { feedback: "Разбор 👎", curious: "Любопытство", consolidate: "Уроки", think: "Мысль", edit: "Правки", foresee: "Наперёд", doc: "Документ" },
+      kindsT2: { feedback: "Разбор 👎", curious: "Любопытство", consolidate: "Уроки", think: "Мысль", edit: "Правки", foresee: "Наперёд", doc: "Документ", ideas: "Идеи" },
       docs: "Читать новые документы", docsHint: "Положили файл на Диск — Yakumo сама прочитает его: суммы, стороны и номера запомнит со ссылкой на файл, сроки добавит в напоминания, о важном напишет в чат и предложит, в какую папку его положить. Тратит фоновые запросы.",
       brain: "Рост мозга", neurons: (n) => `${n} ${plural(n, "нейрон", "нейрона", "нейронов")}`,
       linksN: (n) => `${n} ${plural(n, "связь", "связи", "связей")}`,
@@ -114,6 +114,17 @@
                       code_refine: "разбор собственного кода", foresee: "планирование наперёд", ideas: "генерация идей" },
       tiersTitle: "Memory Engine 2.1", tiersHint: "Память сама перемещает знания между слоями, старое не удаляется бесследно.",
       tiers: { operational: "Оперативная", episodic: "Эпизодическая", longterm: "Долговременная", archive: "Архивная" },
+      edgeHistory: "История силы связи", noEdgeHistory: "Связь ещё не меняла силу.",
+      diagnosticsTitle: "Диагностика памяти и индекса", diagnosticsOk: "Всё согласовано", diagnosticsWarn: "Нужна проверка",
+      conflictsTitle: "Возможные противоречия", needsClarification: "требует уточнения",
+      vectorCoverage: (n) => `векторы: ${n}%`, indexedDocs: (n) => `интеллект-индекс: ${n} док.`,
+      orphanRefs: (n) => `битых ссылок: ${n}`, activityTitle: "Лента активности Yakumo",
+      journalTitle: "Временная память и решения",
+      traceKinds: { cause: "Причина", decision: "Решение", project_error: "Ошибка проекта", progress: "Ход работы",
+                    event: "Событие", promise: "Обещание" },
+      openProgress: "незавершено", reason: "Почему", result: "Результат / осталось",
+      sourceDocs: "Исходные документы", aliases: "Другие написания", relatedEntities: "Связанные сущности",
+      staleThought: "watchdog остановил зависшую мысль",
       best: (n) => `Ответов с 👍 (образцы для стиля): ${n}`,
       curiousNow: "Задать мне вопрос", consolidateNow: "Укрепить уроки", foreseeNow: "Подумать наперёд",
       emptyGrow: "Yakumo только начинает расти", emptyGrowHint: "Уроки, стиль, желания и конспекты появятся после разговоров и первого простоя.",
@@ -184,7 +195,7 @@
       notes: "Notes on your topics", links: "Associations",
       linksHint: "Connections between facts Yakumo found while you were away. Dashed on the map.",
       good: "Good answer", bad: "Bad answer", whyBad: "What was wrong? (optional)",
-      kindsT2: { feedback: "👎 review", curious: "Curiosity", consolidate: "Lessons", think: "Thought", edit: "Edits", foresee: "Ahead", doc: "Document" },
+      kindsT2: { feedback: "👎 review", curious: "Curiosity", consolidate: "Lessons", think: "Thought", edit: "Edits", foresee: "Ahead", doc: "Document", ideas: "Ideas" },
       docs: "Read new documents", docsHint: "Put a file on the Drive and Yakumo reads it herself: remembers amounts, parties and numbers with a link to the file, adds deadlines to reminders, writes to the chat about anything important and suggests a folder. Uses background requests.",
       brain: "Brain growth", neurons: (n) => `${n} ${n === 1 ? "neuron" : "neurons"}`,
       linksN: (n) => `${n} ${n === 1 ? "link" : "links"}`,
@@ -223,6 +234,17 @@
                       code_refine: "self-code review", foresee: "forward planning", ideas: "idea generation" },
       tiersTitle: "Memory Engine 2.1", tiersHint: "Memory moves knowledge between layers automatically; old knowledge is not silently destroyed.",
       tiers: { operational: "Operational", episodic: "Episodic", longterm: "Long-term", archive: "Archive" },
+      edgeHistory: "Link strength history", noEdgeHistory: "This link has not changed strength yet.",
+      diagnosticsTitle: "Memory & index diagnostics", diagnosticsOk: "Everything is consistent", diagnosticsWarn: "Review needed",
+      conflictsTitle: "Possible conflicts", needsClarification: "needs clarification",
+      vectorCoverage: (n) => `vectors: ${n}%`, indexedDocs: (n) => `intelligence index: ${n} docs`,
+      orphanRefs: (n) => `broken refs: ${n}`, activityTitle: "Yakumo activity feed",
+      journalTitle: "Timeline & decisions",
+      traceKinds: { cause: "Cause", decision: "Decision", project_error: "Project error", progress: "Work progress",
+                    event: "Event", promise: "Promise" },
+      openProgress: "unfinished", reason: "Why", result: "Result / remaining",
+      sourceDocs: "Source documents", aliases: "Other spellings", relatedEntities: "Related entities",
+      staleThought: "watchdog stopped a stuck thought",
       best: (n) => `Answers with 👍 (style examples): ${n}`,
       curiousNow: "Ask me a question", consolidateNow: "Strengthen lessons", foreseeNow: "Think ahead",
       emptyGrow: "Yakumo is just starting to grow", emptyGrowHint: "Lessons, style, wishes and notes appear after conversations and the first idle time.",
@@ -868,6 +890,10 @@
     const e = (state.data.entities || []).find((x) => x.id === state.node);
     if (!e) return "";
     const facts = state.data.facts.filter((f) => (f.about || []).includes(e.id));
+    const docs = e.files || [];
+    const related = (e.related || []).map((r) => ({ ...r, entity: state.data.entities.find((x) => x.id === r.id) }))
+      .filter((r) => r.entity);
+    const traces = (state.data.traces || []).filter((x) => (x.about || []).includes(e.id)).slice(0, 12);
     const name = h("input", { class: "text-input", value: e.name, maxlength: 60, "aria-label": L.rename });
     const rel = h("input", { class: "text-input", value: e.relation || "", maxlength: 40, placeholder: L.relation,
                              "aria-label": L.relation });
@@ -881,6 +907,18 @@
       } }, name, rel, type, area, h("button", { class: "btn primary", type: "submit" }, L.save),
         h("button", { class: "btn br-danger", type: "button",
                       onclick: () => { state.node = null; send("item/delete", { type: "entity", ids: [e.id] }); } }, L.del)),
+      e.aliases?.length ? h("div", { class: "br-entity-block" }, h("strong", {}, L.aliases),
+        h("div", { class: "br-chips" }, e.aliases.map((x) => h("span", { class: "br-chip" }, x)))) : "",
+      docs.length ? h("div", { class: "br-entity-block" }, h("strong", {}, L.sourceDocs),
+        h("div", { class: "br-chips" }, docs.slice(0, 30).map((p) =>
+          h("a", { class: "br-chip file", target: "_blank", href: `/api/disk/file?path=${encodeURIComponent(p)}` },
+            "📄 " + p.split("/").pop())))) : "",
+      related.length ? h("div", { class: "br-entity-block" }, h("strong", {}, L.relatedEntities),
+        h("div", { class: "br-chips" }, related.map((r) => h("button", { type: "button", class: "br-chip",
+          onclick: () => { state.node = r.entity.id; draw(); } }, `${r.entity.name} · ${r.weight}`)))) : "",
+      traces.length ? h("div", { class: "br-entity-block" }, h("strong", {}, L.journalTitle),
+        h("ul", { class: "br-mini-list" }, traces.map((x) => h("li", {},
+          h("b", {}, L.traceKinds[x.kind] || x.kind), " · ", x.text)))) : "",
       h("div", { class: "row-hint" }, L.factsAbout(facts.length)),
       h("ul", { class: "br-list" }, facts.map(factEl)));
   }
@@ -981,6 +1019,51 @@
 
   const time = (t) => new Date(t * 1000).toLocaleString(lang(), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
+  function diagnosticsCard() {
+    const d = state.data.diagnostics || {};
+    const m = d.memory || {}, k = d.knowledge || {}, intel = d.intelligence || {};
+    const facts = Object.fromEntries((state.data.facts || []).map((f) => [f.id, f.text]));
+    const conflicts = state.data.conflicts || [];
+    return h("section", { class: "card br-diagnostics " + (d.ok ? "ok" : "warn") },
+      h("div", { class: "br-diag-head" }, h("strong", {}, L.diagnosticsTitle),
+        h("span", { class: "br-status-chip" }, d.ok ? L.diagnosticsOk : L.diagnosticsWarn)),
+      h("div", { class: "br-diag-grid" },
+        h("span", {}, `${m.facts || 0} · ${L.dFacts}`),
+        h("span", {}, L.vectorCoverage(k.vector_coverage ?? 100)),
+        h("span", {}, L.indexedDocs(intel.indexed || 0)),
+        h("span", {}, L.orphanRefs(m.orphan_entity_refs || 0))),
+      conflicts.length ? h("div", { class: "br-conflicts" }, h("strong", {}, `${L.conflictsTitle} · ${conflicts.length}`),
+        h("ul", { class: "br-mini-list" }, conflicts.slice(0, 6).map((c) => h("li", {},
+          h("span", { class: "br-status-chip warn" }, L.needsClarification), " ",
+          `${facts[c.a] || c.a} ↔ ${facts[c.b] || c.b}`)))) : "");
+  }
+
+  function activityCard() {
+    const items = state.data.activity_feed || [];
+    if (!items.length) return "";
+    return h("section", { class: "br-kind br-activity" }, h("h2", {}, L.activityTitle, h("span", {}, String(items.length))),
+      h("ul", { class: "br-mini-list" }, items.slice(0, 24).map((x) =>
+        h("li", {}, h("b", {}, L.traceKinds[x.kind] || L.kindsT[x.detail] || L.kindsT2[x.detail] || x.kind),
+          h("span", { class: "br-meta" }, ` · ${time(x.at)}`), h("div", {}, x.title),
+          x.detail && x.kind !== "thought" && x.detail !== x.title ? h("small", {}, x.detail) : ""))));
+  }
+
+  function journalCard() {
+    const items = state.data.timeline || [];
+    if (!items.length) return "";
+    return h("section", { class: "br-kind br-journal" }, h("h2", {}, L.journalTitle, h("span", {}, String(items.length))),
+      h("ul", { class: "br-mini-list" }, items.slice(0, 30).map((x) =>
+        h("li", { class: x.status === "open" ? "open" : "" },
+          h("div", {}, h("b", {}, L.traceKinds[x.kind] || x.kind),
+            x.status === "open" ? h("span", { class: "br-status-chip warn" }, L.openProgress) : ""),
+          h("div", {}, x.text || ""),
+          x.reason ? h("small", {}, `${L.reason}: ${x.reason}`) : "",
+          x.result ? h("small", {}, `${L.result}: ${x.result}`) : "",
+          x.files?.length ? h("div", { class: "br-chips" }, x.files.map((p) =>
+            h("a", { class: "br-chip file", target: "_blank", href: `/api/disk/file?path=${encodeURIComponent(p)}` },
+              "📄 " + p.split("/").pop()))) : ""))));
+  }
+
   function mindView() {
     const m = state.data.mind || {};
     const k = state.data.knowledge || {};
@@ -1000,6 +1083,9 @@
           budget),
         h("p", { class: "row-hint" }, k.available ? L.knowledge(k) : L.noDisk)),
       brainCard(),
+      diagnosticsCard(),
+      journalCard(),
+      activityCard(),
       versionsCard(),
       selfMapCard(),
       h("section", { class: "br-kind" }, h("h2", {}, L.thoughts, h("span", {}, String(thoughts.length))),
@@ -1013,7 +1099,8 @@
                                        onclick: () => { state.open = open ? null : t.id; draw(); } }, t.title)
                 : h("div", { class: "br-fact-text" }, t.title),
               h("div", { class: "br-meta" }, h("span", { class: "br-status-chip" }, L.statuses[t.status] || t.status),
-                ` · ${time(t.started || t.created)}`, t.steps?.length ? ` · ${t.steps.join(" → ")}` : ""),
+                ` · ${time(t.started || t.created)}`, t.steps?.length ? ` · ${t.steps.join(" → ")}` : "",
+                t.stale ? ` · ${L.staleThought}` : ""),
               open && t.result ? h("div", { class: "br-quote br-result" }, t.result) : ""),
             h("div", { class: "br-tools" }, live ? tool("■", L.stop, () => send("thought/cancel", { id: t.id }).then(load), "danger") : ""));
         })) : empty(L.noThoughts, L.noThoughtsHint)),
@@ -1144,6 +1231,46 @@
       hint ? h("p", { class: "row-hint br-section-hint" }, hint) : "", body);
   }
 
+  function developmentMap(data, names, focus) {
+    const items = data?.branches || [];
+    if (!items.length) return "";
+    const pos = {
+      memory: [105, 170], documents: [240, 70], logic: [370, 160], code: [540, 70],
+      work: [235, 285], planning: [420, 285], creativity: [625, 185],
+    };
+    const svg = document.createElementNS(SVG, "svg");
+    svg.setAttribute("viewBox", "0 0 730 360");
+    svg.setAttribute("class", "br-devmap");
+    svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", L.branchesTitle);
+    const make = (tag, attrs, parent = svg) => {
+      const x = document.createElementNS(SVG, tag);
+      Object.entries(attrs).forEach(([k, v]) => x.setAttribute(k, v));
+      parent.append(x); return x;
+    };
+    const edges = make("g", { class: "br-dev-edges" });
+    for (const e of data.edges || []) {
+      const a = pos[e.from], b = pos[e.to];
+      if (!a || !b) continue;
+      const recent = e.last_used && Date.now() / 1000 - e.last_used < 2 * 86400;
+      const line = make("line", { x1: a[0], y1: a[1], x2: b[0], y2: b[1],
+        class: recent ? "pulse" : "", "data-strength": e.strength }, edges);
+      line.style.strokeWidth = String(1.2 + (e.strength || 0) / 13);
+      const title = make("title", {}, line);
+      title.textContent = `${names[e.from]} → ${names[e.to]} · ${L.linkStrength(e.strength)}`;
+    }
+    const nodes = make("g", { class: "br-dev-nodes" });
+    for (const b of items) {
+      const p = pos[b.id] || [365, 175];
+      const g = make("g", { class: "br-dev-node" + (focus.id === b.id ? " focus" : ""),
+                            transform: `translate(${p[0]} ${p[1]})` }, nodes);
+      make("circle", { r: 34 + Math.min(12, b.level * 2) }, g);
+      const t = make("text", { y: -2, "text-anchor": "middle" }, g); t.textContent = names[b.id];
+      const lvl = make("text", { y: 17, "text-anchor": "middle", class: "level" }, g); lvl.textContent = `L${b.level}`;
+    }
+    return svg;
+  }
+
   function branchesCard() {
     const data = state.data.branches;
     const items = data?.branches || [];
@@ -1154,6 +1281,7 @@
     return h("section", { class: "card br-branch-card" },
       h("div", { class: "br-brain-head" }, h("strong", {}, L.branchesTitle)),
       h("p", { class: "row-hint br-section-hint" }, L.branchesHint),
+      developmentMap(data, names, focus),
       focus.id ? h("div", { class: "br-focus" },
         h("strong", {}, L.focusTitle),
         h("span", {}, L.focusText(names[focus.id] || focus.id, L.focusActions[focus.action] || focus.action))) : "",
@@ -1167,11 +1295,20 @@
           h("div", { class: "br-meta" },
             [L.branchXp(b.xp), L.branchItems(b.items), L.branchLinks(b.links)].join(" · "))))),
       h("div", { class: "br-neural-title" }, L.neuralLinks),
-      h("div", { class: "br-neural" }, (data.edges || []).map((e) =>
-        h("div", { class: "br-edge" },
-          h("span", { class: "br-edge-names" }, `${names[e.from] || e.from} → ${names[e.to] || e.to}`),
-          h("span", { class: "br-edge-meter" }, h("b", { style: `width:${e.strength}%` })),
-          h("span", { class: "br-meta" }, `${L.linkStrength(e.strength)} · ${L.linkUses(e.uses)}`)))),
+      h("div", { class: "br-neural" }, (data.edges || []).map((e) => {
+        const id = `edge:${e.from}:${e.to}`, open = state.open === id, history = e.history || [];
+        const recent = e.last_used && Date.now() / 1000 - e.last_used < 2 * 86400;
+        return h("div", { class: "br-edge" + (recent ? " pulse" : "") },
+          h("button", { type: "button", class: "br-edge-toggle", onclick: () => { state.open = open ? null : id; draw(); } },
+            h("span", { class: "br-edge-names" }, `${names[e.from] || e.from} → ${names[e.to] || e.to}`),
+            h("span", { class: "br-edge-meter" }, h("b", { style: `width:${e.strength}%` })),
+            h("span", { class: "br-meta" }, `${L.linkStrength(e.strength)} · ${L.linkUses(e.uses)}`)),
+          open ? h("div", { class: "br-edge-history" }, h("strong", {}, L.edgeHistory),
+            history.length ? [sparkline(history.map((x) => x.strength), 420, 42),
+              h("div", { class: "br-meta" }, history.slice(-6).map((x) =>
+                `${date(x.at)}: ${x.strength}% (${x.delta > 0 ? "+" : ""}${x.delta})`).join(" · "))]
+              : h("p", { class: "row-hint" }, L.noEdgeHistory)) : "");
+      })),
       h("div", { class: "br-memory-tiers" },
         h("div", { class: "br-neural-title" }, L.tiersTitle),
         h("p", { class: "row-hint" }, L.tiersHint),

@@ -307,6 +307,7 @@ def setup(ctx):
             if index.settings().get("semantic") else {"processed": 0, "error": "Сначала включите семантический поиск"}),
         "/api/disk/intelligence/status": lambda _req: index.intelligence.status(),
         "/api/disk/intelligence/entities": lambda _req: index.entity_graph(),
+        "/api/disk/intelligence/work": lambda _req: {"items": index.work_candidates()},
         "/api/disk/intelligence/timeline": lambda r: {
             "items": index.intelligence.timeline()},
         "/api/disk/intelligence/discoveries": lambda r: {
@@ -361,5 +362,7 @@ def setup(ctx):
     services = getattr(ctx, "services", None)
     if isinstance(services, dict):
         services["disk"] = SimpleNamespace(documents=index.documents, search=smart_search,
-                                           text=lambda rel: index.text_of(rel)["text"], current=current_text)
+                                           text=lambda rel: index.text_of(rel)["text"], current=current_text,
+                                           status=index.status, intelligence=index.intelligence.status,
+                                           entity_graph=index.entity_graph, work_candidates=index.work_candidates)
     ctx.status(lambda: {"root": str(disk.root)})

@@ -6,8 +6,9 @@
   const root = h("div", { class: "wk-app" });
   const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
   const state = { month: today().slice(0,7), tab: "overview", garage: "vehicles", fuel: "entries", data: null, loading: false,
-    error: "", message: "", search: "", archived: false, book: null, sheet: "", period: "", preview: null, importing: false };
-  const tabs = { overview: "Обзор", garage: "Гараж", employees: "Сотрудники и водители", cards: "Топливные карты", attendance: "Табель", fuel: "ГСМ", imports: "Документы", history: "История" };
+    error: "", message: "", search: "", archived: false, book: null, sheet: "", period: "", preview: null, importing: false,
+    candidates: null, candidatesLoading: false };
+  const tabs = { overview: "Обзор", garage: "Гараж", employees: "Сотрудники и водители", cards: "Топливные карты", attendance: "Табель", fuel: "ГСМ", imports: "Документы", candidates: "Кандидаты Диска", history: "История" };
   const kinds = { opening: "Начальный остаток", receipt: "Поступление", writeoff: "Списание" };
   const statuses = { draft: "Черновик", closed: "Закрыт", cancelled: "Отменён", posted: "Проведено" };
   const working = new Set(["Я", "Н", "РВ", "С", "К"]);
@@ -379,6 +380,29 @@
       d.name,`${n(d.size,1024,1)} КБ`,toolbar(button("Выбрать лист",()=>inspectBook(d.id)),sourceLink(d.id))])):empty("Документы ещё не загружены"));
     return parts;
   }
+  async function loadCandidates() {
+    state.candidatesLoading = true; state.error = ""; draw();
+    try { state.candidates = await request("/disk-candidates"); }
+    catch(e) { state.error = e.message; state.candidates = {items:[],available:false}; }
+    finally { state.candidatesLoading = false; draw(); }
+  }
+  function candidatesView() {
+    const box = state.candidates;
+    if (!box) return [h("section",{class:"card wk-section"},h("h2",{},"Кандидаты из Диска"),
+      hint("Yakumo извлекает машину, водителя, дату, литры и сумму из документов. Это подсказки, а не проведённые операции."),
+      toolbar(button(state.candidatesLoading?"Читаю документы…":"Проверить документы",loadCandidates,true,state.candidatesLoading)))];
+    const items = box.items || [];
+    return [h("section",{class:"card wk-section"},h("h2",{},"Кандидаты из Диска"),
+      hint(box.warning || "Каждую строку нужно сверить с исходным документом. Ничего не попадает в ГСМ или путевые листы автоматически."),
+      toolbar(button(state.candidatesLoading?"Обновляю…":"Обновить кандидаты",loadCandidates,false,state.candidatesLoading)),
+      items.length ? table(["Дата","Автомобиль","Водитель","Литры","Сумма, руб.","Источник","Статус"],items.map(x=>[
+        x.date||"—",x.vehicle||"—",x.driver||"—",x.liters==null?"—":String(x.liters),x.amount==null?"—":String(x.amount),
+        h("a",{class:"wk-link",href:"/api/disk/file?path="+encodeURIComponent(x.path),target:"_blank",rel:"noopener"},x.path.split("/").pop()),
+        badge("Требует проверки")
+      ])) : empty(box.available===false?"Диск пока недоступен":"Кандидатов нет",
+                    box.available===false?"Откройте Диск и дождитесь индексации документов.":"Нужны документы с автомобилем и признаками ГСМ/путевого листа."))];
+  }
+
   function historyView() {
     return [toolbar(link("Резервная копия JSON","backup")),hint("История показывает последние 60 действий. Полная история и все учётные записи входят в резервную копию. Исходные Excel-файлы скачиваются отдельно в «Документы»."),
       table(["Когда","Действие","Раздел",""],state.data.audit.map(a=>[new Date(a.at*1000).toLocaleString("ru-RU"),a.action,
@@ -395,7 +419,7 @@
       "aria-current":state.tab===id?"page":undefined,onclick:()=>{state.tab=id;state.search="";draw();}},title)));
     let content;
     if(!state.data)content=[empty(state.loading?"Загружаю учёт…":"Учёт пока недоступен",state.error?"Попробуйте обновить страницу.":"")];
-    else content=({overview,garage,employees:employeesView,cards:cardsView,attendance:attendanceView,fuel:fuelView,imports:importsView,history:historyView}[state.tab])();
+    else content=({overview,garage,employees:employeesView,cards:cardsView,attendance:attendanceView,fuel:fuelView,imports:importsView,candidates:candidatesView,history:historyView}[state.tab])();
     root.replaceChildren(header,nav,state.error?h("div",{class:"wk-error wk-banner",role:"alert"},state.error):"",
       state.message?h("div",{class:"wk-message wk-banner",role:"status"},state.message,button("Скрыть",()=>{state.message="";draw();})):"",
       state.data?.limited.length?hint("В месяце больше 2000 записей: списки сокращены. Полные данные доступны в резервной копии."):"",
