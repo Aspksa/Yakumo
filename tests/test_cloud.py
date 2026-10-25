@@ -34,7 +34,9 @@ class FakeCloud(BaseHTTPRequestHandler):
 
     def do_GET(self):  # noqa: N802
         if self._auth():
-            self._json(200, {"data": [{"id": "ai-sage/GigaChat3-10B-A1.8B"}, {"id": "other/model"}]})
+            self._json(200, {"data": [{"id": "ai-sage/GigaChat3-10B-A1.8B"}, {"id": "other/model"},
+                                      {"id": "BAAI/bge-m3"}, {"id": "BAAI/bge-reranker-v2-m3"},
+                                      {"id": "GigaChat/GigaASR"}, {"id": "GigaChat/SaluteSpeech"}]})
 
     def do_POST(self):  # noqa: N802
         if not self._auth():
@@ -106,6 +108,9 @@ class CloudApiTest(unittest.TestCase):
         res = self.post("/api/cloud/test", {})
         self.assertTrue(res["ok"])
         self.assertEqual(res["models"], ["ai-sage/GigaChat3-10B-A1.8B", "other/model"])
+        self.assertEqual(res["model_groups"]["embedding"], ["BAAI/bge-m3"])
+        self.assertEqual(res["model_groups"]["reranker"], ["BAAI/bge-reranker-v2-m3"])
+        self.assertEqual(res["model_groups"]["audio"], ["GigaChat/GigaASR", "GigaChat/SaluteSpeech"])
         self.assertEqual(res["model"], "ai-sage/GigaChat3-10B-A1.8B")
         self.assertEqual(self.post("/api/cloud", {"model": "other/model"})["model"], "other/model")
         saved = json.loads(self.config_path.read_text(encoding="utf-8"))
