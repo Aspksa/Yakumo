@@ -337,7 +337,7 @@ class Memory:
 
     def _similar(self, text: str) -> dict | None:
         """Почти тот же факт (совпадает большинство слов) — чтобы не плодить повторы."""
-        return next((f for f in self.data["facts"] if alike(f["text"], text)), None)
+        return next((f for f in self.data["facts"] if not f.get("superseded") and alike(f["text"], text)), None)
 
     def add(self, text: str, kind: str = "other", importance: int = 2, source: str = "manual",
             pinned: bool = False, quote: str | None = None, about=None, files=None, talk: str | None = None) -> dict:
