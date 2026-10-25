@@ -27,6 +27,7 @@ from pathlib import Path
 from . import learn
 from .activity import Activity
 from .branches import DevelopmentBranches
+from .audit import summary as brain_audit_summary
 from .docs import Docs
 from .grow import Growth
 from .improve import ErrorCatcher, Improvements
@@ -740,6 +741,8 @@ def setup(ctx):
                 "improvements": memory.improvements(), "traces": list(reversed(m["traces"][-100:])),
                 "conflicts": conflicts, "timeline": memory.timeline(), "activity_feed": memory.activity_feed(),
                 "diagnostics": diagnostics(conflicts),
+                "full_audit": brain_audit_summary(m, mind=mind.status(), knowledge=knowledge.status(),
+                                                  branches=branches.snapshot()),
                 "storage": memory.storage_status(), "memory_tiers": memory.tier_counts(), "branches": branches.snapshot(),
                 "mind": mind.status(), "knowledge": knowledge.status(),
                 "lessons": sorted(m["lessons"], key=lambda x: -x.get("seen", 1)),
