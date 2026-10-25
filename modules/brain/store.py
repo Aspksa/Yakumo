@@ -917,26 +917,37 @@ class Memory:
             return item
 
     def conflicts(self, limit: int = 30) -> list[dict]:
-        """Только кандидаты на противоречие: никогда не решает, какой факт верный."""
+        """Кандидаты на противоречие только внутри одной сущности и вида факта."""
         active = [f for f in self.data["facts"] if not f.get("archived") and not f.get("superseded")]
-        out = []
-        for i, a in enumerate(active):
-            aa = set(a.get("about", []))
-            if not aa:
+        groups: dict[tuple[str, str], list[dict]] = {}
+        word_cache: dict[str, set[str]] = {}
+        for fact in active:
+            about = set(fact.get("about", []))
+            if not about:
                 continue
-            wa = words(a.get("text", ""))
-            for b in active[i + 1:]:
-                if a.get("kind") != b.get("kind") or not aa.intersection(b.get("about", [])):
-                    continue
-                if alike(a.get("text", ""), b.get("text", "")):
-                    continue
-                common = wa & words(b.get("text", ""))
-                if len(common) < 2:
-                    continue
-                out.append({"a": a["id"], "b": b["id"], "status": "needs_clarification",
-                            "shared": sorted(common)[:8], "verified": False})
-                if len(out) >= max(1, min(int(limit), 200)):
-                    return out
+            word_cache[fact["id"]] = words(fact.get("text", ""))
+            for entity_id in about:
+                groups.setdefault((entity_id, fact.get("kind", "other")), []).append(fact)
+
+        out, seen_pairs = [], set()
+        cap = max(1, min(int(limit), 200))
+        for facts in groups.values():
+            for i, a in enumerate(facts):
+                wa = word_cache[a["id"]]
+                for b in facts[i + 1:]:
+                    pair = tuple(sorted((a["id"], b["id"])))
+                    if pair in seen_pairs:
+                        continue
+                    seen_pairs.add(pair)
+                    if alike(a.get("text", ""), b.get("text", "")):
+                        continue
+                    common = wa & word_cache[b["id"]]
+                    if len(common) < 2:
+                        continue
+                    out.append({"a": a["id"], "b": b["id"], "status": "needs_clarification",
+                                "shared": sorted(common)[:8], "verified": False})
+                    if len(out) >= cap:
+                        return out
         return out
 
     def timeline(self, limit: int = 100) -> list[dict]:
@@ -978,13 +989,13 @@ class Memory:
                          "at": int(x.get("updated", x.get("created", 0)) or 0), "detail": x.get("reason", "")})
         return sorted(rows, key=lambda x: -x.get("at", 0))[:max(1, min(int(limit), 200))]
 
-    def diagnostics(self) -> dict:
+    def diagnostics(self, conflicts: list[dict] | None = None) -> dict:
         ids = {e["id"] for e in self.data["entities"]}
         orphan_refs = sum(1 for f in self.data["facts"] for i in f.get("about", []) if i not in ids)
         tiers = self.tier_counts()
-        conflicts = self.conflicts(100)
+        conflict_items = self.conflicts(100) if conflicts is None else conflicts
         return {"ok": not orphan_refs, "facts": len(self.data["facts"]), "entities": len(self.data["entities"]),
-                "tiers": tiers, "conflicts": len(conflicts), "orphan_entity_refs": orphan_refs,
+                "tiers": tiers, "conflicts": len(conflict_items), "orphan_entity_refs": orphan_refs,
                 "open_progress": sum(x.get("kind") == "progress" and x.get("status") == "open" for x in self.data["traces"])}
 
     # --- История меня: свои версии ---
@@ -1193,12 +1204,16 @@ class Memory:
                         self.skill(s["name"], s["steps"], s.get("when", ""))
                     except BrainError:
                         pass
-            for x in data.get("traces", [])[:MAX_ITEMS]:
+            raw_traces = data.get("traces", [])
+            for x in (raw_traces if isinstance(raw_traces, list) else [])[:MAX_ITEMS]:
                 if isinstance(x, dict) and x.get("kind") in TRACE_KINDS and isinstance(x.get("text"), str):
+                    about = [{"name": entity_names[i]["name"], "type": entity_names[i].get("type", "thing"),
+                              "relation": entity_names[i].get("relation", "")}
+                             for i in x.get("about", []) if i in entity_names and isinstance(entity_names[i].get("name"), str)]
                     try:
                         self.trace(x["kind"], x["text"], reason=x.get("reason", ""), result=x.get("result", ""),
-                                   status=x.get("status", "done"), files=x.get("files"), source=x.get("source", "import"),
-                                   date=x.get("date"))
+                                   status=x.get("status", "done"), files=x.get("files"), about=about,
+                                   source=x.get("source", "import"), date=x.get("date"))
                     except BrainError:
                         pass
             self.save()
