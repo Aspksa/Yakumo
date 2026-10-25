@@ -62,10 +62,10 @@ PROMPT = {
  "mood_note": "пара слов, почему (или пусто)",
  "wish": "чему Yakumo стоит научиться, раз сейчас не смогла помочь (или null)",
  "lesson": "правило для Yakumo, если пользователь её поправил или был недоволен ответом (или null)",
- "traces": [{"kind": "cause|decision|project_error|progress", "text": "что произошло/решили",
+ "traces": [{{"kind": "cause|decision|project_error|progress", "text": "что произошло/решили",
              "reason": "почему", "result": "результат/что осталось", "status": "open|done",
              "date": "YYYY-MM-DD или null", "files": ["путь из disk:ссылки"],
-             "about": [{"name": "сущность", "type": "person|pet|place|project|org|thing", "relation": ""}]}],
+             "about": [{{"name": "сущность", "type": "person|pet|place|project|org|thing", "relation": ""}}]}}],
  "title": "короткое название беседы, 2-6 слов",
  "summary": "конспект всей беседы в 1-4 предложениях: о чём говорили, что решили, что осталось сделать"}}
 
@@ -119,10 +119,10 @@ Reply ONLY with a JSON object, no comments:
  "mood_note": "a few words why (or empty)",
  "wish": "what Yakumo should learn because she couldn't help just now (or null)",
  "lesson": "a rule for Yakumo if the user corrected her or disliked the answer (or null)",
- "traces": [{"kind": "cause|decision|project_error|progress", "text": "what happened/was decided",
+ "traces": [{{"kind": "cause|decision|project_error|progress", "text": "what happened/was decided",
              "reason": "why", "result": "outcome/what remains", "status": "open|done",
              "date": "YYYY-MM-DD or null", "files": ["path from disk: link"],
-             "about": [{"name": "entity", "type": "person|pet|place|project|org|thing", "relation": ""}]}],
+             "about": [{{"name": "entity", "type": "person|pet|place|project|org|thing", "relation": ""}}]}}],
  "title": "short conversation title, 2-6 words",
  "summary": "summary of the whole conversation in 1-4 sentences: topics, decisions, what is left to do"}}
 
