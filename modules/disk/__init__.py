@@ -303,7 +303,8 @@ def setup(ctx):
         "/api/disk/shares": lambda _req: disk.shares(),
         "/api/disk/s": shared,
         "/api/disk/smart": smart,
-        "POST /api/disk/semantic/refresh": lambda _r: semantic.refresh(),
+        "POST /api/disk/semantic/refresh": lambda _r: (semantic.refresh()
+            if index.settings().get("semantic") else {"processed": 0, "error": "Сначала включите семантический поиск"}),
         "/api/disk/intelligence/status": lambda _req: index.intelligence.status(),
         "/api/disk/intelligence/entities": lambda _req: index.entity_graph(),
         "/api/disk/intelligence/timeline": lambda r: {
