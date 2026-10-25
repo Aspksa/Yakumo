@@ -159,7 +159,7 @@
       {id:"skills",name:"Навыки",color:"#f8ca85",count:(d.skills||[]).length+(d.user_tools||[]).length,href:"#/brain"},
       {id:"improve",name:"Улучшения",color:"#ff9c90",count:(d.improvements||[]).length,href:"#/brain"},
       {id:"evolution",name:"Эволюция",color:"#8fb0ff",count:evolution.total_generations||0,href:"#/brain"},
-      {id:"code",name:"Код проекта",color:"#75b9ce",count:Math.max(0,Number(d.code?.files||d.code?.file_count||0)),href:"#/brain"}
+      {id:"code",name:"Код проекта",color:"#75b9ce",count:Array.isArray(d.code?.files)?d.code.files.length:Math.max(0,Number(d.code?.files||d.code?.file_count||0)||0),href:"#/brain"}
     ];
     return list.map((item,i)=>({...item,pos:[Math.cos(i*Math.PI/3)*980,85,Math.sin(i*Math.PI/3)*980]}));
   }
