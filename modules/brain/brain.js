@@ -1231,6 +1231,46 @@
       hint ? h("p", { class: "row-hint br-section-hint" }, hint) : "", body);
   }
 
+  function developmentMap(data, names, focus) {
+    const items = data?.branches || [];
+    if (!items.length) return "";
+    const pos = {
+      memory: [105, 170], documents: [240, 70], logic: [370, 160], code: [540, 70],
+      work: [235, 285], planning: [420, 285], creativity: [625, 185],
+    };
+    const svg = document.createElementNS(SVG, "svg");
+    svg.setAttribute("viewBox", "0 0 730 360");
+    svg.setAttribute("class", "br-devmap");
+    svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", L.branchesTitle);
+    const make = (tag, attrs, parent = svg) => {
+      const x = document.createElementNS(SVG, tag);
+      Object.entries(attrs).forEach(([k, v]) => x.setAttribute(k, v));
+      parent.append(x); return x;
+    };
+    const edges = make("g", { class: "br-dev-edges" });
+    for (const e of data.edges || []) {
+      const a = pos[e.from], b = pos[e.to];
+      if (!a || !b) continue;
+      const recent = e.last_used && Date.now() / 1000 - e.last_used < 2 * 86400;
+      const line = make("line", { x1: a[0], y1: a[1], x2: b[0], y2: b[1],
+        class: recent ? "pulse" : "", "data-strength": e.strength }, edges);
+      line.style.strokeWidth = String(1.2 + (e.strength || 0) / 13);
+      const title = make("title", {}, line);
+      title.textContent = `${names[e.from]} → ${names[e.to]} · ${L.linkStrength(e.strength)}`;
+    }
+    const nodes = make("g", { class: "br-dev-nodes" });
+    for (const b of items) {
+      const p = pos[b.id] || [365, 175];
+      const g = make("g", { class: "br-dev-node" + (focus.id === b.id ? " focus" : ""),
+                            transform: `translate(${p[0]} ${p[1]})` }, nodes);
+      make("circle", { r: 34 + Math.min(12, b.level * 2) }, g);
+      const t = make("text", { y: -2, "text-anchor": "middle" }, g); t.textContent = names[b.id];
+      const lvl = make("text", { y: 17, "text-anchor": "middle", class: "level" }, g); lvl.textContent = `L${b.level}`;
+    }
+    return svg;
+  }
+
   function branchesCard() {
     const data = state.data.branches;
     const items = data?.branches || [];
@@ -1241,6 +1281,7 @@
     return h("section", { class: "card br-branch-card" },
       h("div", { class: "br-brain-head" }, h("strong", {}, L.branchesTitle)),
       h("p", { class: "row-hint br-section-hint" }, L.branchesHint),
+      developmentMap(data, names, focus),
       focus.id ? h("div", { class: "br-focus" },
         h("strong", {}, L.focusTitle),
         h("span", {}, L.focusText(names[focus.id] || focus.id, L.focusActions[focus.action] || focus.action))) : "",
@@ -1254,11 +1295,20 @@
           h("div", { class: "br-meta" },
             [L.branchXp(b.xp), L.branchItems(b.items), L.branchLinks(b.links)].join(" · "))))),
       h("div", { class: "br-neural-title" }, L.neuralLinks),
-      h("div", { class: "br-neural" }, (data.edges || []).map((e) =>
-        h("div", { class: "br-edge" },
-          h("span", { class: "br-edge-names" }, `${names[e.from] || e.from} → ${names[e.to] || e.to}`),
-          h("span", { class: "br-edge-meter" }, h("b", { style: `width:${e.strength}%` })),
-          h("span", { class: "br-meta" }, `${L.linkStrength(e.strength)} · ${L.linkUses(e.uses)}`)))),
+      h("div", { class: "br-neural" }, (data.edges || []).map((e) => {
+        const id = `edge:${e.from}:${e.to}`, open = state.open === id, history = e.history || [];
+        const recent = e.last_used && Date.now() / 1000 - e.last_used < 2 * 86400;
+        return h("div", { class: "br-edge" + (recent ? " pulse" : "") },
+          h("button", { type: "button", class: "br-edge-toggle", onclick: () => { state.open = open ? null : id; draw(); } },
+            h("span", { class: "br-edge-names" }, `${names[e.from] || e.from} → ${names[e.to] || e.to}`),
+            h("span", { class: "br-edge-meter" }, h("b", { style: `width:${e.strength}%` })),
+            h("span", { class: "br-meta" }, `${L.linkStrength(e.strength)} · ${L.linkUses(e.uses)}`)),
+          open ? h("div", { class: "br-edge-history" }, h("strong", {}, L.edgeHistory),
+            history.length ? [sparkline(history.map((x) => x.strength), 420, 42),
+              h("div", { class: "br-meta" }, history.slice(-6).map((x) =>
+                `${date(x.at)}: ${x.strength}% (${x.delta > 0 ? "+" : ""}${x.delta})`).join(" · "))]
+              : h("p", { class: "row-hint" }, L.noEdgeHistory)) : "");
+      })),
       h("div", { class: "br-memory-tiers" },
         h("div", { class: "br-neural-title" }, L.tiersTitle),
         h("p", { class: "row-hint" }, L.tiersHint),
