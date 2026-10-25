@@ -305,6 +305,166 @@
     }
   }
 
+  const PROJECT_KIND_COLORS = {
+    entity:"#f6d99b",document:"#8bc8ff",thought:"#caa2ff",branch:"#78dfb3",
+    improvement:"#ff9e93",generation:"#91afff",strategy:"#ffe08a",skill:"#f6c878",
+    tool:"#89e1c5",module:"#76bfd4"
+  };
+
+  function projectDispose(object) {
+    if(!object) return;
+    object.traverse?.(child=>{
+      child.geometry?.dispose?.();
+      if(Array.isArray(child.material)) child.material.forEach(m=>m.dispose?.());
+      else child.material?.dispose?.();
+    });
+    object.parent?.remove(object);
+  }
+
+  function clearProjectInterior(gl, hidePanel=true) {
+    projectDispose(gl.projectInterior?.group);
+    for(const item of gl.projectInterior?.nodes||[]) item.tag?.remove();
+    gl.projectInterior=null;
+    gl.projectSelected=null;
+    if(hidePanel && view?.projectPanel) view.projectPanel.hidden=true;
+  }
+
+  function projectNodeLayout(sector,nodes) {
+    const first=Math.min(9,nodes.length), outer=Math.max(0,nodes.length-first);
+    return nodes.map((node,i)=>{
+      const outerRing=i>=first, index=outerRing?i-first:i, total=outerRing?Math.max(1,outer):Math.max(1,first);
+      const radius=outerRing?330:205;
+      const angle=index/total*Math.PI*2 + (outerRing?0.27:-0.13);
+      const lift=(Math.sin(angle*2+hash(node.id)%7)*34) + (node.focus?42:0);
+      return {...node,pos:[sector.pos[0]+Math.cos(angle)*radius,sector.pos[1]+lift,
+        sector.pos[2]+Math.sin(angle)*radius]};
+    });
+  }
+
+  function renderProjectPanel(sector,model,selectedId=null) {
+    const panel=view.projectPanel;
+    if(!panel) return;
+    const selected=model.nodes.find(x=>x.id===selectedId)||null;
+    panel.hidden=false;
+    const head=el("div","gx-project-panel-head");
+    const grip=el("span","gx-grip","⋮⋮");
+    const titles=el("div","gx-project-panel-title");
+    titles.append(el("small","","HOME GALAXY / "+sector.name.toUpperCase()),
+      el("strong","",selected?.label||model.copy.title),
+      el("span","",selected?.meta||model.copy.lead));
+    const close=el("button","gx-btn","×"); close.type="button"; close.title="Свернуть сектор";
+    close.onclick=()=>{ clearProjectInterior(view.gl); store.set("yakumo.galaxy.projectSector",""); };
+    head.append(grip,titles,close);
+    const body=[head];
+    const trust=el("div","gx-project-trust","● Реальные данные Yakumo");
+    trust.title="Узлы построены только из текущего /api/brain. Неподтверждённая причинность не добавляется.";
+    body.push(trust);
+    if(selected){
+      const detail=el("div","gx-project-selected");
+      detail.append(el("span","gx-project-kind",selected.kind),
+        el("p","",selected.detail||"Для этого узла нет дополнительного описания."));
+      if(selected.path){
+        const openDoc=el("a","btn","Открыть документ");
+        openDoc.href="/api/disk/file?path="+encodeURIComponent(selected.path);openDoc.target="_blank";openDoc.rel="noopener";
+        detail.append(openDoc);
+      }
+      body.push(detail);
+    }
+    if(model.stats.length){
+      const stats=el("div","gx-project-stats");
+      for(const [name,value] of model.stats){
+        const box=el("div","");box.append(el("strong","",String(value)),el("span","",name));stats.append(box);
+      }
+      body.push(stats);
+    }
+    const list=el("div","gx-project-list");
+    for(const node of model.nodes.slice(0,18)){
+      const btn=el("button","gx-project-row"+(node.id===selectedId?" on":""));
+      btn.type="button";
+      const dot=el("i","gx-project-dot");dot.style.background=PROJECT_KIND_COLORS[node.kind]||sector.color;
+      const copy=el("span","");copy.append(el("b","",node.label),el("small","",node.meta||node.kind));
+      btn.append(dot,copy);
+      btn.onclick=()=>selectProjectNode(node.id);
+      list.append(btn);
+    }
+    if(model.nodes.length) body.push(el("div","gx-project-list-title","Внутренние узлы · "+model.nodes.length),list);
+    else body.push(el("p","gx-muted","В этом секторе пока нет данных для раскрытия."));
+    const actions=el("div","gx-project-actions");
+    const open=el("button","btn primary","Открыть раздел");open.type="button";open.onclick=()=>openProjectSector(sector.id);
+    const collapse=el("button","btn","Свернуть");collapse.type="button";
+    collapse.onclick=()=>{clearProjectInterior(view.gl);store.set("yakumo.galaxy.projectSector","");};
+    actions.append(open,collapse);body.push(actions);
+    panel.replaceChildren(...body);
+  }
+
+  function drawProjectInterior(gl,d,sectorId,selectedId=null) {
+    clearProjectInterior(gl,false);
+    const sector=(gl.projectSectors||[]).find(x=>x.id===sectorId);
+    if(!sector) return;
+    const T=gl.THREE, model=projectInterior(d,sectorId);
+    const nodes=projectNodeLayout(sector,model.nodes), byId=Object.fromEntries(nodes.map(x=>[x.id,x]));
+    const group=new T.Group();group.name="yakumo-project-interior";
+    const ringPts=Array.from({length:65},(_,i)=>{
+      const a=i/64*Math.PI*2;return new T.Vector3(sector.pos[0]+Math.cos(a)*205,sector.pos[1],sector.pos[2]+Math.sin(a)*205);
+    });
+    group.add(new T.Line(new T.BufferGeometry().setFromPoints(ringPts),
+      new T.LineBasicMaterial({color:new T.Color(sector.color),transparent:true,opacity:.16,depthWrite:false})));
+    for(const node of nodes){
+      const color=new T.Color(PROJECT_KIND_COLORS[node.kind]||sector.color);
+      if(node.status==="failed"||node.status==="rejected") color.set("#ff776f");
+      if(node.status==="running") color.set("#ffffff");
+      const material=new T.SpriteMaterial({map:gl.tex.soft,color,transparent:true,
+        opacity:node.status==="done"?.48:.78,blending:T.AdditiveBlending,depthWrite:false});
+      const sprite=new T.Sprite(material);sprite.position.set(...node.pos);
+      const base=48+Math.min(42,Math.sqrt(Math.max(1,node.weight||1))*12)+(node.focus?18:0);
+      sprite.scale.set(base,base,1);sprite.userData.baseScale=base;sprite.userData.pulse=node.focus||node.status==="running";
+      group.add(sprite);node.sprite=sprite;
+      const line=new T.Line(new T.BufferGeometry().setFromPoints([
+        new T.Vector3(...sector.pos),new T.Vector3(...node.pos)]),
+        new T.LineBasicMaterial({color,transparent:true,opacity:.08,depthWrite:false}));
+      group.add(line);
+      const tag=el("button","gx-project-node kind-"+node.kind+(node.focus?" focus":"")+
+        (node.status?" status-"+node.status:""),node.label);
+      tag.type="button";tag.title=[node.meta,node.detail].filter(Boolean).join("\n");
+      tag.onclick=()=>selectProjectNode(node.id);tag.ondblclick=()=>{
+        if(node.path) window.open("/api/disk/file?path="+encodeURIComponent(node.path),"_blank","noopener");
+        else openProjectSector(sector.id);
+      };
+      view.labels.append(tag);node.tag=tag;
+    }
+    for(const e of model.edges){
+      const a=byId[e.from],b=byId[e.to];if(!a||!b) continue;
+      const color=e.kind==="growth"?"#78dfb3":e.kind==="winner"?"#ffe08a":sector.color;
+      const opacity=e.kind==="growth"?Math.min(.65,.16+(e.weight||1)/180):.22;
+      const material=new T.LineBasicMaterial({color:new T.Color(color),transparent:true,opacity,depthWrite:false});
+      const line=new T.Line(new T.BufferGeometry().setFromPoints([new T.Vector3(...a.pos),new T.Vector3(...b.pos)]),material);
+      if(e.kind==="growth") line.userData.strength=e.weight||1;
+      group.add(line);
+    }
+    gl.scene.add(group);
+    gl.projectInterior={sector,model,group,nodes,selectedId:selectedId||null};
+    gl.projectSelected=selectedId||null;
+    for(const p of gl.projectSectors||[]) p.tag?.classList.toggle("active",p.id===sectorId);
+    renderProjectPanel(sector,{...model,nodes},selectedId);
+  }
+
+  function expandProjectSector(id,fly=true) {
+    const gl=view?.gl;if(!gl) return;
+    const sector=(gl.projectSectors||[]).find(x=>x.id===id);if(!sector) return;
+    store.set("yakumo.galaxy.projectSector",id);
+    drawProjectInterior(gl,data,id);
+    if(fly) flyTo(sector.pos,560,1100,true);
+  }
+
+  function selectProjectNode(id) {
+    const gl=view?.gl, interior=gl?.projectInterior;if(!interior) return;
+    const node=interior.nodes.find(x=>x.id===id);if(!node) return;
+    gl.projectSelected=id;interior.selectedId=id;
+    for(const x of interior.nodes) x.tag?.classList.toggle("on",x.id===id);
+    renderProjectPanel(interior.sector,{...interior.model,nodes:interior.nodes},id);
+    flyTo(node.pos,300,850,false);
+  }
+
   function drawProjectSectors(gl,d) {
     const T=gl.THREE, group=new T.Group();
     const sectors=projectSectors(d);
@@ -314,19 +474,18 @@
       const color=new T.Color(item.color);
       const material=mat.clone();material.color=color;
       const sprite=new T.Sprite(material);sprite.position.set(...item.pos);
-      sprite.scale.set(210,210,1);group.add(sprite);
-      const mark=el("button","gx-project-sector",item.name+" · "+item.count);
-      mark.type="button";mark.title="Перейти к разделу «"+item.name+"»";
-      mark.onclick=()=>{
-        const tab={memory:"facts",mind:"mind",growth:"grow",skills:"skills",improve:"improve",
-          evolution:"mind",code:"mind"}[item.id]||"facts";
-        try{sessionStorage.setItem("yakumo.home.brain.tab",tab)}catch{}
-        location.hash=item.href;
-      };
-      view.labels.append(mark);
-      item.tag=mark;
+      sprite.scale.set(210,210,1);group.add(sprite);item.sprite=sprite;
+      const mark=el("button","gx-project-sector");
+      mark.type="button";mark.title="Раскрыть «"+item.name+"». Двойной клик — открыть раздел.";
+      mark.append(el("span","gx-project-sector-name",item.name),el("b","gx-project-sector-count",String(item.count)),
+        el("span","gx-project-sector-open","⌄"));
+      mark.onclick=()=>expandProjectSector(item.id,true);
+      mark.ondblclick=(ev)=>{ev.preventDefault();openProjectSector(item.id);};
+      view.labels.append(mark);item.tag=mark;
     }
     gl.scene.add(group);gl.projectSectors=sectors;gl.projectGroup=group;
+    const remembered=store.get("yakumo.galaxy.projectSector","");
+    if(remembered&&sectors.some(x=>x.id===remembered)) drawProjectInterior(gl,d,remembered);
   }
 
   // --- Сцена ---
