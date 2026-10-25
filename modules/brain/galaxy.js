@@ -580,6 +580,11 @@
 
   function makeView() {
     const host = el("div", "gx");
+    host.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape" || !view?.gl?.projectInterior) return;
+      e.preventDefault(); e.stopPropagation();
+      clearProjectInterior(view.gl); store.set("yakumo.galaxy.projectSector","");
+    });
     const stage = el("div", "gx-stage");
     const labels = el("div", "gx-labels");
     const warp = el("div", "gx-warp");
@@ -1172,9 +1177,6 @@
       gl.orbit.dist = Math.max(60, Math.min(5200, gl.orbit.dist * (e.deltaY > 0 ? 1.12 : 1 / 1.12)));
     }, { passive: false });
     cv.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && gl.projectInterior) {
-        e.preventDefault(); clearProjectInterior(gl); store.set("yakumo.galaxy.projectSector",""); return;
-      }
       gl.keys.add(e.key.toLowerCase()); if (e.key === "Shift") gl.keys.add("shift");
     });
     cv.addEventListener("keyup", (e) => { gl.keys.delete(e.key.toLowerCase()); if (e.key === "Shift") gl.keys.delete("shift"); });
@@ -1373,9 +1375,9 @@
     }
     for (const node of gl.projectInterior?.nodes || []) {
       const wp = new gl.THREE.Vector3(...node.pos);
+      const d = wp.distanceTo(gl.camera.position);
       const v = show(node.tag,wp);
       if (!v) continue;
-      const d = wp.distanceTo(gl.camera.position);
       const visible = d < 2200 || gl.projectSelected === node.id;
       node.tag.style.opacity = visible ? (gl.projectSelected === node.id ? 1 : .82) : 0;
       node.tag.style.pointerEvents = visible ? "auto" : "none";
