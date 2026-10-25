@@ -173,8 +173,11 @@ class Tasks:
             return None
         answer = _visible(text).strip() or ("Не получилось довести задачу до конца." if lang == "ru"
                                             else "I couldn't finish the task.")
-        if not self.mind.finish(item, "done", answer, generation=generation):
-            return None
+        # Both completion status and user notification must be visible atomically.
+        # Otherwise readers may observe "done" before the inbox message exists.
         head = "Готово: «{}»" if lang == "ru" else "Done: “{}”"
-        self.memory.say(head.format(item["title"]) + "\n\n" + answer, "task")
+        with self.memory.lock:
+            if not self.mind.finish(item, "done", answer, generation=generation):
+                return None
+            self.memory.say(head.format(item["title"]) + "\n\n" + answer, "task")
         return answer
