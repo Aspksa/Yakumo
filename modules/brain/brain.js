@@ -108,6 +108,12 @@
       brainHint: "Нейроны — всё, что Yakumo знает: факты, люди и места, уроки, конспекты, навыки, разговоры, фрагменты документов. Связи — ассоциации и ссылки между ними.",
       branchesTitle: "Ветки развития", branchesHint: "Один общий мозг растёт по направлениям. Уровень считается из реального опыта, а не задаётся вручную.",
       branchLevel: (n) => `уровень ${n}`, branchXp: (n) => `опыт ${n}`, branchItems: (n) => `узлов ${n}`, branchLinks: (n) => `связей ${n}`,
+      neuralLinks: "Нейросвязи", linkStrength: (n) => `сила ${n}%`, linkUses: (n) => `совместных ростов: ${n}`,
+      focusTitle: "Автофокус", focusText: (name, action) => `Слабее сейчас: ${name}. Следующая тренировка: ${action}.`,
+      focusActions: { consolidate: "укрепление памяти", exam: "экзамен логики", study: "обучение по документам",
+                      code_refine: "разбор собственного кода", foresee: "планирование наперёд", ideas: "генерация идей" },
+      tiersTitle: "Memory Engine 2.1", tiersHint: "Память сама перемещает знания между слоями, старое не удаляется бесследно.",
+      tiers: { operational: "Оперативная", episodic: "Эпизодическая", longterm: "Долговременная", archive: "Архивная" },
       best: (n) => `Ответов с 👍 (образцы для стиля): ${n}`,
       curiousNow: "Задать мне вопрос", consolidateNow: "Укрепить уроки", foreseeNow: "Подумать наперёд",
       emptyGrow: "Yakumo только начинает расти", emptyGrowHint: "Уроки, стиль, желания и конспекты появятся после разговоров и первого простоя.",
@@ -211,6 +217,12 @@
       brainHint: "Neurons are everything Yakumo knows: facts, people and places, lessons, notes, skills, conversations, document chunks. Links are associations and references between them.",
       branchesTitle: "Development branches", branchesHint: "One shared brain grows in several directions. Levels come from actual experience, not manual settings.",
       branchLevel: (n) => `level ${n}`, branchXp: (n) => `XP ${n}`, branchItems: (n) => `nodes ${n}`, branchLinks: (n) => `links ${n}`,
+      neuralLinks: "Neural links", linkStrength: (n) => `strength ${n}%`, linkUses: (n) => `joint growths: ${n}`,
+      focusTitle: "Auto focus", focusText: (name, action) => `Weakest now: ${name}. Next training: ${action}.`,
+      focusActions: { consolidate: "memory consolidation", exam: "logic exam", study: "document study",
+                      code_refine: "self-code review", foresee: "forward planning", ideas: "idea generation" },
+      tiersTitle: "Memory Engine 2.1", tiersHint: "Memory moves knowledge between layers automatically; old knowledge is not silently destroyed.",
+      tiers: { operational: "Operational", episodic: "Episodic", longterm: "Long-term", archive: "Archive" },
       best: (n) => `Answers with 👍 (style examples): ${n}`,
       curiousNow: "Ask me a question", consolidateNow: "Strengthen lessons", foreseeNow: "Think ahead",
       emptyGrow: "Yakumo is just starting to grow", emptyGrowHint: "Lessons, style, wishes and notes appear after conversations and the first idle time.",
@@ -1136,18 +1148,35 @@
     const data = state.data.branches;
     const items = data?.branches || [];
     if (!items.length) return "";
+    const names = Object.fromEntries(items.map((b) => [b.id, b.name?.[lang()] || b.name?.ru || b.id]));
+    const focus = data.focus || {};
+    const tiers = state.data.memory_tiers || {};
     return h("section", { class: "card br-branch-card" },
       h("div", { class: "br-brain-head" }, h("strong", {}, L.branchesTitle)),
       h("p", { class: "row-hint br-section-hint" }, L.branchesHint),
+      focus.id ? h("div", { class: "br-focus" },
+        h("strong", {}, L.focusTitle),
+        h("span", {}, L.focusText(names[focus.id] || focus.id, L.focusActions[focus.action] || focus.action))) : "",
       h("div", { class: "br-branches" }, items.map((b) =>
-        h("div", { class: "br-branch", "data-branch": b.id },
+        h("div", { class: "br-branch" + (focus.id === b.id ? " focus" : ""), "data-branch": b.id },
           h("div", { class: "br-branch-head" },
-            h("strong", {}, b.name?.[lang()] || b.name?.ru || b.id),
+            h("strong", {}, names[b.id]),
             h("span", { class: "br-status-chip" }, L.branchLevel(b.level))),
           h("span", { class: "br-branch-progress", "aria-label": `${b.progress}%` },
             h("b", { style: `width:${b.progress}%` })),
           h("div", { class: "br-meta" },
-            [L.branchXp(b.xp), L.branchItems(b.items), L.branchLinks(b.links)].join(" · "))))));
+            [L.branchXp(b.xp), L.branchItems(b.items), L.branchLinks(b.links)].join(" · "))))),
+      h("div", { class: "br-neural-title" }, L.neuralLinks),
+      h("div", { class: "br-neural" }, (data.edges || []).map((e) =>
+        h("div", { class: "br-edge" },
+          h("span", { class: "br-edge-names" }, `${names[e.from] || e.from} → ${names[e.to] || e.to}`),
+          h("span", { class: "br-edge-meter" }, h("b", { style: `width:${e.strength}%` })),
+          h("span", { class: "br-meta" }, `${L.linkStrength(e.strength)} · ${L.linkUses(e.uses)}`)))),
+      h("div", { class: "br-memory-tiers" },
+        h("div", { class: "br-neural-title" }, L.tiersTitle),
+        h("p", { class: "row-hint" }, L.tiersHint),
+        h("div", { class: "br-tier-grid" }, Object.entries(L.tiers).map(([id, label]) =>
+          h("div", { class: `br-tier t-${id}` }, h("strong", {}, String(tiers[id] || 0)), h("span", {}, label))))));
   }
 
   function growView() {
