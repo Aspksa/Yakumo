@@ -1112,30 +1112,38 @@
   function evolutionCard() {
     const e = state.data.evolution || {};
     const runs = e.runs || [];
+    const header = h("div", { class: "br-evolution-head" },
+      h("div", {},
+        h("span", { class: "br-eyebrow" }, "YAKUMO / EVOLUTION"),
+        h("h3", {}, "Эволюционная лаборатория"),
+        h("p", { class: "row-hint" },
+          "Стратегии поиска соревнуются на синтетических запросах. Рабочий алгоритм не меняется.")),
+      h("button", { class: "btn primary", type: "button",
+        onclick: () => send("evolution/compete", {}) }, "Провести экзамен"));
+    const summary = h("div", { class: "br-evolution-stats" },
+      h("span", {}, "Поколений: " + (e.total_generations || 0)),
+      h("span", {}, "Кандидатов: " + (e.policies || []).length),
+      h("span", {}, "Автоприменение: отключено"));
+    const history = runs.slice(0, 5).map(run => {
+      const candidates = (run.candidates || []).map(c =>
+        h("div", { class: "br-evolution-candidate" },
+          h("span", {}, c.name),
+          h("meter", { min: "0", max: "1", value: String(c.accuracy),
+            "aria-label": c.name }),
+          h("strong", {}, Math.round(c.accuracy * 100) + "%"),
+          h("small", {}, c.latency_ms + " мс")));
+      return h("div", { class: "br-evolution-run" },
+        h("div", { class: "br-evolution-row" },
+          h("strong", {}, "Поколение " + run.generation),
+          h("span", {}, "Лучший: " + run.winner)),
+        h("div", { class: "row-hint" },
+          "Образцов: " + run.sample_size + " · " + (run.warning || "")),
+        h("div", { class: "br-evolution-candidates" }, ...candidates));
+    });
     return h("section", { class: "card br-evolution" },
-      h("div", { class: "br-evolution-head" },
-        h("div", {}, h("span", { class: "br-eyebrow" }, "YAKUMO / EVOLUTION"),
-          h("h3", {}, "Эволюционная лаборатория"),
-          h("p", { class: "row-hint" }, "Четыре стратегии поиска соревнуются на одинаковых синтетических запросах. Код, веса и действующий поиск не меняются.")),
-        h("button", { class: "btn primary", type: "button", onclick: () => send("evolution/compete", {}) },
-          "Провести экзамен")),
-      h("div", { class: "br-evolution-stats" },
-        h("span", {}, "Поколений: " + (e.total_generations || 0)),
-        h("span", {}, "Кандидатов: " + (e.policies || []).length),
-        h("span", {}, "Автоприменение: отключено")),
-      runs.length ? h("div", { class: "br-evolution-runs" }, ...runs.slice(0, 5).map(run =>
-        h("div", { class: "br-evolution-run" },
-          h("div", { class: "br-evolution-row" },
-            h("strong", {}, "Поколение " + run.generation),
-            h("span", {}, "Лучший: " + run.winner)),
-          h("div", { class: "row-hint" }, "Образцов: " + run.sample_size + " · " + (run.warning || "")),
-          h("div", { class: "br-evolution-candidates" }, ...(run.candidates || []).map(c =>
-            h("div", { class: "br-evolution-candidate" },
-              h("span", {}, c.name),
-              h("meter", { min: "0", max: "1", value: String(c.accuracy), "aria-label": c.name }),
-              h("strong", {}, Math.round(c.accuracy * 100) + "%"),
-              h("small", {}, c.latency_ms + " мс")))))) :
-        h("p", { class: "row-hint" }, "Поколений пока нет. Экзамен работает на копии ограниченного набора фактов.")));
+      header, summary,
+      runs.length ? h("div", { class: "br-evolution-runs" }, ...history) :
+        h("p", { class: "row-hint" }, "Поколений пока нет. Проведите первый экзамен."));
   }
 
   function mindView() {
