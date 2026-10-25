@@ -908,6 +908,11 @@ class GrowthTest(BrainBase):
         card = next(e for e in memory.entities() if e["id"] == e1["id"])
         self.assertIn("Toyota Hilux", card.get("aliases", []))
         self.assertEqual(set(card["files"]), {"Гараж/путевой лист.docx", "Гараж/чек.pdf"})
+        source_trace = memory.trace("decision", "Источник переезжает", files=["Гараж/чек.pdf"])
+        memory.moved("Гараж", "Архив/Гараж")
+        card = next(e for e in memory.entities() if e["id"] == e1["id"])
+        self.assertEqual(set(card["files"]), {"Архив/Гараж/путевой лист.docx", "Архив/Гараж/чек.pdf"})
+        self.assertEqual(source_trace["files"], ["Архив/Гараж/чек.pdf"])
         cpp = memory.entity("C++", "project")
         csharp = memory.entity("C#", "project")
         self.assertNotEqual(cpp["id"], csharp["id"])
@@ -915,6 +920,8 @@ class GrowthTest(BrainBase):
         trace = memory.trace("decision", "Выбрали локальный индекс", reason="не отправлять документы в облако",
                              result="использовать SQLite", status="done", files=["Документы/решение.docx"])
         self.assertIsNotNone(trace)
+        progress_default = memory.trace("progress", "Проверить оставшиеся документы")
+        self.assertEqual(progress_default["status"], "open")
         self.assertEqual(memory.timeline()[0]["kind"], "decision")
         self.assertTrue(memory.activity_feed())
 
@@ -1009,7 +1016,7 @@ class GrowthTest(BrainBase):
                  "result": "запустить переиндексацию", "status": "done"},
                 {"kind": "project_error", "text": "Индекс не обновлялся", "reason": "ошибка фоновой задачи",
                  "result": "исправлен запуск", "status": "done"},
-                {"kind": "progress", "text": "Переделать поиск", "result": "осталось проверить PDF", "status": "open"},
+                {"kind": "progress", "text": "Переделать поиск", "result": "осталось проверить PDF"},
             ],
             "title": "Работа над поиском", "summary": "Разобрали проблему индекса."
         }
