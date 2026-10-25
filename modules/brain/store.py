@@ -356,6 +356,7 @@ class Memory:
     def _prune_entities(self) -> None:
         used = {i for f in self.data["facts"] for i in f.get("about", [])}
         used |= {i for x in self.data["events"] + self.data["promises"] for i in x.get("about", [])}
+        used |= {i for x in self.data["traces"] for i in x.get("about", [])}
         self.data["entities"] = [e for e in self.data["entities"] if e["id"] in used or e.get("keep")]
 
     # --- Факты ---
@@ -885,9 +886,13 @@ class Memory:
         status = status if status in ("open", "done", "failed") else ("open" if kind == "progress" else "done")
         clean_files = [p.replace("\\", "/").strip("/") for p in files or [] if isinstance(p, str) and p.strip()][:20]
         about_ids = self._about(about)
+        scope = frozenset(about_ids)
         with self.lock:
+            # Одинаковый текст у разных проектов/людей — разные следы. Дедупликация только в том же scope.
             same = next((x for x in reversed(self.data["traces"][-500:])
-                         if x.get("kind") == kind and alike(x.get("text", ""), text)), None)
+                         if x.get("kind") == kind
+                         and frozenset(x.get("about", [])) == scope
+                         and alike(x.get("text", ""), text)), None)
             if same:
                 same.update(text=text, reason=reason or same.get("reason", ""),
                             result=result or same.get("result", ""), status=status,
@@ -947,7 +952,17 @@ class Memory:
         for p in self.data["promises"]:
             rows.append({"kind": "promise", "text": p.get("text"), "at": int(p.get("done_at", p.get("created", 0)) or 0),
                          "date": p.get("due"), "status": "done" if p.get("done") else "open", "id": p.get("id")})
-        return sorted(rows, key=lambda x: (x.get("date") or "", x.get("at", 0)), reverse=True)[:max(1, min(int(limit), 1000))]
+        def effective_at(item: dict) -> float:
+            value = item.get("date")
+            if isinstance(value, str):
+                try:
+                    day = dt.date.fromisoformat(value)
+                    return dt.datetime.combine(day, dt.time.min).timestamp()
+                except ValueError:
+                    pass
+            return float(item.get("at", 0) or 0)
+
+        return sorted(rows, key=effective_at, reverse=True)[:max(1, min(int(limit), 1000))]
 
     def activity_feed(self, limit: int = 50) -> list[dict]:
         rows = []
@@ -1004,10 +1019,12 @@ class Memory:
             if same:
                 rank = {"seen": 0, "install": 1, "rollback": 2}
                 keep = max(same, key=lambda v: (rank.get(v.get("kind"), 0), v.get("at", 0)))
+                old_changes = list(dict.fromkeys(c for v in same for c in v.get("changes", []) if isinstance(c, str)))
+                old_total = max([int(v.get("total", 0) or 0) for v in same] + [len(old_changes)])
                 if rank.get(kind, 0) >= rank.get(keep.get("kind"), 0):
                     keep.update({k: v for k, v in payload.items() if v not in (None, "", [])})
-                keep["changes"] = list(dict.fromkeys([*keep.get("changes", []), *changes]))[:15]
-                keep["total"] = max(int(keep.get("total", 0) or 0), int(payload.get("total", 0) or 0), len(keep["changes"]))
+                keep["changes"] = list(dict.fromkeys([*old_changes, *changes]))[:15]
+                keep["total"] = max(old_total, int(payload.get("total", 0) or 0), len(keep["changes"]))
                 self.data["versions"] = [v for v in self.data["versions"] if v is keep or v.get("revision") != revision]
                 self.save()
                 return keep
