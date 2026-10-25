@@ -38,10 +38,14 @@ class SemanticDisk:
     def status(self):
         with self.lock:
             n = self.db.execute("SELECT count(*) FROM disk_vectors").fetchone()[0]
-        return {"vectors": n, "model": self._model(), "manual_indexing": True}
+        return {"vectors": n, "model": self.cloud.models and next((m for m in self.cloud.models if self.cloud.model_kind(m) == "embedding"), None) if self.cloud else None,
+                "manual_indexing": True}
 
     def refresh(self, *, limit=MAX_DOCS_PER_RUN):
-        model = self._model()
+        try:
+            model = self._model()
+        except Exception as exc:
+            return {"processed": 0, "error": str(exc)[:180]}
         if not model:
             return {"processed": 0, "error": "Нет доступной embedding-модели Cloud.ru"}
         limit = max(1, min(MAX_DOCS_PER_RUN, int(limit)))
@@ -77,7 +81,10 @@ class SemanticDisk:
                 "model": model, "error": None}
 
     def search(self, query, *, limit=40):
-        model = self._model()
+        try:
+            model = self._model()
+        except Exception:
+            return []
         if not model:
             return []
         with self.lock:
