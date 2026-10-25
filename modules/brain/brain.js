@@ -1032,6 +1032,16 @@
         h("span", {}, L.vectorCoverage(k.vector_coverage ?? 100)),
         h("span", {}, L.indexedDocs(intel.indexed || 0)),
         h("span", {}, L.orphanRefs(m.orphan_entity_refs || 0))),
+      state.data.full_audit ? h("div", { class: "br-conflicts" },
+        h("strong", {}, "Аудит девяти разделов"),
+        h("div", { class: "br-diag-grid" },
+          ...Object.entries(state.data.full_audit.areas || {}).map(([name, stats]) =>
+            h("span", {}, name + ": " + (stats.count ?? stats.thoughts ?? stats.versions ?? stats.branches ?? "—")))),
+        (state.data.full_audit.issues || []).length ?
+          h("ul", { class: "br-mini-list" },
+            ...state.data.full_audit.issues.map((issue) => h("li", {},
+              h("b", {}, issue.area + ": "), issue.description))) :
+          h("p", { class: "row-hint" }, "Автоматических предупреждений пока нет.")) : "",
       conflicts.length ? h("div", { class: "br-conflicts" }, h("strong", {}, `${L.conflictsTitle} · ${conflicts.length}`),
         h("ul", { class: "br-mini-list" }, conflicts.slice(0, 6).map((c) => h("li", {},
           h("span", { class: "br-status-chip warn" }, L.needsClarification), " ",
