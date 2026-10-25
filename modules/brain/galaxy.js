@@ -575,6 +575,9 @@
     const card = el("aside", "gx-card gx-float");
     card.hidden = true;
     card.dataset.key = "card";
+    const projectPanel = el("aside", "gx-project-panel gx-float");
+    projectPanel.hidden = true;
+    projectPanel.dataset.key = "project";
     const ctl = el("div", "gx-ctl gx-float");
     ctl.dataset.key = "ctl";
     const observatory = el("div", "gx-observatory");
@@ -593,10 +596,11 @@
         (a.pos[0]-mx)**2+(a.pos[2]-mz)**2-( (b.pos[0]-mx)**2+(b.pos[2]-mz)**2 ))[0];
       if (star) jump(star);
     });
-    host.append(stage, warp, labels, note, card, ctl, observatory, history, minimap);
-    view = { host, stage, labels, warp, note, card, ctl, observatory, history, minimap, alive: false, gl: null, contemplative: false };
+    host.append(stage, warp, labels, note, card, projectPanel, ctl, observatory, history, minimap);
+    view = { host, stage, labels, warp, note, card, projectPanel, ctl, observatory, history, minimap,
+      alive: false, gl: null, contemplative: false };
     buildControls();
-    for (const box of [card, ctl]) floating(box);
+    for (const box of [card, projectPanel, ctl]) floating(box);
     return view;
   }
 
@@ -644,6 +648,14 @@
     const reset = el("button", "gx-btn", "⌂");
     reset.type = "button"; reset.title = L.reset; reset.setAttribute("aria-label", L.reset);
     reset.onclick = () => view.gl && flyTo([0, 0, 0], 900);
+    const overview = el("button", "gx-btn", "◎");
+    overview.type = "button"; overview.title = "Обзор проекта: свернуть внутренний сектор";
+    overview.setAttribute("aria-label", overview.title);
+    overview.onclick = () => {
+      if (!view.gl) return;
+      clearProjectInterior(view.gl); store.set("yakumo.galaxy.projectSector","");
+      flyTo([0,0,0],1650,900,false);
+    };
     const help = el("button", "gx-btn", "?");
     help.type = "button"; help.title = L.help; help.setAttribute("aria-label", L.help);
     const hint = el("p", "gx-hint", L.hint);
@@ -697,7 +709,7 @@
     const stats = el("button", "gx-btn", "FPS");
     stats.type = "button"; stats.title = "Показать диагностику кадра";
     stats.onclick = () => view.observatory.classList.toggle("gx-observatory-open");
-    ctl.append(grip, reset, sel, nebula, flight, weakest, observe, history, stats, help, hint);
+    ctl.append(grip, reset, overview, sel, nebula, flight, weakest, observe, history, stats, help, hint);
   }
 
   // --- WebGL ---
