@@ -888,6 +888,13 @@ class GrowthTest(BrainBase):
         self.assertEqual(len(same), 1)
         self.assertEqual(same[0]["kind"], "install")
         self.assertIn("Добавлена карта", same[0]["changes"])
+        memory.version({"key": "rollback:a", "kind": "rollback", "revision": rev, "title": "main",
+                        "at": 30, "changes": ["Исправлен watchdog"], "total": 3})
+        same = [v for v in memory.versions() if v["revision"] == rev]
+        self.assertEqual(len(same), 1)
+        self.assertEqual(same[0]["kind"], "rollback")
+        self.assertEqual(set(same[0]["changes"]), {"Добавлена карта", "Исправлен watchdog"})
+        self.assertEqual(same[0]["total"], 3)
 
         a = memory.add("Аня работает инженером", "person", about=[{"name": "Аня", "type": "person"}])
         b = memory.add("Аня работает водителем", "person", about=[{"name": "Аня", "type": "person"}])
@@ -907,6 +914,26 @@ class GrowthTest(BrainBase):
         self.assertIsNotNone(trace)
         self.assertEqual(memory.timeline()[0]["kind"], "decision")
         self.assertTrue(memory.activity_feed())
+
+        alpha = memory.trace("progress", "Перестроить индекс", status="open",
+                             about=[{"name": "Проект Alpha", "type": "project"}])
+        beta = memory.trace("progress", "Перестроить индекс", status="done",
+                            about=[{"name": "Проект Beta", "type": "project"}])
+        self.assertNotEqual(alpha["id"], beta["id"])
+        self.assertEqual(alpha["status"], "open")
+        self.assertEqual(beta["status"], "done")
+
+        only_trace = memory.trace("project_error", "Ошибка отдельного проекта", status="done",
+                                  about=[{"name": "Проект Gamma", "type": "project"}])
+        gamma_id = only_trace["about"][0]
+        memory.add("Новый несвязанный факт", "other")
+        self.assertTrue(any(e["id"] == gamma_id for e in memory.entities()))
+
+        old_event = memory.event("Старое событие", "2020-01-01")
+        recent = memory.trace("decision", "Недатированное свежее решение", status="done")
+        timeline = memory.timeline(500)
+        positions = {x["id"]: i for i, x in enumerate(timeline)}
+        self.assertLess(positions[recent["id"]], positions[old_event["id"]])
 
     def test_learner_saves_causes_decisions_errors_and_unfinished_work(self):
         FakeCloud.learned = {
@@ -940,6 +967,13 @@ class GrowthTest(BrainBase):
         self.assertFalse(mind.finish(thought, "done", "поздний ответ"))
         self.assertEqual(thought["status"], "failed")
 
+        task = mind.thought("task", "Повторяемая задача", "running", task="проверка")
+        old_generation = int(task["generation"])
+        task["generation"] = old_generation + 1
+        self.assertFalse(mind.finish(task, "failed", "поздняя ошибка старого запуска",
+                                     generation=old_generation))
+        self.assertEqual(task["status"], "running")
+
     def test_foresee_prepares_in_advance(self):
         self.memory().promise("Сдать отчёт по практике", due=time.strftime("%Y-%m-%d"))
         FakeCloud.completions = [
@@ -957,6 +991,22 @@ class GrowthTest(BrainBase):
         self.assertIn("foresee", kinds)
         self.assertIn("task", kinds)
         self.assertEqual(self.tick("Growth").foresee(), [])  # раз в день
+
+    def test_disk_entity_sync_accumulates_all_source_documents(self):
+        self.ctx.services["disk"] = SimpleNamespace(entity_graph=lambda _limit: {
+            "entities": [
+                {"path": "Документы/а.docx", "people": ["Анна Иванова"], "vehicles": ["Н954МУ125"]},
+                {"path": "Документы/б.pdf", "people": ["Анна Иванова"], "vehicles": ["Н954МУ125"]},
+            ]
+        })
+        sync = next(fn for name, _mode, _every, fn in self.mind.jobs if name == "disk_entities")
+        self.assertEqual(sync()["observed"], 2)
+        entities = self.memory().entities()
+        person = next(e for e in entities if e["name"] == "Анна Иванова")
+        vehicle = next(e for e in entities if e["name"] == "Н954МУ125")
+        expected = {"Документы/а.docx", "Документы/б.pdf"}
+        self.assertEqual(set(person["files"]), expected)
+        self.assertEqual(set(vehicle["files"]), expected)
 
     # --- Мозг и Диск ---
 
