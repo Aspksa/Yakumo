@@ -20,6 +20,7 @@ from yakumo.core.network import lan_address
 from . import assistant, insight
 from .extract import extract
 from .index import Index, data_url
+from .semantic_disk import SemanticDisk
 from .library import Library
 from .names import Namer
 from .organizer import Organizer
@@ -196,6 +197,7 @@ def setup(ctx):
             {"type": "image_url", "image_url": {"url": data_url(image, mime)}}]}], model=model)
 
     index = Index(disk, describe if cloud else None, lambda: ctx.config.language)
+    semantic = SemanticDisk(index.db, index.lock, cloud)
     disk.on_change.append(index.poke)
     disk.on_move.append(index.moved)
     # Память Yakumo помнит файлы: при переносе ссылки в ней идут следом (модуль «Мозг» мог загрузиться позже).
@@ -212,7 +214,8 @@ def setup(ctx):
         """Имена файлов, текст внутри документов и описания фото — одним списком."""
         names = disk.search(q)
         items = {i["path"]: {**i, "match": "name"} for i in names["items"]}
-        for hit in [*index.search(q), *index.bm25(q, limit=80)]:
+        for hit in [*index.search(q), *index.bm25(q, limit=80),
+                    *(semantic.search(q) if index.settings().get("semantic") else [])]:
             if hit["path"] in items:
                 items[hit["path"]].setdefault("snippet", hit["snippet"])
                 continue
@@ -230,16 +233,19 @@ def setup(ctx):
                 vision = cloud.vision_model()
             except Exception:  # noqa: BLE001 — нет связи: просто не показываем модель
                 vision = None
-        return {**index.status(), "cloud": bool(cloud and cloud.api_key()), "vision_model": vision}
+        return {**index.status(), "semantic_status": semantic.status(),
+                "cloud": bool(cloud and cloud.api_key()), "vision_model": vision}
 
     def smart_save(req):
         data = req.read_json()
-        if not isinstance(data, dict) or not any(type(data.get(k)) is bool for k in ("photos", "ocr")):
-            raise DiskError("Ожидается photos или ocr: true/false")
+        if not isinstance(data, dict) or not any(type(data.get(k)) is bool for k in ("photos", "ocr", "semantic")):
+            raise DiskError("Ожидается photos, ocr или semantic: true/false")
         if type(data.get("photos")) is bool:
             index.set_photos(data["photos"])
         if type(data.get("ocr")) is bool:
             index.set_ocr(data["ocr"])
+        if type(data.get("semantic")) is bool:
+            index._store(semantic=data["semantic"])
         return smart(req)
 
     def body(request) -> dict:
@@ -297,6 +303,7 @@ def setup(ctx):
         "/api/disk/shares": lambda _req: disk.shares(),
         "/api/disk/s": shared,
         "/api/disk/smart": smart,
+        "POST /api/disk/semantic/refresh": lambda _r: semantic.refresh(),
         "/api/disk/intelligence/status": lambda _req: index.intelligence.status(),
         "/api/disk/intelligence/entities": lambda _req: index.entity_graph(),
         "/api/disk/intelligence/timeline": lambda r: {
