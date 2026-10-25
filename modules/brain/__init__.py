@@ -183,10 +183,12 @@ class MemoryAPI:
 
 
 from .evolution import EvolutionLab
+from .provenance import ProvenanceJournal
 
 def setup(ctx):
     memory = Memory(ctx.paths.data / "brain" / "memory.json")
     evolution = EvolutionLab(ctx.paths.data / "brain" / "evolution.json")
+    provenance = ProvenanceJournal(ctx.paths.data / "brain" / "provenance.json")
     cloud = getattr(ctx, "cloud", None)
     lang = lambda: "en" if ctx.config.language == "en" else "ru"  # noqa: E731
     learner = Learner(memory, cloud, lang)
@@ -757,6 +759,9 @@ def setup(ctx):
                 "conflicts": conflicts, "timeline": memory.timeline(), "activity_feed": memory.activity_feed(),
                 "diagnostics": diagnostics(conflicts),
                 "full_audit": full_brain_audit(), "evolution": evolution.status(),
+                "provenance": provenance.observe({"mind": mind.status(), "lessons": m["lessons"],
+                    "skills": m["skills"], "improvements": memory.improvements(),
+                    "evolution": evolution.status(), "facts": memory.facts()}),
                 "storage": memory.storage_status(), "memory_tiers": memory.tier_counts(), "branches": branches.snapshot(),
                 "mind": mind.status(), "knowledge": knowledge.status(),
                 "lessons": sorted(m["lessons"], key=lambda x: -x.get("seen", 1)),
@@ -767,6 +772,18 @@ def setup(ctx):
                                                    "active": m["style"].get("active")},
                 "mood_days": [{"date": k, "mood": round(sum(v["mood"]) / len(v["mood"]), 2)}
                          for k, v in sorted(m["days"].items())[-30:] if v.get("mood")]}
+
+    def provenance_link(req):
+        d = body(req)
+        try:
+            return provenance.link(str(d.get("source_id") or ""), str(d.get("target_id") or ""),
+                                   str(d.get("relation") or ""), {
+                                       "mind": mind.status(), "lessons": memory.data["lessons"],
+                                       "skills": memory.data["skills"],
+                                       "improvements": memory.improvements(),
+                                       "evolution": evolution.status(), "facts": memory.facts()})
+        except ValueError as exc:
+            raise BrainError(str(exc)) from exc
 
     def settings(req):
         d = body(req)
@@ -928,6 +945,8 @@ def setup(ctx):
 
     routes = {
         "/api/brain": state,
+        "/api/brain/provenance": lambda _r: provenance.snapshot(),
+        "POST /api/brain/provenance/link": provenance_link,
         "POST /api/brain/evolution/compete": lambda _r: {"experiment": evolution.compete(memory.facts()), "state": state()},
         "/api/brain/export": lambda _req: memory.export(),
         "/api/brain/inbox": lambda _req: {"messages": memory.take_inbox() if memory.enabled else []},

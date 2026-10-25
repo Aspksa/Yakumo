@@ -154,6 +154,7 @@
   function projectSectors(d) {
     const mind = d.mind || {}, evolution = d.evolution || {};
     const list = [
+      {id:"memory",name:"Память",color:"#f2d6a1",count:(d.facts||[]).length,href:"#/brain"},
       {id:"mind",name:"Разум",color:"#c79bff",count:(mind.thoughts||[]).length,href:"#/brain"},
       {id:"growth",name:"Рост",color:"#7cdbb1",count:(d.lessons||[]).length+(d.suggestions||[]).length,href:"#/brain"},
       {id:"skills",name:"Навыки",color:"#f8ca85",count:(d.skills||[]).length+(d.user_tools||[]).length,href:"#/brain"},
@@ -161,7 +162,29 @@
       {id:"evolution",name:"Эволюция",color:"#8fb0ff",count:evolution.total_generations||0,href:"#/brain"},
       {id:"code",name:"Код проекта",color:"#75b9ce",count:Array.isArray(d.code?.files)?d.code.files.length:Math.max(0,Number(d.code?.files||d.code?.file_count||0)||0),href:"#/brain"}
     ];
-    return list.map((item,i)=>({...item,pos:[Math.cos(i*Math.PI/3)*980,85,Math.sin(i*Math.PI/3)*980]}));
+    return list.map((item,i)=>({...item,pos:[Math.cos(i*Math.PI*2/list.length)*980,85,Math.sin(i*Math.PI*2/list.length)*980]}));
+  }
+
+  function drawProvenanceLinks(gl,d) {
+    const T=gl.THREE, sectors=projectSectors(d), lookup=Object.fromEntries(sectors.map(x=>[x.id,x]));
+    const normalize={memory:"memory",mind:"mind",growth:"growth",skill:"skills",
+      improvement:"improve",evolution:"evolution"};
+    const edges=new Set();
+    for(const relation of d.provenance?.links || []){
+      const from=normalize[String(relation.source_id||"").split(":")[0]];
+      const to=normalize[String(relation.target_id||"").split(":")[0]];
+      if(!from||!to||from===to||!lookup[from]||!lookup[to]) continue;
+      const key=[from,to].sort().join("|");
+      if(edges.has(key)) continue;
+      edges.add(key);
+      const a=new T.Vector3(...lookup[from].pos),b=new T.Vector3(...lookup[to].pos);
+      const mid=a.clone().add(b).multiplyScalar(.5);mid.y+=170;
+      const line=new T.Line(new T.BufferGeometry().setFromPoints(
+        new T.QuadraticBezierCurve3(a,mid,b).getPoints(32)),
+        new T.LineBasicMaterial({color:0xe7c98d,transparent:true,opacity:.56,
+          blending:T.AdditiveBlending,depthWrite:false}));
+      gl.scene.add(line);
+    }
   }
 
   function drawProjectSectors(gl,d) {
@@ -177,7 +200,7 @@
       const mark=el("button","gx-project-sector",item.name+" · "+item.count);
       mark.type="button";mark.title="Перейти к разделу «"+item.name+"»";
       mark.onclick=()=>{
-        const tab={mind:"mind",growth:"grow",skills:"skills",improve:"improve",
+        const tab={memory:"facts",mind:"mind",growth:"grow",skills:"skills",improve:"improve",
           evolution:"mind",code:"mind"}[item.id]||"facts";
         try{sessionStorage.setItem("yakumo.home.brain.tab",tab)}catch{}
         location.hash=item.href;
@@ -653,6 +676,7 @@
       s.tag = tag;
     }
     drawProjectSectors(gl,data);
+    drawProvenanceLinks(gl,data);
     gl.areaTags = w.areas.map((area, ai) => {
       const r = R * 0.95, a = ai / w.arms * Math.PI * 2 + r * 0.0062;
       const tag = el("span", "gx-area", L.areas[area] || area);
