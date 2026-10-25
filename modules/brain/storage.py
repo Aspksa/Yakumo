@@ -8,6 +8,7 @@ Memory Engine 2.0 хранит верхнеуровневые разделы п�
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import sqlite3
@@ -38,24 +39,25 @@ class BrainDB:
         self.path = Path(path)
         self.legacy = Path(legacy) if legacy else None
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.connect() as con:
+        with contextlib.closing(self.connect()) as con:
+            con.execute("PRAGMA journal_mode=WAL")
             con.executescript(SCHEMA)
             con.execute(f"PRAGMA user_version={self.VERSION}")
         self._migrate_legacy_if_needed()
 
     def connect(self) -> sqlite3.Connection:
         con = sqlite3.connect(self.path, timeout=20)
-        con.execute("PRAGMA journal_mode=WAL")
+        con.execute("PRAGMA busy_timeout=20000")
         con.execute("PRAGMA synchronous=NORMAL")
         con.execute("PRAGMA foreign_keys=ON")
         return con
 
     def empty(self) -> bool:
-        with self.connect() as con:
+        with contextlib.closing(self.connect()) as con:
             return con.execute("SELECT 1 FROM state LIMIT 1").fetchone() is None
 
     def load(self) -> dict:
-        with self.connect() as con:
+        with contextlib.closing(self.connect()) as con:
             rows = con.execute("SELECT key,value FROM state").fetchall()
         data = {}
         for key, raw in rows:
@@ -70,7 +72,7 @@ class BrainDB:
         now = int(time.time())
         encoded = {str(k): json.dumps(v, ensure_ascii=False, separators=(",", ":")) for k, v in data.items()}
         changed: list[str] = []
-        with self.connect() as con:
+        with contextlib.closing(self.connect()) as con:
             con.execute("BEGIN IMMEDIATE")
             old = dict(con.execute("SELECT key,value FROM state"))
             for key, raw in encoded.items():
@@ -102,7 +104,7 @@ class BrainDB:
 
     def history(self, limit: int = 100) -> list[dict]:
         limit = max(1, min(int(limit), 1000))
-        with self.connect() as con:
+        with contextlib.closing(self.connect()) as con:
             rows = con.execute(
                 "SELECT seq,at,kind,payload FROM events ORDER BY seq DESC LIMIT ?", (limit,)
             ).fetchall()
