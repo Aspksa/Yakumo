@@ -784,6 +784,12 @@
         mini.beginPath(); mini.arc(x,y,Math.min(3,1+star.facts.length*.18),0,Math.PI*2);
         mini.fillStyle = AREA_HUE[star.area] || "#e3bd82"; mini.fill();
       }
+      // Сектора проекта — отдельное внешнее кольцо на той же мини-карте.
+      for (const sector of projectSectors(data)) {
+        const x=80+sector.pos[0]*.065, y=55+sector.pos[2]*.045;
+        mini.beginPath(); mini.arc(x,y,3.2,0,Math.PI*2);
+        mini.strokeStyle=sector.color; mini.lineWidth=1.5; mini.stroke();
+      }
     }
 
     const mat = (o) => { const m = pointsMaterial(THREE, o); gl.mats.push(m); return m; };
@@ -1159,7 +1165,12 @@
       e.preventDefault();
       gl.orbit.dist = Math.max(60, Math.min(5200, gl.orbit.dist * (e.deltaY > 0 ? 1.12 : 1 / 1.12)));
     }, { passive: false });
-    cv.addEventListener("keydown", (e) => { gl.keys.add(e.key.toLowerCase()); if (e.key === "Shift") gl.keys.add("shift"); });
+    cv.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && gl.projectInterior) {
+        e.preventDefault(); clearProjectInterior(gl); store.set("yakumo.galaxy.projectSector",""); return;
+      }
+      gl.keys.add(e.key.toLowerCase()); if (e.key === "Shift") gl.keys.add("shift");
+    });
     cv.addEventListener("keyup", (e) => { gl.keys.delete(e.key.toLowerCase()); if (e.key === "Shift") gl.keys.delete("shift"); });
     cv.addEventListener("blur", () => gl.keys.clear());
   }
@@ -1318,10 +1329,12 @@
     if (now - (gl.lastStats || 0) >= 1000) {
       gl.lastStats = now;
       const observed = gl.lastPaintGap ? Math.round(1000 / gl.lastPaintGap) : 0;
+      const project = gl.projectInterior;
       view.observatory.textContent = "FPS: " + observed + " · кадр: " +
         cost.toFixed(1) + " мс · качество: " + quality() +
         " · звёзд памяти: " + gl.world.stars.length +
-        " · поколений: " + (data?.evolution?.total_generations || 0);
+        " · поколений: " + (data?.evolution?.total_generations || 0) +
+        (project ? " · сектор: " + project.sector.name + " · внутренних узлов: " + project.nodes.length : "");
     }
     placeLabels();
   }
