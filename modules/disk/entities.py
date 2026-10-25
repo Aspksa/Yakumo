@@ -17,7 +17,7 @@ LABELS = {"путевой": "waybill", "чек": "receipt", "квитанц": "r
           "договор": "contract", "акт": "act", "счет": "invoice", "счёт": "invoice"}
 DRIVER_CUE = re.compile(r"водител[ьяюи]\s*[:№-]?\s*", re.I)
 FUEL_CUE = re.compile(r"\b(?:гсм|топлив\w*|дизел\w*|бензин\w*|дт|аи[-\s]?(?:92|95|98|100))\b", re.I)
-LITERS = re.compile(r"(?<!\d)(\d{1,6}(?:[.,]\d{1,3})?)\s*(?:л\.?|литр\w*)\b", re.I)
+LITERS = re.compile(r"(?<!\d)(?<!\d[ \u00a0])((?:\d{1,3}(?:[ \u00a0]\d{3})+|\d{1,6})(?:[.,]\d{1,3})?)\s*(?:л\.?|литр\w*)\b", re.I)
 MONEY = re.compile(r"(?<!\d)(\d{1,9}(?:[ \u00a0]\d{3})*(?:[.,]\d{1,2})?)\s*(?:₽|руб(?:\.|лей|ля)?)", re.I)
 MAX_TEXT = 160000
 
