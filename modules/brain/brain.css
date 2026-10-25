@@ -308,3 +308,29 @@
 .br-branch-progress b { display: block; height: 100%; border-radius: inherit; background: var(--accent);
                         box-shadow: 0 0 8px rgba(var(--accent-rgb), .45); }
 @media (max-width: 600px) { .br-branches { grid-template-columns: 1fr; } }
+
+/* Нейросвязи, автофокус и Memory Engine 2.1 */
+.br-branch.focus { border-color: var(--accent); box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), .28),
+                    0 0 18px rgba(var(--accent-rgb), .10); }
+.br-focus { display: flex; align-items: baseline; gap: 8px 12px; flex-wrap: wrap; padding: 10px 12px; margin: 0 0 12px;
+            border: 1px solid rgba(var(--accent-rgb), .35); border-radius: var(--radius); background: var(--accent-soft); }
+.br-focus strong { color: var(--accent); }
+.br-neural-title { margin: 16px 0 7px; font-size: 12px; font-weight: 650; text-transform: uppercase;
+                   letter-spacing: .05em; color: var(--muted); }
+.br-neural { display: grid; gap: 6px; }
+.br-edge { display: grid; grid-template-columns: minmax(145px, .8fr) minmax(100px, 1.4fr) minmax(150px, .8fr);
+           align-items: center; gap: 10px; padding: 6px 8px; border-radius: var(--btn-radius); background: var(--hover); }
+.br-edge-names { min-width: 0; font-size: 13px; overflow-wrap: anywhere; }
+.br-edge-meter { display: block; height: 4px; overflow: hidden; border-radius: 99px; background: var(--border); }
+.br-edge-meter b { display: block; height: 100%; border-radius: inherit; background: var(--accent);
+                    box-shadow: 0 0 8px rgba(var(--accent-rgb), .45); }
+.br-tier-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.br-tier { display: flex; flex-direction: column; gap: 2px; padding: 10px; border: 1px solid var(--border);
+           border-radius: var(--btn-radius); background: var(--hover); }
+.br-tier strong { font-size: 20px; color: var(--accent); font-variant-numeric: tabular-nums; }
+.br-tier span { font-size: 12px; color: var(--muted); }
+.br-tier.t-archive { opacity: .72; }
+@media (max-width: 700px) {
+  .br-edge { grid-template-columns: 1fr; gap: 5px; }
+  .br-tier-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
