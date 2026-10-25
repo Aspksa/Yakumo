@@ -312,6 +312,19 @@ class Index:
         return [{"path": hit.path, "score": hit.score, "match": "text",
                  "snippet": ""} for hit in ranker.bm25(query, limit)]
 
+    def entity_graph(self, limit: int = 300) -> dict:
+        """Read-only extraction with explicit unverified relationship status."""
+        from .entities import extract_entities, candidate_relationships, timeline
+        with self.lock:
+            rows = self.db.execute("""SELECT path,ifnull(text,''),ifnull(ocr,''),ifnull(photo,'')
+                FROM files ORDER BY path LIMIT 1500""").fetchall()
+        records = [extract_entities(path, " ".join([text, ocr, photo]))
+                   for path, text, ocr, photo in rows]
+        records = [r for r in records if r["vehicles"] or r["people"] or r["document_dates"]]
+        return {"entities": records[:limit], "relations": candidate_relationships(records)[:limit],
+                "timeline": timeline(records)[:limit],
+                "warning": "Обнаруженные связи требуют проверки по исходным документам"}
+
     def similar(self, rel: str, limit: int = 8) -> list[dict]:
         """Похожие документы: общие редкие слова текста и имени (без нейросети)."""
         data = self.text_of(rel)
