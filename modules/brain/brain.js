@@ -1200,7 +1200,9 @@
       h("div", { class: "br-grow-actions" },
         h("button", { class: "btn primary", type: "button", disabled: !fresh, onclick: () => copyFor(null) }, L.impCopyAll(fresh)),
         h("button", { class: "btn", type: "button", disabled: !(d.cloud && d.enabled) || !!state.growing,
-                      onclick: () => growNow("ideas") }, state.growing === "ideas" ? L.working : L.impIdeas)),
+                      onclick: () => growNow("ideas") }, state.growing === "ideas" ? L.working : L.impIdeas),
+        h("button", { class: "btn", type: "button", disabled: !(d.cloud && d.enabled) || !!state.growing,
+                      onclick: () => growNow("audit") }, state.growing === "audit" ? L.working : "ИИ-аудит пробелов")),
       h("div", { class: "br-add" }, title, h("button", { class: "btn", type: "button", onclick: add }, L.impAddBtn)),
       h("div", { class: "br-imp-filter", role: "tablist" }, Object.entries(L.impStatuses).map(([id, label]) => h("button", {
         type: "button", role: "tab", class: "br-chip" + (state.impFilter === id ? " on" : ""), "aria-selected": String(state.impFilter === id),
