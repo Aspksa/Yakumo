@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Yakumo · эксперимент PixiJS Galaxy</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#080c16;color:#e9e1d6;font:14px system-ui,-apple-system,Segoe UI,sans-serif}
+header{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:18px 22px;border-bottom:1px solid #ffffff16}
+h1{font-size:20px;font-weight:650;margin:0}.sub{color:#9ba9bb;font-size:12px;margin:7px 0 0}
+.controls{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+button,select{border:1px solid #dfbf7944;color:#f3dfb4;background:#192132;border-radius:10px;padding:9px 12px;font:inherit;cursor:pointer}
+button:focus-visible,select:focus-visible{outline:2px solid #e9ba7e;outline-offset:2px}
+button[aria-pressed=true]{border-color:#e4b96b;background:#3a3030}
+main{max-width:1400px;margin:24px auto;padding:0 18px}
+#scene{height:min(71vh,740px);min-height:350px;background:radial-gradient(ellipse at center,#171d32,#080b14);border:1px solid #dab97e33;border-radius:24px;overflow:hidden;position:relative;touch-action:none}
+#scene canvas{display:block;width:100%;height:100%}
+.overlay{position:absolute;left:18px;bottom:18px;background:#111824bb;backdrop-filter:blur(12px);border:1px solid #ffffff20;border-radius:12px;padding:12px;pointer-events:none;max-width:300px}
+.overlay b{color:#eed09a}.overlay small{display:block;color:#9faabb;margin-top:4px}
+.note{color:#96a4b5;font-size:12px;line-height:1.6;margin-top:13px}
+#error{color:#ffc28a}
+@media(max-width:600px){header{padding:14px}h1{font-size:16px}main{margin:12px auto;padding:0 10px}#scene{min-height:400px}button,select{font-size:12px;padding:8px}}
+</style></head><body>
+<header><div><h1>Yakumo — Галактическая ткань памяти</h1><p class="sub">Эксперимент PixiJS · демонстрационные данные · без подписей внутри карты</p></div>
+<div class="controls">
+<label for="quality">Качество</label><select id="quality"><option value="eco">Экономно · 20 FPS</option><option value="normal" selected>Сбалансированно · 30 FPS</option><option value="high">Красиво · 60 FPS</option></select>
+<button id="pause" type="button" aria-pressed="false">Созерцание: вкл.</button>
+<button id="reset" type="button">Центрировать</button></div></header>
+<main><div id="scene" role="img" aria-label="Демонстрационная карта: спиральные ветви памяти с цветными узлами">
+<div class="overlay"><b id="status">Инициализация PixiJS…</b><small>Колесо — масштаб · перемещение — сдвиг карты · цвет — тип связи</small></div></div>
+<p id="error" role="status"></p>
+<p class="note">Это прототип с фиктивными данными, не подключённый к памяти Yakumo. Для запуска требуется интернет: PixiJS 8.21.0 загружается с jsDelivr. Для основного проекта библиотеку нужно сохранить локально и проверить её лицензию/целостность. Если WebGL недоступен, эксперимент сообщает об ошибке; действующую карту Yakumo он не заменяет.</p></main>
+<script src="https://cdn.jsdelivr.net/npm/pixi.js@8.21.0/dist/pixi.min.js"></script>
+<script>
+(async()=>{
+ const $=id=>document.getElementById(id), scene=$('scene'), status=$('status'), quality=$('quality');
+ if(!window.PIXI){$('error').textContent='Не удалось загрузить PixiJS. Проверьте соединение; текущая карта Yakumo не затронута.';return;}
+ const presets={eco:{stars:600,fps:20,resolution:.75},normal:{stars:1900,fps:30,resolution:1},high:{stars:4500,fps:60,resolution:1.2}};
+ let preset=presets[quality.value], paused=false, drag=null;
+ let app;
+ try{
+   app=new PIXI.Application();
+   await app.init({resizeTo:scene,background:0x080c16,preference:'webgl',antialias:false,resolution:Math.min(devicePixelRatio||1,preset.resolution),autoDensity:true});
+   scene.insertBefore(app.canvas,scene.firstChild);
+ }catch(e){$('error').textContent='WebGL / PixiJS не запустился: '+String(e.message||e);return;}
+ const world=new PIXI.Container();app.stage.addChild(world);
+ const bg=new PIXI.Graphics(),threads=new PIXI.Graphics(),nodes=new PIXI.Container();
+ world.addChild(bg,threads,nodes);
+ const colors=[0xe9be70,0x78c5f0,0xae91e8,0x6dd7b2,0xf08185];
+ function seeded(seed){let x=seed|0;return()=>{x=(Math.imul(1664525,x)+1013904223)|0;return(x>>>0)/4294967296}}
+ const random=seeded(7391);
+ function drawBackground(){
+   bg.clear(); const n=preset.stars;
+   for(let i=0;i<n;i++){
+     const arm=i%3, theta=random()*Math.PI*4+arm*2.1;
+     const radial=Math.pow(random(),.63)*480;
+     const scatter=(random()-.5)*95;
+     const x=Math.cos(theta)*(radial+scatter)*1.12;
+     const y=Math.sin(theta)*(radial+scatter)*.58;
+     const color=i%13===0?0xdab68a:(i%5===0?0x9a93c7:0xb6c1d3);
+     bg.circle(x,y,i%43===0?1.7:.55).fill({color,alpha:i%8===0?.54:.19});
+   }
+ }
+ const points=[];
+ for(let i=0;i<105;i++){
+   const arm=i%4,angle=(i/105)*Math.PI*5+arm*1.5;
+   const r=28+Math.sqrt(i/105)*410;
+   points.push({x:Math.cos(angle)*r*1.05+(random()-.5)*19,y:Math.sin(angle)*r*.57+(random()-.5)*15,
+     group:arm,id:i});
+ }
+ function drawGraph(){
+   threads.clear();nodes.removeChildren().forEach(x=>x.destroy());
+   points.forEach((p,i)=>{
+     if(i>0){
+       const q=points[Math.max(0,i-4)];
+       threads.moveTo(q.x,q.y).quadraticCurveTo((p.x+q.x)/2,(p.y+q.y)/2-8,p.x,p.y)
+         .stroke({color:colors[p.group],alpha:.18,width:1.05});
+     }
+     const g=new PIXI.Graphics();
+     const radius=i%17===0?5.8:i%5===0?3.4:1.9;
+     g.circle(0,0,radius*2.7).fill({color:colors[p.group],alpha:.07});
+     g.circle(0,0,radius).fill({color:colors[p.group],alpha:.9});
+     g.position.set(p.x,p.y);g.eventMode='static';g.cursor='pointer';
+     g.on('pointertap',()=>{status.textContent='Выбран узел #'+(i+1)+' · группа '+(p.group+1)+' (демоданные)'});
+     nodes.addChild(g);
+   });
+ }
+ drawBackground();drawGraph();
+ function center(){world.scale.set(Math.min(scene.clientWidth/1050,scene.clientHeight/650,1.1));world.position.set(scene.clientWidth/2,scene.clientHeight/2)}
+ center();
+ scene.addEventListener('wheel',e=>{e.preventDefault();const factor=e.deltaY<0?1.09:1/1.09;const k=Math.max(.32,Math.min(3.2,world.scale.x*factor));const r=scene.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;const wx=(x-world.x)/world.scale.x,wy=(y-world.y)/world.scale.y;world.scale.set(k);world.position.set(x-wx*k,y-wy*k)}, {passive:false});
+ scene.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,wx:world.x,wy:world.y};scene.setPointerCapture(e.pointerId)});
+ scene.addEventListener('pointermove',e=>{if(drag){world.position.set(drag.wx+e.clientX-drag.x,drag.wy+e.clientY-drag.y)}});
+ ['pointerup','pointercancel','lostpointercapture'].forEach(k=>scene.addEventListener(k,()=>drag=null));
+ $('reset').onclick=center;
+ function setPause(v){paused=v;$('pause').setAttribute('aria-pressed',String(v));$('pause').textContent=v?'Созерцание: выкл.':'Созерцание: вкл.';app.ticker.maxFPS=preset.fps;}
+ $('pause').onclick=()=>setPause(!paused);
+ quality.onchange=()=>{preset=presets[quality.value];drawBackground();app.ticker.maxFPS=preset.fps;status.textContent='Профиль: '+quality.selectedOptions[0].text};
+ app.ticker.maxFPS=preset.fps;
+ let t=0;app.ticker.add(ticker=>{if(document.hidden)return; t+=ticker.deltaTime*.005;
+   if(!paused&&!matchMedia('(prefers-reduced-motion: reduce)').matches){world.rotation=Math.sin(t*.09)*.018}
+ });
+ document.addEventListener('visibilitychange',()=>{if(document.hidden)app.ticker.stop();else app.ticker.start()});
+ if(matchMedia('(prefers-reduced-motion: reduce)').matches)setPause(true);
+ status.textContent='Готово · '+points.length+' интерактивных узлов · '+preset.stars+' звёзд';
+})().catch(e=>{document.getElementById('error').textContent='Ошибка запуска: '+String(e)});
+</script></body></html>
