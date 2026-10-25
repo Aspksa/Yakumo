@@ -273,7 +273,7 @@ class Learner:
 
         outdated = set(ids("outdated", known))
         pinned = {f["id"] for f in self.memory.facts() if f.get("pinned")}
-        self.memory.delete([i for i in outdated if i not in pinned])
+        self.memory.supersede([i for i in outdated if i not in pinned], "conversation_update")
         self.memory.touch(set(ids("seen", known)) - outdated)
         for item in _list(data, "new"):
             if isinstance(item, dict) and isinstance(item.get("text"), str) and item["text"].strip():
