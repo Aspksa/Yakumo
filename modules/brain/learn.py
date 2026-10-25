@@ -62,6 +62,10 @@ PROMPT = {
  "mood_note": "пара слов, почему (или пусто)",
  "wish": "чему Yakumo стоит научиться, раз сейчас не смогла помочь (или null)",
  "lesson": "правило для Yakumo, если пользователь её поправил или был недоволен ответом (или null)",
+ "traces": [{"kind": "cause|decision|project_error|progress", "text": "что произошло/решили",
+             "reason": "почему", "result": "результат/что осталось", "status": "open|done",
+             "date": "YYYY-MM-DD или null", "files": ["путь из disk:ссылки"],
+             "about": [{"name": "сущность", "type": "person|pet|place|project|org|thing", "relation": ""}]}],
  "title": "короткое название беседы, 2-6 слов",
  "summary": "конспект всей беседы в 1-4 предложениях: о чём говорили, что решили, что осталось сделать"}}
 
@@ -80,6 +84,12 @@ dates — даты, которые стоит помнить: дни рожде�
 mood — настроение пользователя в этой беседе: -2 очень плохо, 0 обычно, 2 отлично; null, если непонятно.
 wish — только если Yakumo явно не смогла что-то сделать или не знала («не умею», «нет доступа»): кратко, что уметь.
 lesson — короткое правило на будущее от лица Yakumo («Отвечать короче, без списков»), только если была поправка.
+traces — структурная история только из явно сказанного в разговоре:
+cause — пользователь явно назвал причину («из-за», «потому что», «причина»);
+decision — явно выбрали/решили/отказались от варианта, reason — почему;
+project_error — явно описана ошибка/поломка проекта, result — исправление, если оно известно;
+progress — что хотели сделать, что сделали и что осталось; status=open, пока прямо не сказано, что завершено.
+Не додумывай причинность и не превращай предположение Yakumo в факт. Если не уверен — не добавляй trace.
 Если нового нет, верни пустые списки.""",
     "en": """You are the memory of the Yakumo assistant. Read the conversation excerpt and update the memory.
 Today is {today} ({weekday}).
@@ -109,6 +119,10 @@ Reply ONLY with a JSON object, no comments:
  "mood_note": "a few words why (or empty)",
  "wish": "what Yakumo should learn because she couldn't help just now (or null)",
  "lesson": "a rule for Yakumo if the user corrected her or disliked the answer (or null)",
+ "traces": [{"kind": "cause|decision|project_error|progress", "text": "what happened/was decided",
+             "reason": "why", "result": "outcome/what remains", "status": "open|done",
+             "date": "YYYY-MM-DD or null", "files": ["path from disk: link"],
+             "about": [{"name": "entity", "type": "person|pet|place|project|org|thing", "relation": ""}]}],
  "title": "short conversation title, 2-6 words",
  "summary": "summary of the whole conversation in 1-4 sentences: topics, decisions, what is left to do"}}
 
@@ -127,6 +141,10 @@ dates — dates worth remembering: birthdays (yearly=true), meetings, exams, tri
 mood — the user's mood in this conversation: -2 very bad, 0 normal, 2 great; null if unclear.
 wish — only if Yakumo clearly couldn't do or didn't know something ("I can't", "no access"): briefly, what to learn.
 lesson — a short rule for the future in Yakumo's voice ("Answer shorter, no lists"), only after a correction.
+traces — structured history only when explicitly supported by the conversation:
+cause — the user explicitly states why something happened; decision — an explicit choice/rejection and why;
+project_error — an explicit project failure/bug and, when known, its fix; progress — wanted/done/remaining work,
+status=open until the user explicitly says it is complete. Never invent causality or turn Yakumo's guess into a fact.
 If nothing is new, return empty lists.""",
 }
 
@@ -259,7 +277,7 @@ class Learner:
             summary=(talk or {}).get("summary") or "—", dialog=dialog)
         self.busy = True
         try:
-            reply = self.cloud.complete([{"role": "user", "content": prompt}], max_tokens=1500)
+            reply = self.cloud.complete([{"role": "user", "content": prompt}], max_tokens=2000)
             self.apply(tid, parse(reply), len(history), {f["id"] for f in facts}, {p["id"] for p in promises})
             self.last_error = None
             return True
@@ -302,6 +320,16 @@ class Learner:
             self.memory.wish(data["wish"])
         if isinstance(data.get("lesson"), str) and data["lesson"].strip():
             self.memory.lesson(data["lesson"], "chat")
+        for item in _list(data, "traces"):
+            if not isinstance(item, dict) or item.get("kind") not in ("cause", "decision", "project_error", "progress"):
+                continue
+            if not isinstance(item.get("text"), str) or not item["text"].strip():
+                continue
+            files = [x for x in _list(item, "files") if isinstance(x, str)]
+            self.memory.trace(item["kind"], item["text"], reason=item.get("reason", ""),
+                              result=item.get("result", ""), status=item.get("status", "done"),
+                              files=files, about=_list(item, "about"), source="chat", talk=tid,
+                              date=item.get("date"))
         title, summary = data.get("title"), data.get("summary")
         if isinstance(summary, str) and summary.strip():
             self.memory.save_talk(tid, title if isinstance(title, str) and title.strip() else summary[:60],
