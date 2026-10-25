@@ -212,7 +212,7 @@ def setup(ctx):
         """Имена файлов, текст внутри документов и описания фото — одним списком."""
         names = disk.search(q)
         items = {i["path"]: {**i, "match": "name"} for i in names["items"]}
-        for hit in index.search(q):
+        for hit in [*index.search(q), *index.bm25(q, limit=80)]:
             if hit["path"] in items:
                 items[hit["path"]].setdefault("snippet", hit["snippet"])
                 continue
@@ -297,6 +297,13 @@ def setup(ctx):
         "/api/disk/shares": lambda _req: disk.shares(),
         "/api/disk/s": shared,
         "/api/disk/smart": smart,
+        "/api/disk/intelligence/status": lambda _req: index.intelligence.status(),
+        "/api/disk/intelligence/timeline": lambda r: {
+            "items": index.intelligence.timeline()},
+        "/api/disk/intelligence/discoveries": lambda r: {
+            "items": index.intelligence.discoveries()},
+        "/api/disk/intelligence/links": lambda r: {
+            "items": index.intelligence.links(query(r).get("path", ""))},
         "POST /api/disk/smart": smart_save,
         "POST /api/disk/upload": upload,
         "POST /api/disk/mkdir": lambda r: (d := body(r)) and disk.mkdir(d.get("path"), d.get("name")),
