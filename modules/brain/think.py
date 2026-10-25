@@ -71,31 +71,37 @@ class DeepThink:
             return {"error": "Нет ключа Cloud.ru"}
         lang = "en" if self.language() == "en" else "ru"
         task, context = task.strip()[:4000], (context or "—").strip()[:4000]
+        models = self.cloud.thinking_models(4) if hasattr(self.cloud, "thinking_models") else []
+        if not models:
+            models = [getattr(self.cloud.config, "cloud_model", None)]
 
-        def draft(voice):
-            name, how = voice
+        jobs = [(voice, models[i % len(models)]) for i, voice in enumerate(VOICES[lang])]
+
+        def draft(job):
+            (name, how), model = job
             text = self.cloud.complete([{"role": "user", "content": DRAFT[lang].format(
-                voice=name, how=how, task=task, context=context)}], max_tokens=1200)
-            return name, text.strip()
+                voice=name, how=how, task=task, context=context)}], model=model, max_tokens=1200)
+            return name, text.strip(), model
 
         with ThreadPoolExecutor(3) as pool:
-            drafts = [d for d in pool.map(self._safe(draft), VOICES[lang]) if d]
+            drafts = [d for d in pool.map(self._safe(draft), jobs) if d]
         if not drafts:
             return {"error": "Не удалось подумать: нет связи с Cloud.ru"}
-        listing = "\n\n".join(f"[{name}]\n{text[:3000]}" for name, text in drafts)
+        listing = "\n\n".join(f"[{name} · {model}]\n{text[:3000]}" for name, text, model in drafts)
+        critic_model = models[3] if len(models) > 3 else models[0]
         try:
             data = parse(self.cloud.complete([{"role": "user", "content": CRITIC[lang].format(
-                task=task, context=context, drafts=listing)}], max_tokens=2000))
+                task=task, context=context, drafts=listing)}], model=critic_model, max_tokens=2000))
         except Exception as exc:  # noqa: BLE001 — критик не ответил: отдать черновик аналитика
             log.warning("Память: критик не ответил: %s", exc)
-            return {"answer": drafts[0][1], "voices": len(drafts)}
+            return {"answer": drafts[0][1], "voices": len(drafts), "models": [d[2] for d in drafts]}
         lesson = data.get("lesson")
         if isinstance(lesson, str) and lesson.strip() and self.memory.enabled:
             self.memory.lesson(lesson, "think")
         confidence = data.get("confidence") if type(data.get("confidence")) is int else None
         return {"answer": data.get("answer") if isinstance(data.get("answer"), str) else drafts[0][1],
                 "confidence": confidence, "disagreements": data.get("disagreements") or "",
-                "voices": len(drafts),
+                "voices": len(drafts), "models": [d[2] for d in drafts] + [critic_model],
                 "note": ("Перескажи ответ пользователю своими словами. Если уверенность ниже 4 — честно скажи, "
                          "в чём сомневаешься." if lang == "ru" else
                          "Retell the answer in your own words. If confidence is below 4, say what you doubt.")}
