@@ -180,6 +180,21 @@ class BrainTest(BrainBase):
         self.assertIn("Пользователя зовут Аня", prompt)
         self.assertIn("«Знакомство»: Аня рассказала о себе.", prompt)
 
+    def test_memory_engine_migrates_legacy_json(self):
+        root = self.data / "legacy-test"
+        root.mkdir(parents=True)
+        legacy = root / "memory.json"
+        legacy.write_text(json.dumps({
+            "enabled": True,
+            "facts": [{"id": "oldfact", "text": "Старое воспоминание", "kind": "other"}],
+        }, ensure_ascii=False), encoding="utf-8")
+        migrated = type(self.memory())(legacy)
+        self.assertEqual(migrated.data["facts"][0]["text"], "Старое воспоминание")
+        self.assertTrue((root / "memory.sqlite3").is_file())
+        self.assertTrue((root / "memory.legacy.json").is_file())
+        self.assertFalse(legacy.exists())
+        self.assertEqual(migrated.storage_status()["engine"], "sqlite-wal")
+
     def test_outdated_facts_are_replaced_and_duplicates_merged(self):
         old = self.post("/api/brain/fact", {"text": "Живёт в Казани", "kind": "person"})["facts"][0]
         again = self.post("/api/brain/fact", {"text": "живёт в Казани"})["facts"]
