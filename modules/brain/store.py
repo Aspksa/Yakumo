@@ -40,6 +40,9 @@ FORGET_DAYS = 180   # мелкие факты, которые не вспоми�
 
 MAX_LESSONS = 1000  # правил до ночной консолидации; старые не теряются из-за маленького лимита
 ARCHIVE_SCORE = 0  # факты слабее этого во сне уходят в архив: не в подсказке, но находятся поиском
+MEMORY_TIERS = ("operational", "episodic", "longterm", "archive")
+OPERATIONAL_DAYS = 7
+LONGTERM_SEEN = 5
 # Списки «роста»: уроки, желания, предложенные навыки, свои инструменты, конспекты, ассоциации,
 # примеры разговоров (для улучшения подсказки), мысли фонового разума, ответы с 👍 (образцы) и
 # ответы с 👎, которые ещё не разобраны, файлы, которые Yakumo написала (ждут ваших правок).
@@ -150,8 +153,59 @@ class Memory:
 
     def storage_status(self) -> dict:
         """Диагностика движка памяти без содержимого личных воспоминаний."""
-        return {"engine": "sqlite-wal", "version": self.db.VERSION,
+        return {"engine": "sqlite-wal", "version": self.db.VERSION, "memory_engine": "2.1",
                 "events": self.db.history(20)}
+
+    def memory_tier(self, fact: dict, now: float | None = None) -> str:
+        """Слой памяти: оперативная → эпизодическая → долговременная → архив."""
+        if fact.get("archived") or fact.get("superseded"):
+            return "archive"
+        now = now or time.time()
+        if fact.get("pinned") or fact.get("seen", 1) >= LONGTERM_SEEN:
+            return "longterm"
+        age = max(0.0, (now - fact.get("last_seen", fact.get("created", now))) / 86400)
+        if age <= OPERATIONAL_DAYS:
+            return "operational"
+        if fact.get("importance", 2) >= 3:
+            return "longterm"
+        return "episodic"
+
+    def rebalance_tiers(self) -> dict[str, int]:
+        """Автоматически перераспределить факты по слоям, ничего не удаляя."""
+        now = time.time()
+        counts = {tier: 0 for tier in MEMORY_TIERS}
+        changed = False
+        with self.lock:
+            for fact in self.data["facts"]:
+                tier = self.memory_tier(fact, now)
+                if fact.get("tier") != tier:
+                    fact["tier"] = tier
+                    changed = True
+                counts[tier] += 1
+            if changed:
+                self.save()
+        return counts
+
+    def tier_counts(self) -> dict[str, int]:
+        counts = {tier: 0 for tier in MEMORY_TIERS}
+        for fact in self.data["facts"]:
+            counts[self.memory_tier(fact)] += 1
+        return counts
+
+    def supersede(self, ids, reason: str = "new_information") -> int:
+        """Старая версия факта не уничтожается: уходит в архив как заменённая."""
+        ids = set(_ids(ids))
+        count = 0
+        now = int(time.time())
+        with self.lock:
+            for fact in self.data["facts"]:
+                if fact["id"] in ids and not fact.get("pinned"):
+                    fact.update(archived=True, superseded=True, tier="archive",
+                                superseded_at=now, superseded_reason=str(reason)[:80])
+                    count += 1
+            if count:
+                self.save()
+        return count
 
     def _changed(self, kind: str, item_id: str) -> None:
         for hook in self.on_change:
@@ -350,7 +404,9 @@ class Memory:
                 if f["id"] in ids:
                     f["seen"] = f.get("seen", 1) + 1
                     f["last_seen"] = now
-                    f.pop("archived", None)  # вспомнилось — возвращается из архива
+                    if not f.get("superseded"):
+                        f.pop("archived", None)  # вспомнилось — возвращается из архива
+                    f["tier"] = self.memory_tier(f, now)
             self.save()
 
     def delete(self, ids) -> int:
@@ -388,26 +444,34 @@ class Memory:
             return keep
 
     def archive_faded(self) -> int:
-        """Во сне: потускневшие факты уходят в архив (уровень памяти ниже), чтобы не забивать подсказку."""
+        """Во сне: слабое уходит в архив, но больше не уничтожается."""
         count = 0
         with self.lock:
             for f in self.data["facts"]:
                 if not f.get("pinned") and not f.get("archived") and self.score(f) < ARCHIVE_SCORE:
-                    f["archived"] = True
+                    f.update(archived=True, tier="archive", archived_at=int(time.time()))
                     count += 1
             if count:
                 self.save()
+        self.rebalance_tiers()
         return count
 
     def _trim(self) -> None:
-        """Забыть то, что давно не вспоминалось: мелкие факты, выученные самой Yakumo."""
+        """Engine 2.1: вместо удаления старое переводится в архивный слой."""
         now = time.time()
-        self.data["facts"] = [f for f in self.data["facts"]
-                              if f.get("pinned") or f.get("source") != "auto" or f.get("importance", 2) > 1
-                              or now - f.get("last_seen", now) < FORGET_DAYS * 86400]
-        if len(self.data["facts"]) > MAX_FACTS:
-            self.data["facts"].sort(key=lambda f: -self.score(f, now))
-            del self.data["facts"][MAX_FACTS:]
+        for fact in self.data["facts"]:
+            forgotten = (not fact.get("pinned") and fact.get("source") == "auto"
+                         and fact.get("importance", 2) <= 1
+                         and now - fact.get("last_seen", now) >= FORGET_DAYS * 86400)
+            if forgotten and not fact.get("archived"):
+                fact.update(archived=True, tier="archive", archived_at=int(now))
+        active = [f for f in self.data["facts"] if not f.get("archived")]
+        if len(active) > MAX_FACTS:
+            active.sort(key=lambda f: self.score(f, now))
+            for fact in active[:len(active) - MAX_FACTS]:
+                fact.update(archived=True, tier="archive", archived_at=int(now))
+        for fact in self.data["facts"]:
+            fact["tier"] = self.memory_tier(fact, now)
         self._prune_entities()
 
     # --- Файлы Диска в памяти ---
