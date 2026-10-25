@@ -51,11 +51,20 @@ class Tasks:
             self.thread.start()
         return item
 
+    def retry(self, item: dict) -> None:
+        """Watchdog переочередил задачу; старый запуск не сможет записать поздний результат."""
+        self.queue.put(item["id"])
+        if self.thread is None or not self.thread.is_alive():
+            self.thread = threading.Thread(target=self._run, name="brain-tasks", daemon=True)
+            self.thread.start()
+
     def resume(self) -> None:
         """После перезапуска: незаконченные задачи — снова в очередь."""
         for item in self.memory.data["thoughts"]:
             if item.get("kind") == "task" and item.get("status") in ("queued", "running"):
                 item["status"] = "queued"
+                item["generation"] = int(item.get("generation", 0)) + 1
+                item["heartbeat"] = int(__import__("time").time())
                 self.queue.put(item["id"])
         if not self.queue.empty():
             self.thread = threading.Thread(target=self._run, name="brain-tasks", daemon=True)
@@ -88,21 +97,34 @@ class Tasks:
         from yakumo.core.cloud import _tool_calls, _visible
 
         lang = "en" if self.language() == "en" else "ru"
+        generation = int(item.get("generation", 0))
         with self.memory.lock:
             item["status"] = "running"
             item["steps"] = []
+            item["heartbeat"] = int(__import__("time").time())
             self.memory.save()
+
+        def alive() -> bool:
+            return item.get("status") == "running" and int(item.get("generation", 0)) == generation
+
         messages = [{"role": "user", "content": PROMPT[lang].format(tools=self._listing(), task=item["task"])}]
         for _ in range(MAX_STEPS + 1):
-            if item["status"] == "cancelled":
+            if not alive():
                 return None
+            self.mind.heartbeat(item)
             text = self.mind.complete(messages, max_tokens=2000)
+            if not alive():
+                return None
+            self.mind.heartbeat(item)
             calls = _tool_calls(text)
             if not calls:
                 break
             messages.append({"role": "assistant", "content": text})
             results = []
             for name, args in calls[:3]:
+                if not alive():
+                    return None
+                self.mind.heartbeat(item)
                 tool = self.tools.get(name)
                 if tool is None or tool.change or name in SKIP:
                     result = {"error": "Нет такого инструмента (или он меняет данные)"}
@@ -119,11 +141,12 @@ class Tasks:
             messages.append({"role": "user", "content": "\n\n".join(results)})
         else:
             text = ""
-        if item["status"] == "cancelled":
+        if not alive():
             return None
         answer = _visible(text).strip() or ("Не получилось довести задачу до конца." if lang == "ru"
                                             else "I couldn't finish the task.")
-        self.mind.finish(item, "done", answer)
+        if not self.mind.finish(item, "done", answer):
+            return None
         head = "Готово: «{}»" if lang == "ru" else "Done: “{}”"
         self.memory.say(head.format(item["title"]) + "\n\n" + answer, "task")
         return answer
