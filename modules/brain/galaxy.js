@@ -1201,13 +1201,30 @@
       gl.camera.updateProjectionMatrix();
       if (!gl.sized && !gl.flight) gl.orbit.dist = 1500 * Math.max(1, Math.sqrt(0.9 / gl.camera.aspect));  // на узком экране — дальше
       gl.w = w; gl.h = hgt; gl.sized = true;
-      view.card.place?.(); view.ctl.place?.();
+      view.card.place?.(); view.projectPanel.place?.(); view.ctl.place?.();
     }
     for (const m of gl.mats) { m.uniforms.time.value = gl.time; m.uniforms.ratio.value = gl.renderer.getPixelRatio(); }
     // Галактика медленно вращается; ядро дышит.
     if (!reduced) gl.galaxy.rotation.y += dt * 0.012;
     gl.core.material.opacity = 0.75 + Math.sin(gl.time * 1.3) * 0.15;
     if (gl.disk) gl.disk.rotation.y += dt * 0.9;
+    // Внутренние узлы проекта пульсируют только при реальном активном состоянии/автофокусе.
+    for (const node of gl.projectInterior?.nodes || []) {
+      if (!node.sprite) continue;
+      const pulse = node.sprite.userData.pulse && !reduced ? 1 + Math.sin(gl.time * 2.2 + (hash(node.id)%17)) * .09 : 1;
+      const base = node.sprite.userData.baseScale || 54;
+      const selected = gl.projectSelected === node.id ? 1.18 : 1;
+      node.sprite.scale.set(base*pulse*selected, base*pulse*selected, 1);
+      if (node.sprite.material) node.sprite.material.opacity =
+        gl.projectSelected === node.id ? .98 : node.status === "done" ? .48 : .78;
+    }
+    for (const sector of gl.projectSectors || []) {
+      if (!sector.sprite) continue;
+      const active = gl.projectInterior?.sector?.id === sector.id;
+      const size = 210 * (active && !reduced ? 1 + Math.sin(gl.time*1.35)*.035 : 1);
+      sector.sprite.scale.set(size,size,1);
+      sector.sprite.material.opacity = active ? .48 : .28;
+    }
     // Инерция вращения после отпускания мыши.
     gl.orbit.yaw += gl.spin.yaw; gl.orbit.pitch = Math.max(-1.45, Math.min(1.45, gl.orbit.pitch + gl.spin.pitch));
     gl.spin.yaw *= 0.92; gl.spin.pitch *= 0.92;
@@ -1323,7 +1340,20 @@
     }
     for (const p of gl.projectSectors || []) {
       const wp = new gl.THREE.Vector3(...p.pos);
-      if (show(p.tag,wp)) p.tag.style.opacity = .87;
+      if (show(p.tag,wp)) {
+        const active = gl.projectInterior?.sector?.id === p.id;
+        p.tag.style.opacity = active ? 1 : .87;
+        p.tag.style.pointerEvents = "auto";
+      }
+    }
+    for (const node of gl.projectInterior?.nodes || []) {
+      const wp = new gl.THREE.Vector3(...node.pos);
+      const v = show(node.tag,wp);
+      if (!v) continue;
+      const d = wp.distanceTo(gl.camera.position);
+      const visible = d < 2200 || gl.projectSelected === node.id;
+      node.tag.style.opacity = visible ? (gl.projectSelected === node.id ? 1 : .82) : 0;
+      node.tag.style.pointerEvents = visible ? "auto" : "none";
     }
     for (const a of gl.areaTags) {
       const wp = new gl.THREE.Vector3(...a.pos).applyMatrix4(gl.galaxy.matrixWorld);
@@ -1447,11 +1477,15 @@
     try {
       const d = await Y.getJSON("/api/brain");
       const sig = x => x && JSON.stringify({
-        facts:x.facts.map(f=>[f.id,f.updated,f.archived]),entities:x.entities.map(e=>[e.id,e.area]),
-        promises:(x.promises||[]).map(p=>[p.id,p.done]),mind:(x.mind?.thoughts||[]).map(t=>[t.id,t.status]),
-        lessons:(x.lessons||[]).length,skills:(x.skills||[]).length,
-        improvements:(x.improvements||[]).map(v=>[v.id,v.status]),
-        generations:x.evolution?.total_generations||0, branches:x.branches
+        facts:x.facts.map(f=>[f.id,f.updated,f.archived]),
+        entities:x.entities.map(e=>[e.id,e.area,e.latest,e.facts,(e.files||[]).length,(e.related||[]).length]),
+        promises:(x.promises||[]).map(p=>[p.id,p.done]),
+        mind:(x.mind?.thoughts||[]).map(t=>[t.id,t.status,t.title,t.heartbeat,t.finished]),
+        lessons:(x.lessons||[]).map(v=>[v.id,v.seen,v.updated]),
+        skills:(x.skills||[]).map(v=>[v.id,v.used,v.name]),
+        improvements:(x.improvements||[]).map(v=>[v.id,v.status,v.priority,v.last,v.title]),
+        evolution:(x.evolution?.runs||[]).map(v=>[v.id,v.generation,v.winner,v.status]),
+        branches:x.branches, code:x.code?.map
       });
       const changed = !data || sig(d) !== sig(data);
       data = d;
