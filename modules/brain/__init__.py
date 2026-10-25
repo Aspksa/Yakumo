@@ -886,7 +886,7 @@ def setup(ctx):
     def grow_now(req):
         what = body(req).get("what")
         if what not in ("exam", "style", "study", "curious", "consolidate", "foresee", "ideas", "audit"):
-            raise BrainError("what: exam, style, study, curious, consolidate, foresee или ideas")
+            raise BrainError("what: exam, style, study, curious, consolidate, foresee, ideas или audit")
         if not mind.can_think():
             raise BrainError("Нет ключа Cloud.ru или исчерпан дневной бюджет")
         if what == "exam":
