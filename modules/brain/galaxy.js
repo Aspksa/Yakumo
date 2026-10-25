@@ -150,6 +150,40 @@
     return { areas, arms, stars, lost, hole, byId, comets, constellations, edges };
   }
 
+  // Project sectors are summaries of real API records, not invented neurons.
+  function projectSectors(d) {
+    const mind = d.mind || {}, branches = d.branches || {}, evolution = d.evolution || {};
+    const list = [
+      {id:"mind",name:"Разум",color:"#c79bff",count:(mind.thoughts||[]).length,href:"#/brain"},
+      {id:"growth",name:"Рост",color:"#7cdbb1",count:(d.lessons||[]).length+(d.suggestions||[]).length,href:"#/brain"},
+      {id:"skills",name:"Навыки",color:"#f8ca85",count:(d.skills||[]).length+(d.user_tools||[]).length,href:"#/brain"},
+      {id:"improve",name:"Улучшения",color:"#ff9c90",count:(d.improvements||[]).length,href:"#/brain"},
+      {id:"evolution",name:"Эволюция",color:"#8fb0ff",count:evolution.total_generations||0,href:"#/brain"},
+      {id:"code",name:"Код проекта",color:"#75b9ce",count:Math.max(0,Number(d.code?.files||d.code?.file_count||0)),href:"#/brain"}
+    ];
+    return list.map((item,i)=>({...item,pos:[Math.cos(i*Math.PI/3)*980,85,Math.sin(i*Math.PI/3)*980]}));
+  }
+
+  function drawProjectSectors(gl,d) {
+    const T=gl.THREE, group=new T.Group();
+    const sectors=projectSectors(d);
+    const mat=new T.SpriteMaterial({map:gl.tex.soft,color:0xffffff,transparent:true,
+      opacity:.28,blending:T.AdditiveBlending,depthWrite:false});
+    for(const item of sectors){
+      const color=new T.Color(item.color);
+      const material=mat.clone();material.color=color;
+      const sprite=new T.Sprite(material);sprite.position.set(...item.pos);
+      sprite.scale.set(210,210,1);group.add(sprite);
+      const mark=el("button","gx-project-sector",item.name+" · "+item.count);
+      mark.type="button";mark.title="Перейти к разделу «"+item.name+"»";
+      mark.onclick=()=>{ location.hash=item.href;
+        try{sessionStorage.setItem("yakumo.brain.target",item.id)}catch{} };
+      view.labels.append(mark);
+      item.tag=mark;
+    }
+    gl.scene.add(group);gl.projectSectors=sectors;gl.projectGroup=group;
+  }
+
   // --- Сцена ---
   let view = null;  // { host, ... } — одна на всю жизнь страницы
   let data = null, lastLoad = 0;
@@ -614,6 +648,7 @@
       view.labels.append(tag);
       s.tag = tag;
     }
+    drawProjectSectors(gl,data);
     gl.areaTags = w.areas.map((area, ai) => {
       const r = R * 0.95, a = ai / w.arms * Math.PI * 2 + r * 0.0062;
       const tag = el("span", "gx-area", L.areas[area] || area);
@@ -969,6 +1004,10 @@
       s.tag.style.opacity = vis ? Math.max(0.35, Math.min(1, 1.6 - d / 1500)).toFixed(2) : 0;
       s.tag.style.pointerEvents = vis ? "auto" : "none";
     }
+    for (const p of gl.projectSectors || []) {
+      const wp = new gl.THREE.Vector3(...p.pos);
+      if (show(p.tag,wp)) p.tag.style.opacity = .87;
+    }
     for (const a of gl.areaTags) {
       const wp = new gl.THREE.Vector3(...a.pos).applyMatrix4(gl.galaxy.matrixWorld);
       if (show(a.tag, wp)) a.tag.style.opacity = dist > 900 ? 0.9 : 0;
@@ -1090,7 +1129,13 @@
     lastLoad = Date.now();
     try {
       const d = await Y.getJSON("/api/brain");
-      const sig = (x) => x && `${x.facts.length}|${x.facts.filter((f) => f.archived).length}|${x.entities.map((e) => e.id + (e.area || "")).join()}|${(x.promises || []).length}`;
+      const sig = x => x && JSON.stringify({
+        facts:x.facts.map(f=>[f.id,f.updated,f.archived]),entities:x.entities.map(e=>[e.id,e.area]),
+        promises:(x.promises||[]).map(p=>[p.id,p.done]),mind:(x.mind?.thoughts||[]).map(t=>[t.id,t.status]),
+        lessons:(x.lessons||[]).length,skills:(x.skills||[]).length,
+        improvements:(x.improvements||[]).map(v=>[v.id,v.status]),
+        generations:x.evolution?.total_generations||0, branches:x.branches
+      });
       const changed = !data || sig(d) !== sig(data);
       data = d;
       recordObservation(d);
