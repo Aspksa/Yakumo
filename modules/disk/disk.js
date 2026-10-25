@@ -1803,7 +1803,8 @@
         h("div", { class: "dk-smart-actions" },
           h("button", { type: "button", class: "btn", onclick: () => explore("timeline") }, "Временная шкала"),
           h("button", { type: "button", class: "btn", onclick: () => explore("discoveries") }, "Неизвестные связи"),
-          h("button", { type: "button", class: "btn", onclick: () => explore("entities") }, "Граф сущностей")),
+          h("button", { type: "button", class: "btn", onclick: () => explore("entities") }, "Граф сущностей"),
+          h("button", { type: "button", class: "btn", onclick: () => explore("work") }, "Для «Работы»")),
         h("div", { class: "dk-intelligence-results" }));
       
     }
@@ -1813,12 +1814,19 @@
       try {
         const result = await get("intelligence/" + which);
         const items = which === "entities" ? (result.relations || []) : (result.items || []);
-        target.replaceChildren(h("h4", {}, which === "timeline" ? "Временная память" : which === "entities" ? "Связи транспорта" : "Возможные связи"),
-          ...(items.length ? items.slice(0, 30).map((entry) => h("div", { class: "dk-intel-item" },
-            h("b", {}, entry.date || entry.subject || ""),
-            h("p", {}, (entry.path || entry.paths?.join(" · ") || entry.documents?.join(" · ") || "")),
-            which !== "timeline" ? h("small", {}, "Предполагаемая связь: проверьте оригиналы") : ""
-          )) : [h("p", { class: "row-hint" }, "Пока нет данных. Добавьте документы с датами.")]));
+        const heading = which === "timeline" ? "Временная память" : which === "entities" ? "Связи транспорта"
+          : which === "work" ? "Кандидаты для модуля «Работа»" : "Возможные связи";
+        target.replaceChildren(h("h4", {}, heading),
+          ...(items.length ? items.slice(0, 50).map((entry) => h("div", { class: "dk-intel-item" },
+            h("b", {}, entry.date || entry.subject || entry.vehicle || ""),
+            h("p", {}, which === "work"
+              ? [entry.driver ? `Водитель: ${entry.driver} · ` : "", entry.liters != null ? `${entry.liters} л · ` : "",
+                 entry.amount != null ? `${entry.amount} ₽ · ` : "", entry.path || ""].join("")
+              : (entry.path || entry.paths?.join(" · ") || entry.documents?.join(" · ") || "")),
+            which !== "timeline" ? h("small", {}, which === "work"
+              ? "Кандидат, не проводка: сверьте исходный документ перед переносом в «Работу»."
+              : "Предполагаемая связь: проверьте оригиналы") : ""
+          )) : [h("p", { class: "row-hint" }, "Пока нет подходящих данных.")]));
       } catch (err) { target.replaceChildren(h("p", { class: "dk-error" }, err.message)); }
     }
     await show();
