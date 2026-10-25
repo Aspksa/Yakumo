@@ -1796,7 +1796,29 @@
         note,
         info.photo_error ? h("p", { class: "dk-error" }, info.photo_error) : "",
         info.ocr_error ? h("p", { class: "dk-error" }, info.ocr_error) : "",
-        h("p", { class: "row-hint dk-tip" }, L.chatTip));
+        h("p", { class: "row-hint dk-tip" }, L.chatTip),
+        h("h3", {}, "Интеллектуальный архив"),
+        h("p", { class: "row-hint" }, "Локальные связи и временная память: " +
+          (info.intelligence?.indexed ?? 0) + " документов. Никакой отправки в облако."),
+        h("div", { class: "dk-smart-actions" },
+          h("button", { type: "button", class: "btn", onclick: () => explore("timeline") }, "Временная шкала"),
+          h("button", { type: "button", class: "btn", onclick: () => explore("discoveries") }, "Неизвестные связи")),
+        h("div", { class: "dk-intelligence-results" }));
+      
+    }
+    async function explore(which) {
+      const target = body.querySelector(".dk-intelligence-results");
+      target.replaceChildren(h("p", { class: "row-hint" }, "Исследование локального индекса…"));
+      try {
+        const result = await get("intelligence/" + which);
+        const items = result.items || [];
+        target.replaceChildren(h("h4", {}, which === "timeline" ? "Временная память" : "Возможные связи"),
+          ...(items.length ? items.slice(0, 30).map((entry) => h("div", { class: "dk-intel-item" },
+            h("b", {}, entry.date || ""),
+            h("p", {}, (entry.path || entry.paths?.join(" · ") || "")),
+            which === "discoveries" ? h("small", {}, "Гипотеза: проверьте документы") : ""
+          )) : [h("p", { class: "row-hint" }, "Пока нет данных. Добавьте документы с датами.")]));
+      } catch (err) { target.replaceChildren(h("p", { class: "dk-error" }, err.message)); }
     }
     await show();
     const timer = setInterval(() => { if (info?.running || info?.photos || info?.ocr) show(); }, 3000);
