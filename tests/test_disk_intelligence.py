@@ -8,7 +8,7 @@ from modules.disk.intelligence import Intelligence, dates
 
 class IntelligenceTests(unittest.TestCase):
     def setUp(self):
-        self.db = sqlite3.connect(":memory:")
+        self.db = sqlite3.connect(":memory:", check_same_thread=False)
         self.db.execute("CREATE TABLE files(path TEXT PRIMARY KEY)")
         self.lock = threading.Lock()
         self.engine = Intelligence(self.db, self.lock)
