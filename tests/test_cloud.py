@@ -116,6 +116,14 @@ class CloudApiTest(unittest.TestCase):
         saved = json.loads(self.config_path.read_text(encoding="utf-8"))
         self.assertEqual(saved["cloud_model"], "other/model")
 
+    def test_old_non_chat_model_is_replaced_automatically(self):
+        self.config.cloud_model = "BAAI/bge-m3"  # могло сохраниться в старой версии Yakumo
+        self.post("/api/cloud", {"api_key": GOOD_KEY})
+        events = self.chat([{"role": "user", "content": "Привет"}])
+        self.assertEqual(events[-1], {"done": True})
+        self.assertEqual(FakeCloud.last_body["model"], "ai-sage/GigaChat3-10B-A1.8B")
+        self.assertEqual(self.config.cloud_model, "ai-sage/GigaChat3-10B-A1.8B")
+
     def test_chat_streams_reply(self):
         self.post("/api/cloud", {"api_key": GOOD_KEY})
         events = self.chat([{"role": "user", "content": "Привет"}])
