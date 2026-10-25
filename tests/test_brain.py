@@ -1,5 +1,6 @@
 import json
 import logging
+import sqlite3
 import sys
 import tempfile
 import threading
@@ -168,7 +169,7 @@ class BrainTest(BrainBase):
         state = self.get("/api/brain")
         self.assertEqual({f["text"] for f in state["facts"]}, {"Пользователя зовут Аня", "Любит зелёный чай"})
         self.assertEqual(state["talks"][0]["title"], "Знакомство")
-        self.assertTrue((self.data / "brain" / "memory.json").is_file())
+        self.assertTrue((self.data / "brain" / "memory.sqlite3").is_file())
         learn_prompt = next(r for r in FakeCloud.requests if not r.get("stream"))["messages"][0]["content"]
         self.assertIn("Привет, я Аня", learn_prompt)
 
@@ -563,7 +564,8 @@ class BrainTest(BrainBase):
         prompt = self.system_prompt()
         self.assertIn("Photoshop — «portfolio.psd @ 100%»", prompt)
         self.assertIn("Photoshop 2 мин", prompt)
-        saved = (self.data / "brain" / "memory.json").read_text(encoding="utf-8")
+        with sqlite3.connect(self.data / "brain" / "memory.sqlite3") as con:
+            saved = "\n".join(row[0] for row in con.execute("SELECT value FROM state"))
         self.assertNotIn("portfolio.psd", saved)  # заголовки окон на диск не попадают
 
 
@@ -745,6 +747,8 @@ class GrowthTest(BrainBase):
     # --- Эволюция из чата и сильное мышление ---
 
     def test_deep_think_several_voices_and_critic(self):
+        self.ctx.cloud.models = ["Qwen/Qwen3-235B-A22B-Instruct-2507", "openai/gpt-oss-120b",
+                                 "ai-sage/GigaChat3-10B-A1.8B"]
         FakeCloud.completions = ["Черновик: 120", "Черновик: 125, учёл комиссию", "Черновик: 120",
                                  json.dumps({"answer": "Итого **125** ₽ с комиссией", "confidence": 4,
                                              "disagreements": "Скептик учёл комиссию",
@@ -753,6 +757,7 @@ class GrowthTest(BrainBase):
                                                      "context": "Комиссия 5 ₽, НДС 20 ₽"})
         self.assertEqual(res["answer"], "Итого **125** ₽ с комиссией")
         self.assertEqual(res["voices"], 3)
+        self.assertEqual(len(set(res["models"][:3])), 3)
         self.assertEqual(self.memory().data["lessons"][0]["source"], "think")
         critic = [r for r in FakeCloud.requests if not r.get("stream")][-1]["messages"][0]["content"]
         self.assertIn("Черновик: 125, учёл комиссию", critic)
