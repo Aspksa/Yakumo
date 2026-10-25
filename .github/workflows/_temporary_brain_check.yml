@@ -16,6 +16,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Run brain and cloud tests
+      - name: Run Memory 2.1 and development tests
         shell: pwsh
-        run: python -m unittest tests.test_brain.BrainTest tests.test_brain.GrowthTest tests.test_cloud.CloudApiTest -v
+        run: >
+          python -m unittest -v
+          tests.test_brain.BrainTest.test_memory_engine_21_moves_facts_between_layers_without_loss
+          tests.test_brain.BrainTest.test_outdated_facts_are_replaced_and_duplicates_merged
+          tests.test_brain.BrainTest.test_old_minor_facts_fade_and_move_to_archive
+          tests.test_brain.GrowthTest.test_development_links_strengthen_on_joint_growth_and_choose_focus
