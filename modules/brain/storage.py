@@ -33,7 +33,7 @@ CREATE INDEX IF NOT EXISTS events_at ON events(at);
 
 
 class BrainDB:
-    VERSION = 2
+    VERSION = 21
 
     def __init__(self, path: Path, legacy: Path | None = None):
         self.path = Path(path)

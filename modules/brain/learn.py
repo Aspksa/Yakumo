@@ -213,6 +213,9 @@ class Learner:
     def stop(self) -> None:
         self.stopping = True
         self.wake.set()
+        thread = self.thread
+        if thread is not None and thread.is_alive() and thread is not threading.current_thread():
+            thread.join(timeout=5)
 
     def _run(self) -> None:
         next_tick = time.time() + 5
@@ -242,7 +245,7 @@ class Learner:
         if not self.cloud or not self.cloud.api_key():
             return False
         lang = "en" if self.language() == "en" else "ru"
-        facts = self.memory.facts()[:KNOWN_FACTS]
+        facts = [f for f in self.memory.facts() if not f.get("archived")][:KNOWN_FACTS]
         promises = self.memory.open_promises()
         talk = self.memory.talk(tid)
         names = {"user": "Пользователь" if lang == "ru" else "User", "assistant": "Yakumo"}
@@ -273,7 +276,7 @@ class Learner:
 
         outdated = set(ids("outdated", known))
         pinned = {f["id"] for f in self.memory.facts() if f.get("pinned")}
-        self.memory.delete([i for i in outdated if i not in pinned])
+        self.memory.supersede([i for i in outdated if i not in pinned], "conversation_update")
         self.memory.touch(set(ids("seen", known)) - outdated)
         for item in _list(data, "new"):
             if isinstance(item, dict) and isinstance(item.get("text"), str) and item["text"].strip():
