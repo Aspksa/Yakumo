@@ -734,8 +734,9 @@
       }).catch(e=>{
         if(!host.isConnected)return;
         console.warn("PixiJS:",e);
-        host.replaceChildren(h("p",{class:"row-hint bad"},"PixiJS не установлен. Выполните py -3 scripts/install_pixi.py и перезапустите Yakumo."),
-          h("button",{type:"button",class:"btn",onclick:()=>{try{localStorage.setItem("yakumo-map-engine","classic")}catch{}draw();}},"Классическая карта"));
+        state.msg={bad:true,text:"Галактика не запустилась: "+e.message+". Вернулась классическая карта. Для установки движка из папки проекта выполните: py -3 scripts/install_pixi.py"};
+        try{localStorage.setItem("yakumo-map-engine","classic")}catch{}
+        draw();
       });
       return[host,panel];
     }

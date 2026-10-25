@@ -15,18 +15,22 @@ MAX_BYTES = 3_000_000
 
 
 def main() -> None:
+    print("Загрузка PixiJS", VERSION, "из", URL)
     request = urllib.request.Request(URL, headers={"User-Agent": "Yakumo-Pixi-vendor/1"})
-    with urllib.request.urlopen(request, timeout=35) as response:
-        data = response.read(MAX_BYTES + 1)
+    try:
+        with urllib.request.urlopen(request, timeout=35) as response:
+            data = response.read(MAX_BYTES + 1)
+    except Exception as exc:
+        raise RuntimeError("Не удалось скачать PixiJS. Проверьте интернет, прокси или сертификаты TLS.") from exc
     if not 100_000 < len(data) <= MAX_BYTES:
         raise RuntimeError("Unexpected PixiJS bundle size")
-    if b"PIXI" not in data[:10000] and b"PIXI" not in data[-10000:]:
+    if b"PIXI" not in data:
         raise RuntimeError("Downloaded file does not look like PixiJS")
     DEST.parent.mkdir(parents=True, exist_ok=True)
     temp = DEST.with_suffix(".js.tmp")
     temp.write_bytes(data)
     temp.replace(DEST)
-    print("Installed:", DEST)
+    print("PixiJS установлен:", DEST)
     print("SHA-256:", hashlib.sha256(data).hexdigest())
     print("For reproducible production releases, record and pin this SHA-256.")
 
