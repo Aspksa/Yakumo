@@ -452,3 +452,17 @@
 @media(max-width:730px){.br-workspace-tools{width:100%;justify-content:flex-start}.br-rail-group{scrollbar-width:thin;scrollbar-color:var(--border) transparent}.br-observer-summary>div{padding:13px}.br-live-hero-copy h3{font-size:16px}}
 @media(max-width:390px){.br-observer-summary{gap:7px}.br-observer-summary>div{padding:10px}.br-observer-summary strong{font-size:21px}.br-live-orb{display:none}}
 @media(prefers-reduced-motion:reduce){.br-observer-summary>div,.br-workspace-head .br-refresh-btn{transition:none}.br-observer-summary>div:hover,.br-workspace-head .br-refresh-btn:hover{transform:none}}
+
+
+/* Optional PixiJS galaxy; no external fonts or visual assets. */
+.br-pixi-host{position:relative;min-height:540px;height:min(72vh,780px);background:radial-gradient(ellipse at 45% 45%,#19223a 0%,#0b101c 80%);border:1px solid #d8b87944;border-radius:24px;overflow:hidden;box-shadow:inset 0 0 65px #080d18}
+.br-pixi-canvas{height:100%;width:100%;touch-action:none;cursor:grab}
+.br-pixi-canvas:active{cursor:grabbing}
+.br-pixi-canvas canvas{width:100%;height:100%;display:block}
+.br-pixi-note{position:absolute;bottom:14px;left:15px;z-index:1;color:#e9d3a7;font-size:12px;background:#121b2dbb;padding:11px 15px;border-radius:12px}
+.br-pixi-host>.row-hint{padding:22px}
+.br-map-engine{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap}
+.br-map-engine>.btn{font-size:12px;min-height:32px;white-space:nowrap}
+.br-map-engine>span{color:var(--muted);font-size:11px;margin-left:6px}
+@media(max-width:700px){.br-pixi-host{height:55vh;min-height:390px;border-radius:16px}.br-map-engine{justify-content:flex-start}}
+@media(prefers-reduced-motion:reduce){.br-pixi-host,.br-pixi-host *{animation:none!important;transition:none!important}}

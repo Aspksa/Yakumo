@@ -702,9 +702,43 @@
   }
 
   // Вселенная: мозг в центре, звёзды по галактикам жизни (universe.js). Пока скрипт не загрузился — старое созвездие.
+  let pixiSession=null, pixiLoad=null;
+  function engine(){try{return localStorage.getItem("yakumo-map-engine")||"classic"}catch{return "classic"}}
+  function ensurePixi(){
+    if(window.PIXI&&window.YakumoPixiMap)return Promise.resolve();
+    if(pixiLoad)return pixiLoad;
+    const rootScript=document.querySelector('script[src*="brain.js"]');
+    const base=rootScript?.src?.replace(/brain\.js(?:\?.*)?$/,"")||"/modules/brain/";
+    const inject=name=>new Promise((ok,no)=>{
+      const el=document.createElement("script");el.src=base+name;el.onload=ok;
+      el.onerror=()=>no(new Error("Локальный файл не найден: "+name));document.head.append(el);
+    });
+    pixiLoad=(async()=>{if(!window.PIXI)await inject("pixi.min.js");
+      if(!window.YakumoPixiMap)await inject("pixi-map.js");})().catch(e=>{pixiLoad=null;throw e});
+    return pixiLoad;
+  }
   function mapView() {
     const ents = (state.data.entities || []).filter((e) => e.facts > 0 && matches(`${e.name} ${e.relation || ""}`));
     if (!ents.length) return empty(state.data.entities?.length ? L.nothing : L.emptyMap, L.emptyMapHint);
+    if(engine()==="pixi"){
+      const host=h("div",{class:"br-pixi-host"});
+      const info=h("p",{class:"br-pixi-note"},"Подключение WebGL…");host.append(info);
+      const panel=h("div",{},nodePanel());
+      ensurePixi().then(()=>{
+        if(!host.isConnected)return;
+        info.remove();
+        pixiSession=window.YakumoPixiMap.mount(host,{entities:ents,facts:state.data.facts},{
+          onPick:id=>{state.node=id;panel.replaceChildren(nodePanel());},
+          onError:e=>{console.warn("PixiJS WebGL:",e);
+            if(host.isConnected)host.replaceChildren(h("p",{class:"row-hint bad"},"WebGL недоступен. Используйте классическую карту."));}});
+      }).catch(e=>{
+        if(!host.isConnected)return;
+        console.warn("PixiJS:",e);
+        host.replaceChildren(h("p",{class:"row-hint bad"},"PixiJS не установлен. Выполните py -3 scripts/install_pixi.py и перезапустите Yakumo."),
+          h("button",{type:"button",class:"btn",onclick:()=>{try{localStorage.setItem("yakumo-map-engine","classic")}catch{}draw();}},"Классическая карта"));
+      });
+      return[host,panel];
+    }
     if (!window.YakumoUniverse) return constellationView(ents);
     const host = h("div", { class: "un-host" });
     const panel = h("div", {}, nodePanel());
@@ -1487,8 +1521,11 @@
     return h("div", { class: "br-map-observer" },
       h("div", {}, icon("network"), h("span", {}, "Живая карта связей"),
         h("small", {}, "Перетаскивайте узлы, выбирайте связи и открывайте источники")),
-      h("span", {}, (d.entities || []).length + " сущностей · " +
-        (d.facts || []).length + " фактов"));
+      h("div",{class:"br-map-engine"},
+        ...[["pixi","Галактика"],["classic","Классическая"]].map(([id,label])=>h("button",{
+          type:"button",class:"btn"+(engine()===id?" primary":""),"aria-pressed":String(engine()===id),
+          onclick:()=>{try{localStorage.setItem("yakumo-map-engine",id)}catch{}draw();}},label)),
+        h("span",{},(d.entities||[]).length+" сущностей · "+(d.facts||[]).length+" фактов")));
   }
 
   function draw() {
@@ -1517,6 +1554,7 @@
                     ["improve", L.improve, (d.improvements || []).filter((x) => x.status === "new").length]]]];
     const views = { facts: factsView, map: mapView, talks: talksView, plans: plansView, skills: skillsView,
                     mind: mindView, grow: growView, improve: improveView };
+    if(pixiSession){pixiSession.stop();pixiSession=null;}
     root.replaceChildren(
       h("div", { class: "br-head" },
         h("div", {}, h("h1", {}, L.title), h("p", { class: "br-lead" }, L.lead(d.facts.length, d.talks.length))),
