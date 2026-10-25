@@ -31,6 +31,8 @@ class EntityTests(unittest.TestCase):
         self.assertTrue(r["fuel"])
         self.assertEqual(r["liters"], [45.5])
         self.assertEqual(r["amounts"], [3200.0])
+        grouped = extract_entities("заправка.txt", "ДТ 1 250,5 л")
+        self.assertEqual(grouped["liters"], [1250.5])
         items = work_candidates([r])
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0]["vehicle"], "Н954МУ125")
