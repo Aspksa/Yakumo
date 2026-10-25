@@ -935,6 +935,63 @@ class GrowthTest(BrainBase):
         positions = {x["id"]: i for i, x in enumerate(timeline)}
         self.assertLess(positions[recent["id"]], positions[old_event["id"]])
 
+    def test_trace_export_import_preserves_entity_scope(self):
+        memory = self.memory()
+        memory.trace("progress", "Перестроить индекс", status="open",
+                     about=[{"name": "Проект Alpha", "type": "project"}])
+        memory.trace("progress", "Перестроить индекс", status="done",
+                     about=[{"name": "Проект Beta", "type": "project"}])
+        exported = memory.export()
+        memory.clear()
+        memory.import_(exported)
+        traces = [x for x in memory.data["traces"] if x["text"] == "Перестроить индекс"]
+        self.assertEqual(len(traces), 2)
+        names = {e["id"]: e["name"] for e in memory.entities()}
+        scopes = [{names[i] for i in x.get("about", [])} for x in traces]
+        self.assertIn({"Проект Alpha"}, scopes)
+        self.assertIn({"Проект Beta"}, scopes)
+        self.assertEqual({x["status"] for x in traces}, {"open", "done"})
+
+    def test_conflicts_group_by_entity_and_state_reuses_result(self):
+        memory = self.memory()
+        now = int(time.time())
+        memory.data["facts"] = [
+            {"id": f"u{i}", "text": f"Уникальная запись номер {i}", "kind": "other",
+             "about": [f"entity-{i}"], "created": now, "last_seen": now, "seen": 1, "importance": 2}
+            for i in range(1000)
+        ]
+        memory.data["facts"] += [
+            {"id": "ca", "text": "Проект общий статус красный", "kind": "work",
+             "about": ["shared"], "created": now, "last_seen": now, "seen": 1, "importance": 2},
+            {"id": "cb", "text": "Проект общий статус зелёный", "kind": "work",
+             "about": ["shared"], "created": now, "last_seen": now, "seen": 1, "importance": 2},
+        ]
+        store_module = sys.modules[memory.__class__.__module__]
+        original_alike = store_module.alike
+        calls = {"n": 0}
+        def counted_alike(a, b):
+            calls["n"] += 1
+            return original_alike(a, b)
+        store_module.alike = counted_alike
+        try:
+            found = memory.conflicts()
+        finally:
+            store_module.alike = original_alike
+        self.assertEqual(calls["n"], 1)
+        self.assertEqual({found[0]["a"], found[0]["b"]}, {"ca", "cb"})
+
+        original_conflicts = memory.conflicts
+        state_calls = {"n": 0}
+        def counted_conflicts(limit=30):
+            state_calls["n"] += 1
+            return original_conflicts(limit)
+        memory.conflicts = counted_conflicts
+        try:
+            self.get("/api/brain")
+        finally:
+            memory.conflicts = original_conflicts
+        self.assertEqual(state_calls["n"], 1)
+
     def test_learner_saves_causes_decisions_errors_and_unfinished_work(self):
         FakeCloud.learned = {
             "new": [], "seen": [], "outdated": [],
