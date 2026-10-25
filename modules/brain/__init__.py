@@ -42,7 +42,7 @@ from .think import DeepThink
 from .usertools import NAME as TOOL_NAME, ToolError, calc, check, sandbox
 
 NAME = "Мозг"
-VERSION = "3.3"
+VERSION = "3.4"
 
 PROMPT_FACTS = 30     # самые важные факты — в каждую подсказку
 PROMPT_RELEVANT = 10  # и ещё столько подходящих к последней реплике (по словам и по смыслу)
@@ -201,6 +201,8 @@ def setup(ctx):
         ctx.log.exception("Свой код: не удалось прочитать файлы программы")
     improve = Improvements(memory, mind, lang, lambda: next((v["revision"][:7] for v in memory.versions()), ""), code)
     branches = DevelopmentBranches(memory, knowledge, code, ctx.services)
+    memory.rebalance_tiers()
+    branches.tick()
     catcher = ErrorCatcher(improve, getattr(ctx.paths, "app", ""))
     logging.getLogger("yakumo").addHandler(catcher)
     ctx.on_stop(lambda: logging.getLogger("yakumo").removeHandler(catcher))
@@ -213,6 +215,41 @@ def setup(ctx):
         if memory.data["meta"].get("last_study") != today():
             memory.data["meta"]["last_study"] = today()
             knowledge.study(lang())
+
+    def focus_train():
+        """Раз в сутки тренировать самую слабую доступную ветку."""
+        if memory.data["meta"].get("last_focus_train") == today() or not mind.can_think():
+            return None
+        snap = branches.tick()
+        focus = snap.get("focus") or {}
+        branch_id, action = focus.get("id"), focus.get("action")
+        if not branch_id or not action:
+            return None
+        memory.data["meta"]["last_focus_train"] = today()
+        memory.save()
+        ok = True
+        try:
+            if action == "exam":
+                growth.exam(force=True)
+            elif action == "study":
+                knowledge.sync()
+                knowledge.study(lang())
+            elif action == "code_refine":
+                code.sync(vectors=False)
+                improve.scan()
+                improve.refine()
+            elif action == "foresee":
+                growth.foresee(force=True)
+            elif action == "ideas":
+                improve.ideas(force=True)
+            else:
+                growth.consolidate(force=True)
+        except Exception:  # noqa: BLE001 — отметим неудачу, общий разум продолжит работу
+            ok = False
+            ctx.log.exception("Автофокус: не удалось потренировать ветку %s", branch_id)
+        branches.note_training(branch_id, action, ok)
+        branches.tick()
+        return {"branch": branch_id, "action": action, "ok": ok}
 
     mind.every("activity", "any", 60, activity.tick)
     mind.every("vectors", "any", 60, semantic.sync)
@@ -228,6 +265,9 @@ def setup(ctx):
     mind.every("edits", "rest", 10 * 60, growing(growth.edits))
     mind.every("foresee", "rest", 30 * 60, growing(growth.foresee))
     mind.every("census", "any", 60 * 60, lambda: growth.census(len(knowledge.items)))
+    mind.every("memory_tiers", "any", 60 * 60, memory.rebalance_tiers)
+    mind.every("branches", "any", 60 * 60, branches.tick)
+    mind.every("focus_train", "asleep", 30 * 60, growing(focus_train))
     universe = Universe(memory, mind, knowledge, lang)
     universe.classify()
     mind.every("code", "rest", 10 * 60, code.sync)
@@ -621,7 +661,7 @@ def setup(ctx):
                 "skills": m["skills"], "upcoming": memory.upcoming(7), "versions": memory.versions(), "areas": list(AREAS),
                 "entity_docs": m["meta"].get("entity_docs") or {}, "code": {**code.status(), "map": code.map},
                 "improvements": memory.improvements(),
-                "storage": memory.storage_status(), "branches": branches.snapshot(),
+                "storage": memory.storage_status(), "memory_tiers": memory.tier_counts(), "branches": branches.snapshot(),
                 "mind": mind.status(), "knowledge": knowledge.status(),
                 "lessons": sorted(m["lessons"], key=lambda x: -x.get("seen", 1)),
                 "wishes": sorted(m["wishes"], key=lambda x: -x.get("count", 1)),
