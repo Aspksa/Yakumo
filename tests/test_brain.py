@@ -606,8 +606,11 @@ class BrainTest(BrainBase):
         prompt = self.system_prompt()
         self.assertIn("Photoshop — «portfolio.psd @ 100%»", prompt)
         self.assertIn("Photoshop 2 мин", prompt)
-        with sqlite3.connect(self.data / "brain" / "memory.sqlite3") as con:
+        con = sqlite3.connect(self.data / "brain" / "memory.sqlite3")
+        try:
             saved = "\n".join(row[0] for row in con.execute("SELECT value FROM state"))
+        finally:
+            con.close()
         self.assertNotIn("portfolio.psd", saved)  # заголовки окон на диск не попадают
 
 
@@ -691,6 +694,7 @@ class GrowthTest(BrainBase):
         for i in range(5):
             FakeCloud.replies = [f"Ответ {i}"]
             self.chat([{"role": "user", "content": f"Вопрос {i}"}], chat_id=f"c{i}")
+        self.wait_for(lambda: not self.learner().pending and not self.learner().busy)
         FakeCloud.completions = [json.dumps({"score": 3, "review": "Местами длинно",
                                              "lessons": ["Проверять расчёты через calc"]}, ensure_ascii=False)]
         state = self.post("/api/brain/grow", {"what": "exam"})
