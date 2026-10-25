@@ -1,7 +1,7 @@
 """Память Yakumo: факты, люди и места, разговоры, обещания, даты, навыки и дни.
 
-Всё лежит одним JSON-файлом в папке данных (на том же носителе, что и Yakumo),
-поэтому память переезжает вместе с переносным диском.
+Memory Engine 2.0 хранит память в SQLite/WAL. Старый memory.json импортируется
+автоматически при первом запуске, поэтому обновление не теряет накопленные данные.
 """
 
 from __future__ import annotations
@@ -9,12 +9,13 @@ from __future__ import annotations
 import datetime as dt
 import json
 import math
-import os
 import re
 import threading
 import time
 import uuid
 from pathlib import Path
+
+from .storage import BrainDB
 
 # о человеке, вкусы, дела и планы, прочее, о самой Yakumo и ваших отношениях
 KINDS = ("person", "likes", "work", "other", "self")
@@ -26,18 +27,18 @@ SETTINGS = {"enabled": True,    # использовать память в ча�
             "docs": True,       # читать новые документы на Диске: факты, сроки, сообщение в чат
             "mood": False,      # замечать настроение
             "activity": False}  # видеть, какая программа открыта (только Windows)
-MAX_FACTS = 500
-MAX_TALKS = 300
-MAX_ITEMS = 300     # обещаний, дат, навыков, людей и мест
+MAX_FACTS = 50_000
+MAX_TALKS = 20_000
+MAX_ITEMS = 10_000  # обещаний, дат, навыков, людей и мест
 MAX_TEXT = 300      # символов в одном факте
 MAX_SUMMARY = 1200  # символов в конспекте разговора
-MAX_DAYS = 400      # сколько дней хранить настроение и программы
-MAX_VERSIONS = 200  # записей «истории меня»: установленные версии Yakumo
-MAX_IMPROVEMENTS = 200  # пунктов «что улучшить в Yakumo»
+MAX_DAYS = 3650     # до десяти лет дневной истории
+MAX_VERSIONS = 5000 # записей «истории меня»: установленные версии Yakumo
+MAX_IMPROVEMENTS = 5000  # пунктов «что улучшить в Yakumo»
 FADE_DAYS = 45      # за столько дней без упоминания факт теряет одно очко
 FORGET_DAYS = 180   # мелкие факты, которые не вспоминались так долго, забываются сами
 
-MAX_LESSONS = 40   # правил, которые Yakumo вывела сама
+MAX_LESSONS = 1000  # правил до ночной консолидации; старые не теряются из-за маленького лимита
 ARCHIVE_SCORE = 0  # факты слабее этого во сне уходят в архив: не в подсказке, но находятся поиском
 # Списки «роста»: уроки, желания, предложенные навыки, свои инструменты, конспекты, ассоциации,
 # примеры разговоров (для улучшения подсказки), мысли фонового разума, ответы с 👍 (образцы) и
@@ -115,7 +116,9 @@ def _ids(value) -> list[str]:
 
 class Memory:
     def __init__(self, path: Path):
-        self.path = path
+        self.legacy_path = Path(path)
+        self.path = self.legacy_path.with_name("memory.sqlite3")
+        self.db = BrainDB(self.path, self.legacy_path)
         self.lock = threading.RLock()
         self.on_change: list = []  # (вид, id) — для смыслового поиска
         self.data = self._load()
@@ -124,7 +127,7 @@ class Memory:
 
     def _load(self) -> dict:
         try:
-            data = json.loads(self.path.read_text(encoding="utf-8-sig"))
+            data = self.db.load()
         except (OSError, ValueError):
             data = {}
         if not isinstance(data, dict):
@@ -143,10 +146,12 @@ class Memory:
     def save(self) -> None:
         with self.lock:
             self.data["meta"]["changed"] = int(time.time())
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = self.path.with_suffix(".tmp")
-            tmp.write_text(json.dumps(self.data, ensure_ascii=False, indent=1), encoding="utf-8")
-            os.replace(tmp, self.path)
+            self.db.save(self.data)
+
+    def storage_status(self) -> dict:
+        """Диагностика движка памяти без содержимого личных воспоминаний."""
+        return {"engine": "sqlite-wal", "version": self.db.VERSION,
+                "events": self.db.history(20)}
 
     def _changed(self, kind: str, item_id: str) -> None:
         for hook in self.on_change:

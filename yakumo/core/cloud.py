@@ -55,6 +55,9 @@ THINKING = {"ru": "Думаю…", "en": "Thinking…"}
 # Модели для смыслового поиска (эмбеддинги).
 EMBEDDING = re.compile(r"embed|(^|[/_-])(bge|gte|e5)([/_-]|$)", re.I)
 VISION = re.compile(r"(^|[/_-])(vl|vision|visual|omni|llava|pixtral|internvl|minicpm-v)|gemma-?3", re.I)
+RERANK = re.compile(r"rerank|cross[-_ ]?encoder", re.I)
+AUDIO = re.compile(r"asr|tts|speech|audio|whisper", re.I)
+IMAGE = re.compile(r"(^|[/_-])(image|flux|sdxl|kandinsky|kolors|diffusion|t2i)([/_-]|$)", re.I)
 
 
 @dataclass
@@ -143,8 +146,63 @@ class CloudService:
         self.models = models
         return models
 
+    @staticmethod
+    def model_kind(model: str) -> str:
+        """Грубая классификация каталога Cloud.ru по назначению модели.
+
+        /models сейчас не гарантирует единый capability-флаг для всех провайдеров,
+        поэтому явно отсекаем семейства, которые нельзя отправлять в chat/completions.
+        Неизвестная модель считается chat: так новые LLM начинают работать без обновления Yakumo.
+        """
+        if RERANK.search(model):
+            return "reranker"
+        if EMBEDDING.search(model):
+            return "embedding"
+        if AUDIO.search(model):
+            return "audio"
+        if IMAGE.search(model) and not VISION.search(model):
+            return "image"
+        return "chat"
+
+    def model_groups(self, models: list[str] | None = None) -> dict[str, list[str]]:
+        groups = {"chat": [], "embedding": [], "reranker": [], "audio": [], "image": []}
+        for model in models if models is not None else self.models:
+            groups[self.model_kind(model)].append(model)
+        return groups
+
+    def chat_models(self, models: list[str] | None = None) -> list[str]:
+        """Только модели, которые имеет смысл показывать в выборе обычного чата."""
+        return self.model_groups(models)["chat"]
+
     def default_model(self, models: list[str]) -> str:
-        return next((m for m in PREFERRED_MODELS if m in models), models[0])
+        chat = self.chat_models(models)
+        if not chat:
+            raise CloudError("no_chat_models")
+        return next((m for m in PREFERRED_MODELS if m in chat), chat[0])
+
+    def thinking_models(self, count: int = 4) -> list[str]:
+        """Разные chat-модели для ансамбля DeepThink, по возможности от разных провайдеров."""
+        models = self.chat_models(self.models or self.fetch_models(self.api_key()))
+        if not models:
+            return []
+        ordered = []
+        for model in (self.config.cloud_model, *PREFERRED_MODELS, *models):
+            if model and model in models and model not in ordered:
+                ordered.append(model)
+        diverse, providers = [], set()
+        for model in ordered:
+            provider = model.split("/", 1)[0].casefold()
+            if provider not in providers:
+                diverse.append(model)
+                providers.add(provider)
+            if len(diverse) >= count:
+                return diverse
+        for model in ordered:
+            if model not in diverse:
+                diverse.append(model)
+            if len(diverse) >= count:
+                break
+        return diverse
 
     def vision_model(self) -> str | None:
         """Модель из каталога, которая видит картинки, или None."""
@@ -172,7 +230,10 @@ class CloudService:
                  timeout: float = TIMEOUT) -> str:
         """Ответ модели целиком (для фоновых задач модулей). Ошибки — CloudError."""
         key = self.api_key()
-        payload = {"model": model or self.config.cloud_model, "messages": messages, "stream": False,
+        chosen = model or self.config.cloud_model
+        if not chosen or self.model_kind(chosen) != "chat":
+            chosen = self.default_model(self.models or self.fetch_models(key))
+        payload = {"model": chosen, "messages": messages, "stream": False,
                    "temperature": 0.2, "max_tokens": max_tokens}
         with self._request("/chat/completions", key, payload, timeout=timeout) as resp:
             data = json.loads(resp.read().decode("utf-8"))
@@ -189,8 +250,9 @@ class CloudService:
         return {
             "has_key": bool(key),
             "key_hint": "…" + key[-4:] if len(key) >= 8 else ("•" * len(key)),
-            "model": self.config.cloud_model,
-            "models": self.models,
+            "model": self.config.cloud_model if self.model_kind(self.config.cloud_model or "") == "chat" else "",
+            "models": self.chat_models(),
+            "model_groups": self.model_groups(),
         }
 
     def save(self, request) -> dict:
@@ -203,6 +265,8 @@ class CloudService:
             raise ValueError("Недопустимый ключ")
         if model is not None and (not isinstance(model, str) or not model or len(model) > 200):
             raise ValueError("Недопустимая модель")
+        if model is not None and self.model_kind(model) != "chat":
+            raise ValueError("Для чата нужна текстовая chat-модель")
         if key is not None:
             self.save_key(key.strip())
             log.info("Ключ Cloud.ru %s", "сохранён" if key.strip() else "удалён")
@@ -219,10 +283,13 @@ class CloudService:
         key = key.strip() if isinstance(key, str) and key.strip() else self.api_key()
         try:
             models = self.fetch_models(key)
+            chat_models = self.chat_models(models)
+            if not chat_models:
+                raise CloudError("no_chat_models")
         except CloudError as exc:
             return {**self.state(), "ok": False, "error": str(exc)}
-        if not self.config.cloud_model or self.config.cloud_model not in models:
-            self.config.cloud_model = self.default_model(models)
+        if not self.config.cloud_model or self.config.cloud_model not in chat_models:
+            self.config.cloud_model = self.default_model(chat_models)
             self.config.save(self.config_path)
         return {**self.state(), "ok": True}
 
@@ -280,8 +347,9 @@ class CloudService:
         try:
             key = self.api_key()
             model = self.config.cloud_model
-            if key and not model:
-                model = self.config.cloud_model = self.default_model(self.fetch_models(key))
+            if key and (not model or self.model_kind(model) != "chat"):
+                model = self.config.cloud_model = self.default_model(self.models or self.fetch_models(key))
+                self.config.save(self.config_path)
             said = False
             used: list[tuple[str, dict]] = []  # какие инструменты звались — для ctx.on_chat
             for _ in range(MAX_TOOL_ROUNDS + 1):

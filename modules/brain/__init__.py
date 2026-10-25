@@ -25,6 +25,7 @@ from pathlib import Path
 
 from . import learn
 from .activity import Activity
+from .branches import DevelopmentBranches
 from .docs import Docs
 from .grow import Growth
 from .improve import ErrorCatcher, Improvements
@@ -41,7 +42,7 @@ from .think import DeepThink
 from .usertools import NAME as TOOL_NAME, ToolError, calc, check, sandbox
 
 NAME = "Мозг"
-VERSION = "3.2"
+VERSION = "3.3"
 
 PROMPT_FACTS = 30     # самые важные факты — в каждую подсказку
 PROMPT_RELEVANT = 10  # и ещё столько подходящих к последней реплике (по словам и по смыслу)
@@ -199,6 +200,7 @@ def setup(ctx):
     except Exception:  # noqa: BLE001
         ctx.log.exception("Свой код: не удалось прочитать файлы программы")
     improve = Improvements(memory, mind, lang, lambda: next((v["revision"][:7] for v in memory.versions()), ""), code)
+    branches = DevelopmentBranches(memory, knowledge, code, ctx.services)
     catcher = ErrorCatcher(improve, getattr(ctx.paths, "app", ""))
     logging.getLogger("yakumo").addHandler(catcher)
     ctx.on_stop(lambda: logging.getLogger("yakumo").removeHandler(catcher))
@@ -619,6 +621,7 @@ def setup(ctx):
                 "skills": m["skills"], "upcoming": memory.upcoming(7), "versions": memory.versions(), "areas": list(AREAS),
                 "entity_docs": m["meta"].get("entity_docs") or {}, "code": {**code.status(), "map": code.map},
                 "improvements": memory.improvements(),
+                "storage": memory.storage_status(), "branches": branches.snapshot(),
                 "mind": mind.status(), "knowledge": knowledge.status(),
                 "lessons": sorted(m["lessons"], key=lambda x: -x.get("seen", 1)),
                 "wishes": sorted(m["wishes"], key=lambda x: -x.get("count", 1)),
