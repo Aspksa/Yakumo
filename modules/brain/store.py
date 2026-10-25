@@ -111,9 +111,9 @@ def _id() -> str:
 
 
 def _entity_key(value: str) -> str:
-    """Консервативный ключ сущности: регистр/ё/пунктуация, без рискованной транслитерации."""
+    """Консервативный ключ: нормализуем только явные разделители, не стираем смысловые символы C++/C#."""
     value = value.casefold().replace("ё", "е")
-    value = re.sub(r"[^\w]+", " ", value, flags=re.U)
+    value = re.sub(r"[\s._\-‐‑‒–—―]+", " ", value, flags=re.U)
     return " ".join(value.split())
 
 
@@ -1211,9 +1211,15 @@ class Memory:
                               "relation": entity_names[i].get("relation", "")}
                              for i in x.get("about", []) if i in entity_names and isinstance(entity_names[i].get("name"), str)]
                     try:
-                        self.trace(x["kind"], x["text"], reason=x.get("reason", ""), result=x.get("result", ""),
-                                   status=x.get("status", "done"), files=x.get("files"), about=about,
-                                   source=x.get("source", "import"), date=x.get("date"))
+                        before = len(self.data["traces"])
+                        restored = self.trace(x["kind"], x["text"], reason=x.get("reason", ""), result=x.get("result", ""),
+                                              status=x.get("status", "done"), files=x.get("files"), about=about,
+                                              source=x.get("source", "import"), date=x.get("date"))
+                        if restored is not None and len(self.data["traces"]) > before:
+                            if isinstance(x.get("created"), int):
+                                restored["created"] = x["created"]
+                            if isinstance(x.get("updated"), int):
+                                restored["updated"] = x["updated"]
                     except BrainError:
                         pass
             self.save()
