@@ -182,8 +182,11 @@ class MemoryAPI:
         return self._memory.add_item("drafts", {"path": path, "text": text[:20000], "at": int(time.time())}, 50)
 
 
+from .evolution import EvolutionLab
+
 def setup(ctx):
     memory = Memory(ctx.paths.data / "brain" / "memory.json")
+    evolution = EvolutionLab(ctx.paths.data / "brain" / "evolution.json")
     cloud = getattr(ctx, "cloud", None)
     lang = lambda: "en" if ctx.config.language == "en" else "ru"  # noqa: E731
     learner = Learner(memory, cloud, lang)
@@ -753,7 +756,7 @@ def setup(ctx):
                 "improvements": memory.improvements(), "traces": list(reversed(m["traces"][-100:])),
                 "conflicts": conflicts, "timeline": memory.timeline(), "activity_feed": memory.activity_feed(),
                 "diagnostics": diagnostics(conflicts),
-                "full_audit": full_brain_audit(),
+                "full_audit": full_brain_audit(), "evolution": evolution.status(),
                 "storage": memory.storage_status(), "memory_tiers": memory.tier_counts(), "branches": branches.snapshot(),
                 "mind": mind.status(), "knowledge": knowledge.status(),
                 "lessons": sorted(m["lessons"], key=lambda x: -x.get("seen", 1)),
@@ -925,6 +928,7 @@ def setup(ctx):
 
     routes = {
         "/api/brain": state,
+        "POST /api/brain/evolution/compete": lambda _r: {"experiment": evolution.compete(memory.facts()), "state": state()},
         "/api/brain/export": lambda _req: memory.export(),
         "/api/brain/inbox": lambda _req: {"messages": memory.take_inbox() if memory.enabled else []},
         "POST /api/brain/settings": settings,
