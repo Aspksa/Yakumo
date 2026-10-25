@@ -95,3 +95,11 @@ body[data-page="home"] .topbar:hover, body[data-page="home"] .topbar:focus-withi
 .gx.gx-contemplative .gx-ctl:hover,.gx.gx-contemplative .gx-ctl:focus-within{opacity:1}
 @media(max-width:640px){.gx-observatory{top:54px;left:8px;right:auto;font-size:11px}
 .gx-history{bottom:115px;right:8px;width:calc(100% - 16px)}}
+
+
+.gx-minimap{position:absolute;right:14px;bottom:14px;width:160px;height:110px;
+ background:#09101eea;border:1px solid #d2af7260;border-radius:12px;z-index:4;cursor:crosshair;opacity:.75;transition:opacity .2s}
+.gx-minimap:hover,.gx-minimap:focus{opacity:1}
+.gx.gx-contemplative .gx-minimap{opacity:.12}
+.gx.gx-contemplative .gx-minimap:hover{opacity:1}
+@media(max-width:640px){.gx-minimap{width:105px;height:72px;right:8px;bottom:120px}}
