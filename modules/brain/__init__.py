@@ -773,6 +773,18 @@ def setup(ctx):
                 "mood_days": [{"date": k, "mood": round(sum(v["mood"]) / len(v["mood"]), 2)}
                          for k, v in sorted(m["days"].items())[-30:] if v.get("mood")]}
 
+    def provenance_link(req):
+        d = body(req)
+        try:
+            return provenance.link(str(d.get("source_id") or ""), str(d.get("target_id") or ""),
+                                   str(d.get("relation") or ""), {
+                                       "mind": mind.status(), "lessons": memory.data["lessons"],
+                                       "skills": memory.data["skills"],
+                                       "improvements": memory.improvements(),
+                                       "evolution": evolution.status(), "facts": memory.facts()})
+        except ValueError as exc:
+            raise BrainError(str(exc)) from exc
+
     def settings(req):
         d = body(req)
         memory.settings(**{k: d.get(k) for k in SETTINGS if k in d})
@@ -934,6 +946,7 @@ def setup(ctx):
     routes = {
         "/api/brain": state,
         "/api/brain/provenance": lambda _r: provenance.snapshot(),
+        "POST /api/brain/provenance/link": provenance_link,
         "POST /api/brain/evolution/compete": lambda _r: {"experiment": evolution.compete(memory.facts()), "state": state()},
         "/api/brain/export": lambda _req: memory.export(),
         "/api/brain/inbox": lambda _req: {"messages": memory.take_inbox() if memory.enabled else []},
