@@ -226,8 +226,9 @@
     card.dataset.key = "card";
     const ctl = el("div", "gx-ctl gx-float");
     ctl.dataset.key = "ctl";
-    host.append(stage, warp, labels, note, card, ctl);
-    view = { host, stage, labels, warp, note, card, ctl, alive: false, gl: null };
+    const observatory = el("div", "gx-observatory");
+    host.append(stage, warp, labels, note, card, ctl, observatory);
+    view = { host, stage, labels, warp, note, card, ctl, observatory, alive: false, gl: null, contemplative: false };
     buildControls();
     for (const box of [card, ctl]) floating(box);
     return view;
@@ -282,7 +283,27 @@
     const hint = el("p", "gx-hint", L.hint);
     hint.hidden = store.get("yakumo.galaxy.hintSeen", false);
     help.onclick = () => { hint.hidden = !hint.hidden; store.set("yakumo.galaxy.hintSeen", true); };
-    ctl.append(grip, reset, sel, help, hint);
+    const observe = el("button", "gx-btn", "◉");
+    observe.type = "button"; observe.title = "Созерцание: скрыть панели"; observe.setAttribute("aria-label", observe.title);
+    observe.onclick = () => {
+      view.contemplative = !view.contemplative;
+      view.host.classList.toggle("gx-contemplative", view.contemplative);
+      observe.title = view.contemplative ? "Вернуть панели" : "Созерцание: скрыть панели";
+      observe.setAttribute("aria-label", observe.title);
+    };
+    const flight = el("button", "gx-btn", "✧");
+    flight.type = "button"; flight.title = "Полёт по созвездиям"; flight.setAttribute("aria-label", flight.title);
+    flight.onclick = () => {
+      const gl = view.gl;
+      if (!gl?.world?.stars.length) return;
+      const stars = [...gl.world.stars].sort((a,b) => b.facts.length - a.facts.length);
+      const next = stars[(gl.tourIndex = ((gl.tourIndex ?? -1) + 1) % stars.length)];
+      jump(next);
+    };
+    const stats = el("button", "gx-btn", "FPS");
+    stats.type = "button"; stats.title = "Показать диагностику кадра";
+    stats.onclick = () => view.observatory.classList.toggle("gx-observatory-open");
+    ctl.append(grip, reset, sel, flight, observe, stats, help, hint);
   }
 
   // --- WebGL ---
@@ -299,6 +320,20 @@
     renderer.setPixelRatio(Math.min(devicePixelRatio || 1, q.ratio));
     renderer.setClearColor(0x05040a, 1);
     view.stage.replaceChildren(renderer.domElement);
+    renderer.domElement.addEventListener("webglcontextlost", e => {
+      e.preventDefault();
+      view.note.textContent = "WebGL-контекст потерян. Ожидаю восстановление…";
+      view.note.hidden = false;
+      if (view.raf) cancelAnimationFrame(view.raf);
+      view.raf = 0;
+    });
+    renderer.domElement.addEventListener("webglcontextrestored", () => {
+      // Renderer owns the newly restored GPU context; rebuild buffers explicitly.
+      if (view.gl?.renderer !== renderer) return;
+      if (data) populate();
+      view.note.hidden = true;
+      if (view.alive && !document.hidden && !view.raf) view.raf = requestAnimationFrame(frame);
+    });
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(60, 1, 1, 20000);
     const tex = { soft: spriteTexture(THREE, "soft"), flare: spriteTexture(THREE, "flare"), ring: spriteTexture(THREE, "ring") };
@@ -323,6 +358,7 @@
     for (const o of [...scene.children]) if (o !== galaxy) { disposeTree(o); scene.remove(o); }
     gl.meteors = [];
     gl.flashes.clear();
+    gl.comets = [];
     gl.mats.forEach((m) => m.dispose());
     gl.mats = [];
     const w = gl.world = buildWorld(data);
@@ -330,6 +366,7 @@
     const rand = rng(7);
     // Пыль рукавов: цвет своей области жизни, к ядру — тёплое золото.
     const arms = w.areas.length ? w.areas : ["other", "other"];
+    const nebulaMultiplier = store.get("yakumo.galaxy.nebula", "normal") === "low" ? .5 : 1;
     const dust = [];
     // Три визуальных слоя в том же бюджете частиц: туманная вуаль,
     // основной спиральный рукав и отдельные яркие нити.
@@ -369,9 +406,19 @@
     coreGlow.scale.set(420, 420, 1);
     galaxy.add(coreGlow);
     gl.core = coreGlow;
+    for (let i = 0; i < 3; i++) {
+      const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: tex.soft, color: i === 0 ? 0xffd487 : i === 1 ? 0xffbc68 : 0xa69df1,
+        transparent: true, opacity: .16 - i * .035, blending: THREE.AdditiveBlending, depthWrite: false
+      }));
+      const radius = 520 + i * 220;
+      halo.scale.set(radius, radius * .75, 1);
+      halo.position.y = -15 * i;
+      galaxy.add(halo);
+    }
     // Туманности: облака газа вдоль рукавов своих областей.
     w.areas.forEach((area, ai) => {
-      for (let k = 0; k < 7; k++) {
+      for (let k = 0; k < Math.ceil(7 * nebulaMultiplier); k++) {
         const r = 150 + k * 70 + rand() * 40, a = ai / w.arms * Math.PI * 2 + r * 0.0062 + (rand() - 0.5) * 0.2;
         const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex.soft, color: AREA_HUE[area], transparent: true,
                                                                opacity: 0.075 + rand() * 0.06, blending: THREE.AdditiveBlending, depthWrite: false }));
@@ -710,6 +757,7 @@
     }
     const dt = Math.min(0.05, (now - (gl.last || now)) / 1000);
     gl.last = now;
+    gl.lastPaintGap = gl.lastPaint ? now - gl.lastPaint : 0;
     gl.lastPaint = now;
     gl.time += dt;
     view.raf = requestAnimationFrame(frame);
@@ -808,7 +856,17 @@
     }
     const renderStarted = performance.now();
     gl.renderer.render(gl.scene, gl.camera);
-    autoQuality(performance.now() - renderStarted, now);
+    const cost = performance.now() - renderStarted;
+    autoQuality(cost, now);
+    gl.lastRenderMs = cost;
+    if (now - (gl.lastStats || 0) >= 1000) {
+      gl.lastStats = now;
+      const observed = gl.lastPaintGap ? Math.round(1000 / gl.lastPaintGap) : 0;
+      view.observatory.textContent = "FPS: " + observed + " · кадр: " +
+        cost.toFixed(1) + " мс · качество: " + quality() +
+        " · звёзд памяти: " + gl.world.stars.length +
+        " · поколений: " + (data?.evolution?.total_generations || 0);
+    }
     placeLabels();
   }
 
