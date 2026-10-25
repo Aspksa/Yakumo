@@ -703,7 +703,7 @@
 
   // Вселенная: мозг в центре, звёзды по галактикам жизни (universe.js). Пока скрипт не загрузился — старое созвездие.
   let pixiSession=null, pixiLoad=null;
-  function engine(){try{return localStorage.getItem("yakumo-map-engine")||"pixi"}catch{return "pixi"}}
+  function engine(){try{return localStorage.getItem("yakumo-map-engine")||"classic"}catch{return "classic"}}
   function ensurePixi(){
     if(window.PIXI&&window.YakumoPixiMap)return Promise.resolve();
     if(pixiLoad)return pixiLoad;
