@@ -890,6 +890,10 @@
     const e = (state.data.entities || []).find((x) => x.id === state.node);
     if (!e) return "";
     const facts = state.data.facts.filter((f) => (f.about || []).includes(e.id));
+    const docs = e.files || [];
+    const related = (e.related || []).map((r) => ({ ...r, entity: state.data.entities.find((x) => x.id === r.id) }))
+      .filter((r) => r.entity);
+    const traces = (state.data.traces || []).filter((x) => (x.about || []).includes(e.id)).slice(0, 12);
     const name = h("input", { class: "text-input", value: e.name, maxlength: 60, "aria-label": L.rename });
     const rel = h("input", { class: "text-input", value: e.relation || "", maxlength: 40, placeholder: L.relation,
                              "aria-label": L.relation });
@@ -903,6 +907,18 @@
       } }, name, rel, type, area, h("button", { class: "btn primary", type: "submit" }, L.save),
         h("button", { class: "btn br-danger", type: "button",
                       onclick: () => { state.node = null; send("item/delete", { type: "entity", ids: [e.id] }); } }, L.del)),
+      e.aliases?.length ? h("div", { class: "br-entity-block" }, h("strong", {}, L.aliases),
+        h("div", { class: "br-chips" }, e.aliases.map((x) => h("span", { class: "br-chip" }, x)))) : "",
+      docs.length ? h("div", { class: "br-entity-block" }, h("strong", {}, L.sourceDocs),
+        h("div", { class: "br-chips" }, docs.slice(0, 30).map((p) =>
+          h("a", { class: "br-chip file", target: "_blank", href: `/api/disk/file?path=${encodeURIComponent(p)}` },
+            "📄 " + p.split("/").pop())))) : "",
+      related.length ? h("div", { class: "br-entity-block" }, h("strong", {}, L.relatedEntities),
+        h("div", { class: "br-chips" }, related.map((r) => h("button", { type: "button", class: "br-chip",
+          onclick: () => { state.node = r.entity.id; draw(); } }, `${r.entity.name} · ${r.weight}`)))) : "",
+      traces.length ? h("div", { class: "br-entity-block" }, h("strong", {}, L.journalTitle),
+        h("ul", { class: "br-mini-list" }, traces.map((x) => h("li", {},
+          h("b", {}, L.traceKinds[x.kind] || x.kind), " · ", x.text)))) : "",
       h("div", { class: "row-hint" }, L.factsAbout(facts.length)),
       h("ul", { class: "br-list" }, facts.map(factEl)));
   }
