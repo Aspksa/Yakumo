@@ -230,7 +230,10 @@ class CloudService:
                  timeout: float = TIMEOUT) -> str:
         """Ответ модели целиком (для фоновых задач модулей). Ошибки — CloudError."""
         key = self.api_key()
-        payload = {"model": model or self.config.cloud_model, "messages": messages, "stream": False,
+        chosen = model or self.config.cloud_model
+        if not chosen or self.model_kind(chosen) != "chat":
+            chosen = self.default_model(self.models or self.fetch_models(key))
+        payload = {"model": chosen, "messages": messages, "stream": False,
                    "temperature": 0.2, "max_tokens": max_tokens}
         with self._request("/chat/completions", key, payload, timeout=timeout) as resp:
             data = json.loads(resp.read().decode("utf-8"))
@@ -247,7 +250,7 @@ class CloudService:
         return {
             "has_key": bool(key),
             "key_hint": "…" + key[-4:] if len(key) >= 8 else ("•" * len(key)),
-            "model": self.config.cloud_model,
+            "model": self.config.cloud_model if self.model_kind(self.config.cloud_model or "") == "chat" else "",
             "models": self.chat_models(),
             "model_groups": self.model_groups(),
         }
@@ -344,8 +347,9 @@ class CloudService:
         try:
             key = self.api_key()
             model = self.config.cloud_model
-            if key and not model:
-                model = self.config.cloud_model = self.default_model(self.fetch_models(key))
+            if key and (not model or self.model_kind(model) != "chat"):
+                model = self.config.cloud_model = self.default_model(self.models or self.fetch_models(key))
+                self.config.save(self.config_path)
             said = False
             used: list[tuple[str, dict]] = []  # какие инструменты звались — для ctx.on_chat
             for _ in range(MAX_TOOL_ROUNDS + 1):
