@@ -213,6 +213,9 @@ class Learner:
     def stop(self) -> None:
         self.stopping = True
         self.wake.set()
+        thread = self.thread
+        if thread is not None and thread.is_alive() and thread is not threading.current_thread():
+            thread.join(timeout=5)
 
     def _run(self) -> None:
         next_tick = time.time() + 5
