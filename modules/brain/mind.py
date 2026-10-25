@@ -20,6 +20,8 @@ ASLEEP = 60 * 60    # а после стольких тишины — «спит
 NIGHT = (1, 6)      # ночью засыпает быстрее: через 10 минут тишины
 BUDGETS = (50, 150, 300, 1000, 0)  # запросов в сутки на фоновую работу; 0 — без ограничения
 MAX_THOUGHTS = 100
+STALE_THOUGHT = 15 * 60  # без пульса дольше этого мысль считается зависшей
+MAX_RETRIES = 1
 
 
 class BudgetError(RuntimeError):
@@ -33,6 +35,7 @@ class Mind:
         self.learner = learner
         self.jobs: list[tuple[str, str, int, object]] = []  # (имя, режим, раз в сколько секунд, функция)
         self.last_run: dict[str, float] = {}
+        self.retry_task = None  # Tasks.retry; задаётся после создания очереди
 
     # --- Режим ---
 
@@ -77,15 +80,59 @@ class Mind:
     # --- Очередь мыслей ---
 
     def thought(self, kind: str, title: str, status: str = "running", **extra) -> dict:
+        now = int(time.time())
         return self.memory.add_item("thoughts", {"kind": kind, "title": title[:200], "status": status,
-                                                 "started": int(time.time()), **extra}, MAX_THOUGHTS)
+                                                 "started": now, "heartbeat": now, "generation": 0, **extra},
+                                    MAX_THOUGHTS)
 
-    def finish(self, item: dict, status: str = "done", result: str | None = None) -> None:
+    def heartbeat(self, item: dict) -> None:
+        """Признак живой работы; watchdog смотрит именно на него, а не на время создания."""
         with self.memory.lock:
-            item.update(status=status, finished=int(time.time()))
+            if item.get("status") in ("queued", "running"):
+                item["heartbeat"] = int(time.time())
+                self.memory.save()
+
+    def finish(self, item: dict, status: str = "done", result: str | None = None) -> bool:
+        with self.memory.lock:
+            # Поздний ответ уже остановленной/отменённой операции не должен воскресить её как «готово».
+            if status == "done" and item.get("status") in ("failed", "cancelled"):
+                return False
+            item.update(status=status, finished=int(time.time()), heartbeat=int(time.time()))
             if result:
                 item["result"] = result[:4000]
             self.memory.save()
+            return True
+
+    def watchdog(self, now: float | None = None) -> int:
+        """Остановить зависшие мысли; фоновую пользовательскую задачу один раз безопасно переочередить."""
+        now = int(now or time.time())
+        changed = 0
+        retry = []
+        with self.memory.lock:
+            for item in self.memory.data["thoughts"]:
+                if item.get("status") != "running":
+                    continue
+                heartbeat = int(item.get("heartbeat", item.get("started", item.get("created", now))) or now)
+                if now - heartbeat < STALE_THOUGHT:
+                    continue
+                changed += 1
+                if item.get("kind") == "task" and int(item.get("retries", 0)) < MAX_RETRIES and self.retry_task:
+                    item.update(status="queued", retries=int(item.get("retries", 0)) + 1,
+                                generation=int(item.get("generation", 0)) + 1, heartbeat=now, stale=True,
+                                result="Задача зависла и поставлена в очередь на один безопасный повтор.")
+                    retry.append(item)
+                else:
+                    item.update(status="failed", finished=now, heartbeat=now, stale=True,
+                                result="Остановлено: задача не подавала признаков работы больше 15 минут.")
+            if changed:
+                self.memory.save()
+        for item in retry:
+            try:
+                self.retry_task(item)
+            except Exception:  # noqa: BLE001
+                log.exception("Память: не удалось переочередить зависшую задачу")
+                self.finish(item, "failed", "Не удалось запустить безопасный повтор.")
+        return changed
 
     def cancel(self, item_id: str) -> bool:
         with self.memory.lock:
@@ -119,4 +166,6 @@ class Mind:
     def status(self) -> dict:
         thoughts = sorted(self.memory.data["thoughts"], key=lambda t: -t.get("created", 0))
         return {"mode": self.mode(), "budget": self.limit, "used": self.used(), "budgets": list(BUDGETS),
+                "stale": sum(bool(t.get("stale")) for t in thoughts),
+                "running": sum(t.get("status") == "running" for t in thoughts),
                 "thoughts": thoughts[:40]}
