@@ -195,6 +195,25 @@ class BrainTest(BrainBase):
         self.assertFalse(legacy.exists())
         self.assertEqual(migrated.storage_status()["engine"], "sqlite-wal")
 
+    def test_memory_engine_21_moves_facts_between_layers_without_loss(self):
+        recent = self.memory().add("Недавний факт", "other", importance=2)
+        self.assertEqual(self.memory().memory_tier(recent), "operational")
+        recent["seen"] = 5
+        self.assertEqual(self.memory().memory_tier(recent), "longterm")
+
+        old = self.memory().add("Событие прошлого месяца", "other", importance=2)
+        old["created"] = old["last_seen"] = int(time.time()) - 30 * 86400
+        counts = self.memory().rebalance_tiers()
+        self.assertEqual(old["tier"], "episodic")
+        self.assertGreaterEqual(counts["episodic"], 1)
+
+        self.memory().supersede([old["id"]], "new_information")
+        self.assertEqual(self.memory().fact(old["id"])["tier"], "archive")
+        self.assertEqual(self.memory().fact(old["id"])["text"], "Событие прошлого месяца")
+        state = self.get("/api/brain")
+        self.assertEqual(state["storage"]["memory_engine"], "2.1")
+        self.assertGreaterEqual(state["memory_tiers"]["archive"], 1)
+
     def test_outdated_facts_are_replaced_and_duplicates_merged(self):
         old = self.post("/api/brain/fact", {"text": "Живёт в Казани", "kind": "person"})["facts"][0]
         again = self.post("/api/brain/fact", {"text": "живёт в Казани"})["facts"]
@@ -204,7 +223,12 @@ class BrainTest(BrainBase):
                              "outdated": [old["id"], "чужой-id"], "title": "Переезд", "summary": "Переехала."}
         self.chat([{"role": "user", "content": "Я переехала в Москву"}])
         self.wait_for(lambda: self.get("/api/brain")["talks"])
-        self.assertEqual([f["text"] for f in self.get("/api/brain")["facts"]], ["Живёт в Москве"])
+        facts = self.get("/api/brain")["facts"]
+        self.assertEqual([f["text"] for f in facts if not f.get("archived")], ["Живёт в Москве"])
+        archived = next(f for f in facts if f["id"] == old["id"])
+        self.assertTrue(archived["archived"])
+        self.assertTrue(archived["superseded"])
+        self.assertEqual(archived["tier"], "archive")
 
     def test_chat_tools_remember_recall_and_forget(self):
         FakeCloud.replies = ['<tool>{"name": "memory_remember", "args": {"text": "Пьёт чай без сахара", '
@@ -828,6 +852,21 @@ class GrowthTest(BrainBase):
         self.assertEqual(snap["links"], 1)
         brain = self.get("/api/brain")["brain"]
         self.assertEqual(brain[-1]["neurons"], snap["neurons"])
+
+    def test_development_links_strengthen_on_joint_growth_and_choose_focus(self):
+        branches = self.tick("DevelopmentBranches")
+        base = branches.tick()
+        before = next(e for e in base["edges"] if e["from"] == "memory" and e["to"] == "logic")
+
+        self.memory().add("Новый факт для роста памяти", "other")
+        self.memory().lesson("Новый урок для роста логики", "chat")
+        snap = branches.tick()
+        edge = next(e for e in snap["edges"] if e["from"] == "memory" and e["to"] == "logic")
+        self.assertGreater(edge["strength"], before["strength"])
+        self.assertEqual(edge["uses"], before["uses"] + 1)
+        self.assertIn(snap["focus"]["id"], {b["id"] for b in snap["branches"] if b["available"]})
+        self.assertIn(snap["focus"]["action"],
+                      {"consolidate", "exam", "study", "code_refine", "foresee", "ideas"})
 
     def test_foresee_prepares_in_advance(self):
         self.memory().promise("Сдать отчёт по практике", due=time.strftime("%Y-%m-%d"))
