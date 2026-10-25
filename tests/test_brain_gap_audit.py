@@ -56,6 +56,21 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(memory.data["meta"]["last_gap_audit"],
                          __import__("datetime").date.today().isoformat())
 
+    def test_distinct_ranges_same_file_are_both_eligible(self):
+        class Ranges:
+            def search(self, query, limit):
+                if "ошибка" in query:
+                    return [{"path": "yakumo/core/a.py", "start": 1, "end": 4,
+                             "text": "def first(): pass"}]
+                return [{"path": "yakumo/core/a.py", "start": 10, "end": 15,
+                         "text": "def second(): pass"}]
+        memory = FakeMemory()
+        mind = FakeMind('{"ideas":[]}')
+        audit = Improvements(memory, mind, lambda: "ru", code=Ranges())
+        audit.audit_gaps(force=True)
+        self.assertIn("first", mind.prompt)
+        self.assertIn("second", mind.prompt)
+
     def test_adds_unverified_suggestion_and_redacts(self):
         m = FakeMemory()
         mind = FakeMind('{"ideas":[{"title":"Очередь повторов","problem":"Нужны повторы",'
