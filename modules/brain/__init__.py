@@ -255,6 +255,8 @@ def setup(ctx):
 
     def sync_disk_entities():
         """Документы дают наблюдаемые сущности, но не становятся фактами без подтверждения."""
+        if not memory.on("docs"):
+            return {"observed": 0, "disabled": True}
         service = ctx.services.get("disk") if isinstance(getattr(ctx, "services", None), dict) else None
         if service is None or not hasattr(service, "entity_graph"):
             return {"observed": 0}
