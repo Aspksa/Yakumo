@@ -1,5 +1,5 @@
 import unittest
-from modules.disk.entities import extract_entities, candidate_relationships, timeline
+from modules.disk.entities import extract_entities, candidate_relationships, timeline, work_candidates
 
 
 class EntityTests(unittest.TestCase):
@@ -22,6 +22,21 @@ class EntityTests(unittest.TestCase):
     def test_invalid_dates(self):
         r = extract_entities("отчет.txt", "Дата 31.02.2026")
         self.assertEqual(r["document_dates"], [])
+
+
+    def test_work_candidates_are_unverified_and_evidence_based(self):
+        r = extract_entities("путевой лист 01.txt",
+                             "Водитель: Иванов Иван Иванович, автомобиль Н954МУ125. ДТ 45,5 л, 3 200 руб. 15.09.2026")
+        self.assertEqual(r["drivers"], ["Иванов Иван Иванович"])
+        self.assertTrue(r["fuel"])
+        self.assertEqual(r["liters"], [45.5])
+        self.assertEqual(r["amounts"], [3200.0])
+        items = work_candidates([r])
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["vehicle"], "Н954МУ125")
+        self.assertEqual(items[0]["driver"], "Иванов Иван Иванович")
+        self.assertFalse(items[0]["verified"])
+        self.assertEqual(items[0]["action"], "review_before_import")
 
 
 if __name__ == "__main__":
