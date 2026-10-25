@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Callable
 
 from .extract import can_extract, extract, pdf_images
+from .intelligence import Intelligence
 from .store import SERVICE, Disk, norm, query_words
 
 log = logging.getLogger("yakumo.modules.disk")
@@ -70,6 +71,7 @@ class Index:
                 if col not in have:
                     self.db.execute(f"ALTER TABLE files ADD COLUMN {col} TEXT")
             self.db.commit()
+        self.intelligence = Intelligence(self.db, self.lock)
         self.wake = threading.Event()
         self.stopping = False
         self.state = {"running": False, "done": 0, "queue": 0, "photo_error": None, "ocr_error": None}
@@ -112,7 +114,8 @@ class Index:
             texts = self.db.execute("SELECT count(*) FROM files WHERE text != ''").fetchone()[0]
             photos = self.db.execute("SELECT count(*) FROM files WHERE photo IS NOT NULL").fetchone()[0]
             scans = self.db.execute("SELECT count(*) FROM files WHERE ocr IS NOT NULL AND ocr != ''").fetchone()[0]
-        return {**self.settings(), **self.state, "texts": texts, "photos_done": photos, "ocr_done": scans}
+        return {**self.settings(), **self.state, "texts": texts, "photos_done": photos, "ocr_done": scans,
+                "intelligence": self.intelligence.status()}
 
     # --- Фоновое обновление ---
 
@@ -175,6 +178,7 @@ class Index:
             with self.lock:
                 self.db.executemany("DELETE FROM files WHERE path = ?", [(p,) for p in gone])
                 self.db.commit()
+        self.intelligence.remove_missing()
         self.state.update(queue=len(todo), done=0)
         for rel, path, mtime, size in todo:
             if self.stopping:
@@ -188,6 +192,7 @@ class Index:
                     ocr=NULL, ocr_norm=NULL, ocr_error=NULL""",
                                 (rel, mtime, size, text, norm(text)))
                 self.db.commit()
+            self.intelligence.update(rel, text)
             self.state["done"] += 1
         self.state.update(running=False, queue=0)
 
@@ -198,6 +203,7 @@ class Index:
             self.db.execute("UPDATE files SET path = ? || substr(path, ?) WHERE path = ? OR path LIKE ? ESCAPE '\\'",
                             (new, len(old) + 1, old, _like_prefix(old)))
             self.db.commit()
+        self.intelligence.rename(old, new)
         self.poke()
 
     def describe_photos(self) -> None:
@@ -223,6 +229,8 @@ class Index:
                 self.db.execute("UPDATE files SET photo = ?, photo_norm = ?, photo_error = ? WHERE path = ?",
                                 (text, norm(text) if text else None, error, rel))
                 self.db.commit()
+            if text:
+                self.intelligence.update(rel, self.text_of(rel)["text"], photo=text)
             self.state["photo_error"] = None
 
     def recognize(self) -> None:
@@ -257,6 +265,9 @@ class Index:
                 self.db.execute("UPDATE files SET ocr = ?, ocr_norm = ?, ocr_error = ? WHERE path = ?",
                                 (text, norm(text) if text else None, error, rel))
                 self.db.commit()
+            if text:
+                data = self.text_of(rel)
+                self.intelligence.update(rel, data["text"], photo=data["photo"] or "", ocr=text)
             self.state["ocr_error"] = None
 
     # --- Поиск ---
