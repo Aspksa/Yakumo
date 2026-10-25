@@ -1802,7 +1802,8 @@
           (info.intelligence?.indexed ?? 0) + " документов. Никакой отправки в облако."),
         h("div", { class: "dk-smart-actions" },
           h("button", { type: "button", class: "btn", onclick: () => explore("timeline") }, "Временная шкала"),
-          h("button", { type: "button", class: "btn", onclick: () => explore("discoveries") }, "Неизвестные связи")),
+          h("button", { type: "button", class: "btn", onclick: () => explore("discoveries") }, "Неизвестные связи"),
+          h("button", { type: "button", class: "btn", onclick: () => explore("entities") }, "Граф сущностей")),
         h("div", { class: "dk-intelligence-results" }));
       
     }
@@ -1811,12 +1812,12 @@
       target.replaceChildren(h("p", { class: "row-hint" }, "Исследование локального индекса…"));
       try {
         const result = await get("intelligence/" + which);
-        const items = result.items || [];
-        target.replaceChildren(h("h4", {}, which === "timeline" ? "Временная память" : "Возможные связи"),
+        const items = which === "entities" ? (result.relations || []) : (result.items || []);
+        target.replaceChildren(h("h4", {}, which === "timeline" ? "Временная память" : which === "entities" ? "Связи транспорта" : "Возможные связи"),
           ...(items.length ? items.slice(0, 30).map((entry) => h("div", { class: "dk-intel-item" },
-            h("b", {}, entry.date || ""),
-            h("p", {}, (entry.path || entry.paths?.join(" · ") || "")),
-            which === "discoveries" ? h("small", {}, "Гипотеза: проверьте документы") : ""
+            h("b", {}, entry.date || entry.subject || ""),
+            h("p", {}, (entry.path || entry.paths?.join(" · ") || entry.documents?.join(" · ") || "")),
+            which !== "timeline" ? h("small", {}, "Предполагаемая связь: проверьте оригиналы") : ""
           )) : [h("p", { class: "row-hint" }, "Пока нет данных. Добавьте документы с датами.")]));
       } catch (err) { target.replaceChildren(h("p", { class: "dk-error" }, err.message)); }
     }

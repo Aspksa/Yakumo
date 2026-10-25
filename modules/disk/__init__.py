@@ -298,6 +298,7 @@ def setup(ctx):
         "/api/disk/s": shared,
         "/api/disk/smart": smart,
         "/api/disk/intelligence/status": lambda _req: index.intelligence.status(),
+        "/api/disk/intelligence/entities": lambda _req: index.entity_graph(),
         "/api/disk/intelligence/timeline": lambda r: {
             "items": index.intelligence.timeline()},
         "/api/disk/intelligence/discoveries": lambda r: {
