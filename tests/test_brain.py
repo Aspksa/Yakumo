@@ -16,6 +16,7 @@ from yakumo.core.cloud import CloudService
 from yakumo.core.config import Config
 from yakumo.core.modules import Context, load_all
 from yakumo.web.server import create_server
+from modules.brain.tasks import Tasks
 
 MODULES = Path(__file__).resolve().parents[1] / "modules"
 KEY = "good-key-1234567"
@@ -945,6 +946,22 @@ class GrowthTest(BrainBase):
         positions = {x["id"]: i for i, x in enumerate(timeline)}
         self.assertLess(positions[recent["id"]], positions[old_event["id"]])
 
+    def test_observed_entity_survives_backup_round_trip(self):
+        memory = self.memory()
+        entity = memory.observe_entity("Н954МУ125", "thing", ["Документы/путевой лист.docx"],
+                                       source="disk", relation="автомобиль")
+        entity["aliases"] = ["Н 954 МУ 125"]
+        exported = memory.export()
+        memory.clear()
+        memory.import_(exported)
+        restored = next(e for e in memory.entities() if e["name"] == "Н954МУ125")
+        self.assertTrue(restored.get("observed"))
+        self.assertTrue(restored.get("keep"))
+        self.assertEqual(restored.get("relation"), "автомобиль")
+        self.assertIn("Н 954 МУ 125", restored.get("aliases", []))
+        self.assertEqual(restored.get("files"), ["Документы/путевой лист.docx"])
+        self.assertIn("disk", restored.get("sources", []))
+
     def test_trace_export_import_preserves_entity_scope(self):
         memory = self.memory()
         alpha = memory.trace("progress", "Перестроить индекс", status="open",
@@ -1045,6 +1062,19 @@ class GrowthTest(BrainBase):
         self.assertFalse(mind.finish(task, "failed", "поздняя ошибка старого запуска",
                                      generation=old_generation))
         self.assertEqual(task["status"], "running")
+
+    def test_background_tasks_replace_alive_but_blocked_workers(self):
+        tasks = Tasks(self.memory(), self.mind, {}, lambda: "ru")
+        blocked1 = SimpleNamespace(ident=101, is_alive=lambda: True)
+        blocked2 = SimpleNamespace(ident=102, is_alive=lambda: True)
+        tasks.threads = [blocked1, blocked2]
+        tasks.busy_workers = {101, 102}
+        started = []
+        tasks._start_worker = lambda name="brain-tasks": started.append(name)
+        item = tasks.add("Следующая задача после двух зависших запросов")
+        self.assertEqual(item["status"], "queued")
+        self.assertEqual(started, ["brain-tasks"])
+        self.assertFalse(tasks._has_idle_worker())
 
     def test_foresee_prepares_in_advance(self):
         self.memory().promise("Сдать отчёт по практике", due=time.strftime("%Y-%m-%d"))
