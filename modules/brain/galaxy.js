@@ -156,7 +156,7 @@
     const list = [
       {id:"memory",name:"Память",color:"#f2d6a1",count:(d.facts||[]).length,href:"#/brain"},
       {id:"mind",name:"Разум",color:"#c79bff",count:(mind.thoughts||[]).length,href:"#/brain"},
-      {id:"growth",name:"Рост",color:"#7cdbb1",count:(d.lessons||[]).length+(d.suggestions||[]).length,href:"#/brain"},
+      {id:"growth",name:"Рост",color:"#7cdbb1",count:((d.branches||{}).branches||[]).length,href:"#/brain"},
       {id:"skills",name:"Навыки",color:"#f8ca85",count:(d.skills||[]).length+(d.user_tools||[]).length,href:"#/brain"},
       {id:"improve",name:"Улучшения",color:"#ff9c90",count:(d.improvements||[]).length,href:"#/brain"},
       {id:"evolution",name:"Эволюция",color:"#8fb0ff",count:evolution.total_generations||0,href:"#/brain"},
@@ -198,13 +198,14 @@
         edges.push({from,to,weight:Math.max(1,Number(weight)||1),kind});
     };
     if(sectorId==="memory"){
-      const entities=[...(d.entities||[])].sort((a,b)=>(b.facts||0)-(a.facts||0)||(b.latest||0)-(a.latest||0)).slice(0,14);
+      const allEntities=[...(d.entities||[])];
+      const entities=[...allEntities].sort((a,b)=>(b.facts||0)-(a.facts||0)||(b.latest||0)-(a.latest||0)).slice(0,14);
       const ids=new Set(entities.map(e=>String(e.id)));
       for(const e of entities) add({id:"entity:"+e.id,rawId:String(e.id),kind:"entity",label:e.name||"Без имени",
         meta:[e.relation||e.type,(e.facts||0)+" факт."].filter(Boolean).join(" · "),weight:1+(e.facts||0),
         detail:(e.files||[]).length ? "Документов: "+e.files.length : "Без связанных документов",files:e.files||[]});
       const docs=new Map();
-      for(const e of entities) for(const p of e.files||[]){
+      for(const e of allEntities) for(const p of e.files||[]){
         const key=String(p); const item=docs.get(key)||{path:key,entities:[]};
         item.entities.push(String(e.id)); docs.set(key,item);
       }
@@ -220,7 +221,8 @@
     } else if(sectorId==="mind"){
       const thoughts=[...((d.mind||{}).thoughts||[])].sort((a,b)=>{
         const rank={running:0,queued:1,failed:2,done:3,cancelled:4};
-        return (rank[a.status]??5)-(rank[b.status]??5)-(Number(a.started||a.created||0)-Number(b.started||b.created||0));
+        const status=(rank[a.status]??5)-(rank[b.status]??5);
+        return status || Number(b.started||b.created||0)-Number(a.started||a.created||0);
       }).slice(0,18);
       for(const t of thoughts) add({id:"thought:"+t.id,kind:"thought",label:shortText(t.title||t.kind||"Мысль",55),
         meta:[projectStatus(t.status),t.kind].filter(Boolean).join(" · "),status:t.status,
@@ -262,8 +264,12 @@
       stats.push(["Поколений",evo.total_generations||0],["Стратегий",(evo.policies||[]).length],
         ["Автоприменение",evo.auto_apply?"вкл":"выкл"]);
     } else if(sectorId==="skills"){
-      for(const x of (d.skills||[]).slice(0,14)) add({id:"skill:"+x.id,kind:"skill",label:shortText(x.name||"Навык",55),
-        meta:[x.when,x.used?"использовался":""].filter(Boolean).join(" · "),detail:shortText((x.steps||[]).join(" → "),180),weight:3});
+      for(const x of (d.skills||[]).slice(0,14)) {
+        const steps=Array.isArray(x.steps)?x.steps:(x.steps?[x.steps]:[]);
+        add({id:"skill:"+x.id,kind:"skill",label:shortText(x.name||"Навык",55),
+          meta:[x.when,x.used?"использовался":""].filter(Boolean).join(" · "),
+          detail:shortText(steps.join(" → "),180),weight:3});
+      }
       for(const x of (d.user_tools||[]).slice(0,8)) add({id:"tool:"+x.id,kind:"tool",label:shortText(x.name||x.title||"Инструмент",55),
         meta:"Инструмент Yakumo",detail:shortText(x.description||x.about||"",180),weight:3});
       stats.push(["Навыков",(d.skills||[]).length],["Инструментов",(d.user_tools||[]).length],["Показано",nodes.length]);
