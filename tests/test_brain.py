@@ -908,6 +908,9 @@ class GrowthTest(BrainBase):
         card = next(e for e in memory.entities() if e["id"] == e1["id"])
         self.assertIn("Toyota Hilux", card.get("aliases", []))
         self.assertEqual(set(card["files"]), {"Гараж/путевой лист.docx", "Гараж/чек.pdf"})
+        cpp = memory.entity("C++", "project")
+        csharp = memory.entity("C#", "project")
+        self.assertNotEqual(cpp["id"], csharp["id"])
 
         trace = memory.trace("decision", "Выбрали локальный индекс", reason="не отправлять документы в облако",
                              result="использовать SQLite", status="done", files=["Документы/решение.docx"])
@@ -937,10 +940,12 @@ class GrowthTest(BrainBase):
 
     def test_trace_export_import_preserves_entity_scope(self):
         memory = self.memory()
-        memory.trace("progress", "Перестроить индекс", status="open",
-                     about=[{"name": "Проект Alpha", "type": "project"}])
-        memory.trace("progress", "Перестроить индекс", status="done",
-                     about=[{"name": "Проект Beta", "type": "project"}])
+        alpha = memory.trace("progress", "Перестроить индекс", status="open",
+                             about=[{"name": "Проект Alpha", "type": "project"}])
+        beta = memory.trace("progress", "Перестроить индекс", status="done",
+                            about=[{"name": "Проект Beta", "type": "project"}])
+        alpha["created"], alpha["updated"] = 100, 150
+        beta["created"], beta["updated"] = 200, 250
         exported = memory.export()
         memory.clear()
         memory.import_(exported)
@@ -951,6 +956,9 @@ class GrowthTest(BrainBase):
         self.assertIn({"Проект Alpha"}, scopes)
         self.assertIn({"Проект Beta"}, scopes)
         self.assertEqual({x["status"] for x in traces}, {"open", "done"})
+        by_name = {next(iter({names[i] for i in x.get("about", [])})): x for x in traces}
+        self.assertEqual((by_name["Проект Alpha"]["created"], by_name["Проект Alpha"]["updated"]), (100, 150))
+        self.assertEqual((by_name["Проект Beta"]["created"], by_name["Проект Beta"]["updated"]), (200, 250))
 
     def test_conflicts_group_by_entity_and_state_reuses_result(self):
         memory = self.memory()
@@ -1050,15 +1058,24 @@ class GrowthTest(BrainBase):
         self.assertEqual(self.tick("Growth").foresee(), [])  # раз в день
 
     def test_disk_entity_sync_accumulates_all_source_documents(self):
-        self.ctx.services["disk"] = SimpleNamespace(entity_graph=lambda _limit: {
-            "entities": [
+        calls = {"n": 0}
+        def graph(_limit):
+            calls["n"] += 1
+            return {"entities": [
                 {"path": "Документы/а.docx", "people": ["Анна Иванова"], "vehicles": ["Н954МУ125"]},
                 {"path": "Документы/б.pdf", "people": ["Анна Иванова"], "vehicles": ["Н954МУ125"]},
-            ]
-        })
+            ]}
+        self.ctx.services["disk"] = SimpleNamespace(entity_graph=graph)
         sync = next(fn for name, _mode, _every, fn in self.mind.jobs if name == "disk_entities")
+        memory = self.memory()
+        memory.settings(enabled=False, docs=False)
+        self.assertEqual(sync()["observed"], 0)
+        self.assertEqual(calls["n"], 0)
+        self.assertEqual(memory.entities(), [])
+        memory.settings(enabled=True, docs=True)
         self.assertEqual(sync()["observed"], 2)
-        entities = self.memory().entities()
+        self.assertEqual(calls["n"], 1)
+        entities = memory.entities()
         person = next(e for e in entities if e["name"] == "Анна Иванова")
         vehicle = next(e for e in entities if e["name"] == "Н954МУ125")
         expected = {"Документы/а.docx", "Документы/б.pdf"}
