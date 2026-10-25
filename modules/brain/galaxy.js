@@ -165,6 +165,124 @@
     return list.map((item,i)=>({...item,pos:[Math.cos(i*Math.PI*2/list.length)*980,85,Math.sin(i*Math.PI*2/list.length)*980]}));
   }
 
+  const PROJECT_TABS = {memory:"map",mind:"mind",growth:"grow",skills:"skills",
+    improve:"improve",evolution:"mind",code:"mind"};
+
+  const PROJECT_COPY = {
+    memory:{title:"Память",lead:"Люди, объекты и документы, которые Yakumo действительно связывает с памятью."},
+    mind:{title:"Разум",lead:"Живые и недавние мысли: очередь, работа, результат и состояние фонового разума."},
+    growth:{title:"Рост",lead:"Ветки развития и измеренные нейросвязи между ними. Толщина связи отражает её силу."},
+    skills:{title:"Навыки",lead:"Сохранённые навыки пользователя и инструменты, которыми Yakumo умеет пользоваться."},
+    improve:{title:"Улучшения",lead:"Конкретные задачи развития Yakumo — новые, выданные, завершённые и отклонённые."},
+    evolution:{title:"Эволюция",lead:"Поколения лаборатории Evolution и стратегии-победители проверяемых экспериментов."},
+    code:{title:"Код проекта",lead:"Реальные модули и файлы текущей Yakumo из её read-only карты собственного кода."}
+  };
+
+  function shortText(value, n=62) {
+    const text=String(value||"").replace(/\s+/g," ").trim();
+    return text.length>n ? text.slice(0,n-1)+"…" : text;
+  }
+  function shortPath(path) {
+    const parts=String(path||"").replace(/\\/g,"/").split("/");
+    return parts.slice(-2).join("/") || String(path||"");
+  }
+  function projectStatus(status) {
+    return ({running:"выполняется",queued:"в очереди",done:"готово",failed:"ошибка",cancelled:"остановлено",
+      new:"новое",given:"выдано",rejected:"отклонено",evaluated:"проверено",open:"открыто"})[status] || status || "";
+  }
+  function projectInterior(d, sectorId) {
+    const nodes=[], edges=[], stats=[];
+    const add=(node)=>{ if(node?.id && !nodes.some(x=>x.id===node.id)) nodes.push(node); return node; };
+    const edge=(from,to,weight=1,kind="link")=>{
+      if(from&&to&&from!==to&&!edges.some(x=>x.from===from&&x.to===to&&x.kind===kind))
+        edges.push({from,to,weight:Math.max(1,Number(weight)||1),kind});
+    };
+    if(sectorId==="memory"){
+      const entities=[...(d.entities||[])].sort((a,b)=>(b.facts||0)-(a.facts||0)||(b.latest||0)-(a.latest||0)).slice(0,14);
+      const ids=new Set(entities.map(e=>String(e.id)));
+      for(const e of entities) add({id:"entity:"+e.id,rawId:String(e.id),kind:"entity",label:e.name||"Без имени",
+        meta:[e.relation||e.type,(e.facts||0)+" факт."].filter(Boolean).join(" · "),weight:1+(e.facts||0),
+        detail:(e.files||[]).length ? "Документов: "+e.files.length : "Без связанных документов",files:e.files||[]});
+      const docs=new Map();
+      for(const e of entities) for(const p of e.files||[]){
+        const key=String(p); const item=docs.get(key)||{path:key,entities:[]};
+        item.entities.push(String(e.id)); docs.set(key,item);
+      }
+      for(const doc of [...docs.values()].sort((a,b)=>b.entities.length-a.entities.length||a.path.localeCompare(b.path)).slice(0,10)){
+        add({id:"doc:"+doc.path,kind:"document",label:shortPath(doc.path),meta:"Документ · "+doc.entities.length+" связ.",
+          detail:doc.path,path:doc.path,weight:1+doc.entities.length});
+        for(const eid of doc.entities) if(ids.has(eid)) edge("entity:"+eid,"doc:"+doc.path,2,"source");
+      }
+      const byId=Object.fromEntries(entities.map(e=>[String(e.id),e]));
+      for(const e of entities) for(const r of e.related||[])
+        if(byId[String(r.id)]) edge("entity:"+e.id,"entity:"+r.id,r.weight||1,"memory");
+      stats.push(["Сущностей",(d.entities||[]).length],["Фактов",(d.facts||[]).length],["Документов",docs.size]);
+    } else if(sectorId==="mind"){
+      const thoughts=[...((d.mind||{}).thoughts||[])].sort((a,b)=>{
+        const rank={running:0,queued:1,failed:2,done:3,cancelled:4};
+        return (rank[a.status]??5)-(rank[b.status]??5)-(Number(a.started||a.created||0)-Number(b.started||b.created||0));
+      }).slice(0,18);
+      for(const t of thoughts) add({id:"thought:"+t.id,kind:"thought",label:shortText(t.title||t.kind||"Мысль",55),
+        meta:[projectStatus(t.status),t.kind].filter(Boolean).join(" · "),status:t.status,
+        detail:shortText(t.result||"",180),weight:t.status==="running"?5:t.status==="queued"?4:2});
+      stats.push(["Выполняется",thoughts.filter(x=>x.status==="running").length],
+        ["В очереди",thoughts.filter(x=>x.status==="queued").length],["Всего",((d.mind||{}).thoughts||[]).length]);
+    } else if(sectorId==="growth"){
+      const branches=(d.branches||{}).branches||[], focus=(d.branches||{}).focus||{};
+      for(const b of branches) add({id:"branch:"+b.id,rawId:b.id,kind:"branch",
+        label:b.name?.ru||b.id,meta:"Ур. "+b.level+" · "+b.progress+"%",detail:"XP "+b.xp+" · объектов "+b.items,
+        weight:3+(b.level||1),focus:b.id===focus.id});
+      for(const e of (d.branches||{}).edges||[]) edge("branch:"+e.from,"branch:"+e.to,e.strength||1,"growth");
+      stats.push(["Веток",branches.length],["Связей",((d.branches||{}).edges||[]).length],
+        ["Фокус",focus.name?.ru||focus.id||"—"]);
+    } else if(sectorId==="improve"){
+      const rank={new:0,given:1,done:2,rejected:3};
+      const items=[...(d.improvements||[])].sort((a,b)=>(rank[a.status]??9)-(rank[b.status]??9)||
+        ({high:0,normal:1,low:2}[a.priority]??1)-({high:0,normal:1,low:2}[b.priority]??1)||
+        (b.last||0)-(a.last||0)).slice(0,18);
+      for(const x of items) add({id:"improvement:"+x.id,kind:"improvement",label:shortText(x.title||x.problem||"Улучшение",58),
+        meta:[projectStatus(x.status),x.priority,x.module].filter(Boolean).join(" · "),status:x.status,
+        detail:shortText(x.problem||x.want||x.detail||"",200),weight:x.priority==="high"?5:x.status==="new"?4:2});
+      stats.push(["Новых",(d.improvements||[]).filter(x=>x.status==="new").length],
+        ["Завершено",(d.improvements||[]).filter(x=>x.status==="done").length],["Всего",(d.improvements||[]).length]);
+    } else if(sectorId==="evolution"){
+      const evo=d.evolution||{}, runs=(evo.runs||[]).slice(0,12), strategies=new Map();
+      for(const r of runs){
+        const gid="generation:"+r.id;
+        add({id:gid,kind:"generation",label:"Поколение "+(r.generation||"—"),
+          meta:[projectStatus(r.status),r.winner].filter(Boolean).join(" · "),
+          detail:"Выборка "+(r.sample_size||0)+" · "+(r.warning||""),weight:4});
+        if(r.winner){
+          const sid="strategy:"+r.winner;
+          if(!strategies.has(sid)){strategies.set(sid,true);add({id:sid,kind:"strategy",label:r.winner,
+            meta:"Стратегия-победитель",detail:"Побеждала в проверяемых поколениях",weight:3});}
+          edge(gid,sid,4,"winner");
+        }
+      }
+      stats.push(["Поколений",evo.total_generations||0],["Стратегий",(evo.policies||[]).length],
+        ["Автоприменение",evo.auto_apply?"вкл":"выкл"]);
+    } else if(sectorId==="skills"){
+      for(const x of (d.skills||[]).slice(0,14)) add({id:"skill:"+x.id,kind:"skill",label:shortText(x.name||"Навык",55),
+        meta:[x.when,x.used?"использовался":""].filter(Boolean).join(" · "),detail:shortText((x.steps||[]).join(" → "),180),weight:3});
+      for(const x of (d.user_tools||[]).slice(0,8)) add({id:"tool:"+x.id,kind:"tool",label:shortText(x.name||x.title||"Инструмент",55),
+        meta:"Инструмент Yakumo",detail:shortText(x.description||x.about||"",180),weight:3});
+      stats.push(["Навыков",(d.skills||[]).length],["Инструментов",(d.user_tools||[]).length],["Показано",nodes.length]);
+    } else if(sectorId==="code"){
+      const map=d.code?.map||{}, modules=Array.isArray(map.modules)?map.modules:[];
+      for(const m of modules.slice(0,16)) add({id:"module:"+m.id,kind:"module",label:m.name||m.id,
+        meta:[m.version,(m.files||[]).length+" файл."].filter(Boolean).join(" · "),detail:shortText(m.about||"",190),
+        weight:2+Math.min(5,(m.files||[]).length)});
+      stats.push(["Модулей",modules.length],["Файлов",Number(map.files||d.code?.files||0)||0],["Фрагментов",Number(map.chunks||d.code?.chunks||0)||0]);
+    }
+    return {nodes,edges,stats,copy:PROJECT_COPY[sectorId]||{title:sectorId,lead:""}};
+  }
+
+  function projectTab(id) { return PROJECT_TABS[id]||"facts"; }
+  function openProjectSector(id) {
+    try{sessionStorage.setItem("yakumo.home.brain.tab",projectTab(id))}catch{}
+    location.hash="#/brain";
+  }
+
   function drawProvenanceLinks(gl,d) {
     const T=gl.THREE, sectors=projectSectors(d), lookup=Object.fromEntries(sectors.map(x=>[x.id,x]));
     const normalize={memory:"memory",mind:"mind",growth:"growth",skill:"skills",
