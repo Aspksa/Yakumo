@@ -41,6 +41,27 @@ class IntelligenceTests(unittest.TestCase):
         self.engine.remove_missing()
         self.assertEqual(self.engine.snapshot(), [])
 
+    def test_existing_index_database_preserved(self):
+        # Legacy files table must remain untouched during metadata initialization.
+        self.add("old/файл.txt", "дата 12.10.2026")
+        before = self.db.execute("SELECT path FROM files").fetchall()
+        again = Intelligence(self.db, self.lock)
+        self.assertEqual(again.status()["indexed"], 1)
+        self.assertEqual(self.db.execute("SELECT path FROM files").fetchall(), before)
+
+    def test_concurrent_writes_and_reads(self):
+        import concurrent.futures
+        self.db.execute("PRAGMA busy_timeout=1000")
+        self.db.execute("DELETE FROM files")
+        self.db.commit()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
+            futures = [pool.submit(self.engine.update, f"folder/{i}.pdf", f"Toyota 15.09.2026 {i}")
+                       for i in range(30)]
+            futures += [pool.submit(self.engine.snapshot, 50) for _ in range(10)]
+            for task in futures:
+                task.result()
+        self.assertEqual(self.engine.status()["indexed"], 30)
+
     def test_metadata_does_not_include_raw_document_text(self):
         self.add("акт.txt", "Секретно 01.10.2026")
         rows = self.engine.snapshot()
