@@ -152,7 +152,7 @@
 
   // Project sectors are summaries of real API records, not invented neurons.
   function projectSectors(d) {
-    const mind = d.mind || {}, branches = d.branches || {}, evolution = d.evolution || {};
+    const mind = d.mind || {}, evolution = d.evolution || {};
     const list = [
       {id:"mind",name:"Разум",color:"#c79bff",count:(mind.thoughts||[]).length,href:"#/brain"},
       {id:"growth",name:"Рост",color:"#7cdbb1",count:(d.lessons||[]).length+(d.suggestions||[]).length,href:"#/brain"},
@@ -176,8 +176,7 @@
       sprite.scale.set(210,210,1);group.add(sprite);
       const mark=el("button","gx-project-sector",item.name+" · "+item.count);
       mark.type="button";mark.title="Перейти к разделу «"+item.name+"»";
-      mark.onclick=()=>{ location.hash=item.href;
-        try{sessionStorage.setItem("yakumo.brain.target",item.id)}catch{} };
+      mark.onclick=()=>{ location.hash=item.href; };
       view.labels.append(mark);
       item.tag=mark;
     }
