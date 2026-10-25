@@ -66,6 +66,21 @@ class FakeCloud(BaseHTTPRequestHandler):
         pass
 
 
+def simple_pdf(content: bytes) -> bytes:
+    """Минимальный PDF без xref: один шрифт и заданный поток содержимого."""
+    objects = [
+        b"<</Type /Catalog /Pages 2 0 R>>",
+        b"<</Type /Pages /Kids [3 0 R] /Count 1>>",
+        b"<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+        b"/Resources <</Font <</F1 4 0 R>>>> /Contents 5 0 R>>",
+        b"<</Type /Font /Subtype /Type1 /BaseFont /Helvetica /FirstChar 32 /LastChar 126 "
+        b"/Widths [" + b" ".join([b"500"] * 95) + b"]>>",
+        b"<</Length " + str(len(content)).encode() + b">> stream\n" + content + b"\nendstream",
+    ]
+    body = b"".join(b"%d 0 obj\n" % (i + 1) + obj + b"\nendobj\n" for i, obj in enumerate(objects))
+    return b"%PDF-1.4\n" + body + b"%%EOF\n"
+
+
 class ExtractTest(unittest.TestCase):
     def setUp(self):
         spec = importlib.util.spec_from_file_location("disk_extract", MODULES / "disk" / "extract.py")
@@ -79,6 +94,26 @@ class ExtractTest(unittest.TestCase):
                                ("договор.rtf", "35 000 рублей"),
                                ("цены.xlsx", "Молоко;89")):
             self.assertIn(expected, self.extract.extract(FILES / name), name)
+
+    def test_chrome_pdf_keeps_words_whole(self):
+        text = self.extract.extract(FILES / "квитанция-chrome.pdf")
+        # Браузер ставит каждый кусок текста отдельно: пробел на каждый сдвиг рвал бы слова.
+        self.assertIn("Квитанция об оплате", text)
+        self.assertIn("Электроэнергия за май 2024", text)
+        self.assertNotIn("Э лек", text)
+
+    def test_line_spacing_of_pdf_is_kept(self):
+        text = self.extract.extract(FILES / "договор-libreoffice.pdf")
+        self.assertIn("Договор аренды квартиры\nАрендатор: Иван Петров", text)
+        self.assertNotIn("\n\n", text)  # строки идут подряд, без пустых
+
+    def test_spaces_come_from_glyphs_and_kerning(self):
+        content = (b"BT /F1 12 Tf 1 0 0 1 50 700 Tm [(Hello) -400 (World) (!)] TJ ET\n"
+                   b"BT /F1 12 Tf 1 0 0 1 50 680 Tm (Next) Tj ET")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp, "проба.pdf")
+            path.write_bytes(simple_pdf(content))
+            self.assertEqual(self.extract.extract(path), "Hello World!\nNext")
 
     def test_old_notepad_text_in_cp1251(self):
         with tempfile.TemporaryDirectory() as tmp:

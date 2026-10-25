@@ -183,6 +183,85 @@ def png(pixels: bytes, width: int, height: int, channels: int) -> bytes:
             + chunk(b"IDAT", zlib.compress(raw, 6)) + chunk(b"IEND", b""))
 
 
+class FontInfo:
+    """Шрифт PDF: как читать коды текста и сколько места занимает каждый глиф."""
+
+    def __init__(self, cmap: dict[bytes, str], code_width: int, widths: dict[int, float], fallback: float):
+        self.cmap = cmap
+        self.code_width = max(1, code_width)
+        self.widths = widths
+        self.fallback = fallback or 500.0
+
+    def width(self, code: int) -> float:
+        """Ширина глифа в тысячных долях em; для пропущенных в /W — средняя по шрифту."""
+        value = self.widths.get(code)
+        return self.fallback if value is None else value
+
+    def decode(self, raw: bytes) -> tuple[str, float]:
+        """Текст куска и его ширина в тысячных долях em."""
+        if not self.cmap:
+            text, total = [], 0.0
+            for byte in raw:
+                text.append(bytes([byte]).decode("cp1252", errors="replace"))
+                total += self.width(byte)
+            return "".join(text), total
+        step = self.code_width
+        text, total = [], 0.0
+        for i in range(0, len(raw) - step + 1, step):
+            code = raw[i:i + step]
+            text.append(self.cmap.get(code, ""))
+            total += self.width(int.from_bytes(code, "big"))
+        return "".join(text), total
+
+
+def pdf_array(body: bytes, key: bytes) -> bytes | None:
+    """Содержимое массива [...] после /ключ, с учётом вложенных массивов."""
+    start = re.search(rb"/" + key + rb"\s*\[", body)
+    if not start:
+        return None
+    i, depth = start.end(), 1
+    while i < len(body) and depth:
+        char = body[i:i + 1]
+        depth += 0 if char not in b"[]" else (1 if char == b"[" else -1)
+        i += 1
+    return body[start.end():i - 1]
+
+
+def numbers(blob: bytes) -> list[float]:
+    return [float(value) for value in re.findall(rb"-?\d*\.?\d+", blob)]
+
+
+def _number(body: bytes, key: bytes) -> float | None:
+    m = re.search(rb"/" + key + rb"\s+(-?\d*\.?\d+)", body)
+    return float(m[1]) if m else None
+
+
+def cid_widths(array: bytes) -> dict[int, float]:
+    """/W CID-шрифта: `c [w...]` или `first last w` — в словарь «код → ширина»."""
+    tokens = re.findall(rb"\[|\]|-?\d*\.?\d+", array)
+    widths: dict[int, float] = {}
+    i = 0
+    while i < len(tokens):
+        if tokens[i] in (b"[", b"]"):
+            i += 1
+            continue
+        first = int(float(tokens[i]))
+        i += 1
+        if i < len(tokens) and tokens[i] == b"[":
+            i += 1
+            code = first
+            while i < len(tokens) and tokens[i] != b"]":
+                widths[code] = float(tokens[i])
+                code, i = code + 1, i + 1
+            i += 1
+        elif i + 1 < len(tokens):
+            last, value = int(float(tokens[i])), float(tokens[i + 1])
+            i += 2
+            for code in range(first, min(last, first + 65535) + 1):
+                widths[code] = value
+    return widths
+
+
 class SimplePdf:
     """Упрощённое чтение текста PDF: объекты, сжатые потоки, шрифты с таблицей ToUnicode."""
 
@@ -195,6 +274,7 @@ class SimplePdf:
             if b"/ObjStm" in body:
                 self._unpack_objstm(body)
         self.cmaps: dict[int, tuple[dict[bytes, str], int]] = {}
+        self.fonts: dict[int, FontInfo] = {}
 
     def _unpack_objstm(self, body: bytes) -> None:
         raw = self.stream(body)
@@ -271,26 +351,122 @@ class SimplePdf:
         self.cmaps[font_num] = result
         return result
 
+    def _font(self, font_num: int) -> FontInfo:
+        """Шрифт с ширинами глифов: без них не понять, где кончается слово."""
+        if font_num in self.fonts:
+            return self.fonts[font_num]
+        body = self.objects.get(font_num, b"")
+        cmap, code_width = self._cmap(font_num)
+        widths: dict[int, float] = {}
+        fallback = 500.0
+        if b"/Type0" in body:  # CID-шрифт: ширины в потомке, недостающие — по /DW
+            descendant = re.search(rb"/DescendantFonts\s*\[\s*(\d+)\s+\d+\s+R", body)
+            sub = self.objects.get(int(descendant[1]), b"") if descendant else b""
+            fallback = _number(sub, b"DW") or 1000.0
+            array = pdf_array(sub, b"W")
+            if array:
+                widths = cid_widths(array)
+        else:
+            array = pdf_array(body, b"Widths")
+            if array:
+                first = _number(body, b"FirstChar") or 0
+                for i, value in enumerate(numbers(array)):
+                    widths[int(first) + i] = value
+            matrix = pdf_array(body, b"FontMatrix")  # Type3: ширины в долях глифа
+            if matrix:
+                scale = (numbers(matrix) or [0.001])[0]
+                widths = {code: value * scale * 1000 for code, value in widths.items()}
+        known = [value for value in widths.values() if value]
+        info = FontInfo(cmap, code_width, widths, sum(known) / len(known) if known else fallback)
+        self.fonts[font_num] = info
+        return info
+
     def _show(self, content: bytes, fonts: dict[bytes, int]) -> str:
+        """Текст одного потока: строки и слова по геометрии, а не по каждому оператору.
+
+        PDF из браузеров и Word режет строку на куски и ставит каждый `Td`/`BT`:
+        если считать каждый сдвиг пробелом, слово рассыпается на буквы. Поэтому
+        куски сначала собираются в строку, и зазор становится пробелом только там,
+        где в строке нет настоящих пробельных глифов (иначе это кернинг).
+        """
         out: list[str] = []
-        cmap, width = {}, 1
-        for tok in re.finditer(rb"/([^\s/<>\[\]()]+)\s+[\d.]+\s+Tf|(\((?:\\.|[^\\)])*\)|<[0-9A-Fa-f\s]*>)\s*(Tj|'|\")"
-                               rb"|\[((?:\\.|[^\]\\])*)\]\s*TJ|(T\*|Td|TD|ET)\b", content, re.S):
+        line: list[tuple[float, str]] = []   # (зазор перед куском в долях em, текст)
+        font = FontInfo({}, 1, {}, 500)
+        size, leading = 12.0, 0.0
+        line_x = line_y = cursor = 0.0
+        last_y: float | None = None
+        last_size = 0.0    # размер шрифта прошлого куска: по нему меряем междустрочный шаг
+        forced = False   # T*, ' и " начинают новую строку
+        pending = 0.0    # сдвиг от последнего оператора позиционирования, в долях em
+        gap = 0.0        # сдвиг внутри TJ, в тысячных долях em
+        fresh = True     # следующий кусок начнётся от line_x, а не от конца прошлого
+
+        def flush() -> None:
+            """Собрать строку: зазор — пробел, если в строке нет своих пробелов."""
+            if line:
+                limit = 0.9 if any(" " in text for _, text in line) else 0.18
+                out.append("".join((" " if value > limit else "") + text for value, text in line))
+                line.clear()
+
+        def put(text: str, advance: float) -> None:
+            """Дописать кусок в текущую строку, при необходимости начав новую."""
+            nonlocal cursor, last_y, last_size, forced, pending, gap, fresh
+            if text:
+                step = last_size or size
+                if last_y is not None:
+                    dy = line_y - last_y
+                    if forced or abs(dy) >= max(step * 0.5, 0.6):
+                        flush()
+                        out.append("\n\n" if abs(dy) >= step * 1.8 else "\n")
+                value = 0.0 if not line or last_y is None else gap / 1000 + pending
+                line.append((value, text))
+                cursor = (line_x if fresh else cursor) + advance / 1000 * size
+                last_y, last_size = line_y, size
+            forced, pending, gap, fresh = False, 0.0, 0.0, False
+
+        pattern = (rb"/([^\s/<>\[\]()]+)\s+(-?[\d.]+)\s+Tf"                                    # 1, 2
+                   rb"|(-?[\d.]+)\s+(-?[\d.]+)\s+(Td|TD)"                                        # 3, 4, 5
+                   rb"|(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+Tm"  # 6..11
+                   rb"|(BT|T\*)"                                                                   # 12
+                   rb"|(\((?:\\.|[^\\)])*\)|<[0-9A-Fa-f\s]*>)\s*(Tj|'|\")"                   # 13, 14
+                   rb"|\[((?:\\.|[^\]\\])*)\]\s*TJ")                                          # 15
+        for tok in re.finditer(pattern, content, re.S):
             if tok[1]:
                 num = fonts.get(tok[1])
-                cmap, width = self._cmap(num) if num is not None else ({}, 1)
-            elif tok[2]:
-                if tok[3] in (b"'", b'"'):
-                    out.append("\n")
-                out.append(_decode(_pdf_string(tok[2]), cmap, width))
-            elif tok[4] is not None:
-                for part in re.finditer(rb"(\((?:\\.|[^\\)])*\)|<[0-9A-Fa-f\s]*>)|(-?[\d.]+)", tok[4]):
+                font = self._font(num) if num is not None else FontInfo({}, 1, {}, 500)
+                size = abs(float(tok[2])) or size
+            elif tok[5]:
+                line_x += float(tok[3])
+                line_y += float(tok[4])
+                if tok[5] == b"TD":
+                    leading = -float(tok[4])
+                pending = (line_x - cursor) / size if size else 0.0
+                fresh = True
+            elif tok[11] is not None:
+                line_x, line_y = float(tok[10]), float(tok[11])
+                pending = (line_x - cursor) / size if size else 0.0
+                fresh = True
+            elif tok[12] == b"BT":      # новый блок текста: своя система координат
+                line_x = line_y = 0.0
+            elif tok[12]:               # T*
+                line_y -= leading
+                pending = (line_x - cursor) / size if size else 0.0
+                forced, fresh = True, True
+            elif tok[13]:
+                if tok[14] in (b"'", b'"'):
+                    line_y -= leading
+                    pending = (line_x - cursor) / size if size else 0.0
+                    forced, fresh = True, True
+                text, advance = font.decode(_pdf_string(tok[13]))
+                put(text, advance)
+            elif tok[15] is not None:
+                for part in re.finditer(rb"(\((?:\\.|[^\\)])*\)|<[0-9A-Fa-f\s]*>)|(-?[\d.]+)", tok[15]):
                     if part[1]:
-                        out.append(_decode(_pdf_string(part[1]), cmap, width))
-                    elif float(part[2]) < -180:  # большой отступ между словами
-                        out.append(" ")
-            else:
-                out.append("\n" if tok[5] in (b"T*", b"ET") else " ")
+                        text, advance = font.decode(_pdf_string(part[1]))
+                        put(text, advance)
+                    else:
+                        gap += -float(part[2])
+        flush()
         return re.sub(r" *\n *", "\n", "".join(out))
 
 
@@ -353,12 +529,3 @@ def _pdf_string(token: bytes) -> bytes:
             out += c
             i += 1
     return bytes(out)
-
-
-def _decode(raw: bytes, cmap: dict[bytes, str], width: int) -> str:
-    if not cmap:
-        return raw.decode("cp1252", errors="replace")
-    out = []
-    for i in range(0, len(raw), width):
-        out.append(cmap.get(raw[i:i + width], ""))
-    return "".join(out)
