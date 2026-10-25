@@ -242,8 +242,21 @@
     const observatory = el("div", "gx-observatory");
     const history = el("div", "gx-history");
     history.hidden = true;
-    host.append(stage, warp, labels, note, card, ctl, observatory, history);
-    view = { host, stage, labels, warp, note, card, ctl, observatory, history, alive: false, gl: null, contemplative: false };
+    const minimap = document.createElement("canvas");
+    minimap.className = "gx-minimap"; minimap.width = 160; minimap.height = 110;
+    minimap.title = "Мини-карта: выберите область";
+    minimap.setAttribute("aria-label", minimap.title);
+    minimap.addEventListener("click", e => {
+      if (!view?.gl?.world?.stars.length) return;
+      const bounds = minimap.getBoundingClientRect();
+      const mx = ((e.clientX - bounds.left) / bounds.width - .5) * 1550;
+      const mz = ((e.clientY - bounds.top) / bounds.height - .5) * 1065;
+      const star = [...view.gl.world.stars].sort((a,b) =>
+        (a.pos[0]-mx)**2+(a.pos[2]-mz)**2-( (b.pos[0]-mx)**2+(b.pos[2]-mz)**2 ))[0];
+      if (star) jump(star);
+    });
+    host.append(stage, warp, labels, note, card, ctl, observatory, history, minimap);
+    view = { host, stage, labels, warp, note, card, ctl, observatory, history, minimap, alive: false, gl: null, contemplative: false };
     buildControls();
     for (const box of [card, ctl]) floating(box);
     return view;
@@ -405,6 +418,18 @@
     gl.mats.forEach((m) => m.dispose());
     gl.mats = [];
     const w = gl.world = buildWorld(data);
+    // One static minimap redraw per graph update, no extra WebGL scene.
+    const mini = view.minimap.getContext("2d");
+    if (mini) {
+      mini.clearRect(0,0,160,110);
+      mini.fillStyle = "#09101e"; mini.fillRect(0,0,160,110);
+      for (const star of w.stars) {
+        const x = 80 + star.pos[0] * .102, y = 55 + star.pos[2] * .102;
+        mini.beginPath(); mini.arc(x,y,Math.min(3,1+star.facts.length*.18),0,Math.PI*2);
+        mini.fillStyle = AREA_HUE[star.area] || "#e3bd82"; mini.fill();
+      }
+    }
+
     const mat = (o) => { const m = pointsMaterial(THREE, o); gl.mats.push(m); return m; };
     const rand = rng(7);
     // Пыль рукавов: цвет своей области жизни, к ядру — тёплое золото.
