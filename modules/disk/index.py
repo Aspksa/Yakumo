@@ -22,6 +22,7 @@ from typing import Callable
 
 from .extract import can_extract, extract, pdf_images
 from .intelligence import Intelligence
+from .ranking import HybridRanker
 from .store import SERVICE, Disk, norm, query_words
 
 log = logging.getLogger("yakumo.modules.disk")
@@ -300,6 +301,16 @@ class Index:
                           "snippet": snippet(source, source_n, words), "score": score})
         found.sort(key=lambda f: -f["score"])
         return found[:limit]
+
+    def bm25(self, query: str, limit: int = 30) -> list[dict]:
+        """Offline lexical ranking; does not require an embedding API key."""
+        with self.lock:
+            rows = self.db.execute("""SELECT path, ifnull(text,'') || ' ' ||
+                ifnull(photo,'') || ' ' || ifnull(ocr,'') FROM files""").fetchall()
+        ranker = HybridRanker()
+        ranker.replace({path: text for path, text in rows})
+        return [{"path": hit.path, "score": hit.score, "match": "text",
+                 "snippet": ""} for hit in ranker.bm25(query, limit)]
 
     def similar(self, rel: str, limit: int = 8) -> list[dict]:
         """Похожие документы: общие редкие слова текста и имени (без нейросети)."""
