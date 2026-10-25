@@ -1793,6 +1793,17 @@
         info.running && info.queue ? h("p", { class: "row-hint" }, L.smartBusy(info.done, info.queue)) : "",
         row("photos", L.photos, L.photosHint),
         row("ocr", L.ocr, L.ocrHint),
+        row("semantic", "Семантический поиск Cloud.ru",
+          "После включения запросы поиска могут отправляться в Cloud.ru. Для файлов требуется отдельная ручная индексация."),
+        h("p", { class: "row-hint" }, "Векторный индекс: " + (info.semantic_status?.vectors ?? 0) + " файлов"),
+        h("button", { type: "button", class: "btn", disabled: !info.semantic || !info.cloud,
+          onclick: async () => {
+            try {
+              const result = await post("semantic/refresh", {});
+              toast(result.error || ("Обработано: " + result.processed));
+              show();
+            } catch (err) { toast(err.message, true); }
+          } }, "Проиндексировать 20 файлов"),
         note,
         info.photo_error ? h("p", { class: "dk-error" }, info.photo_error) : "",
         info.ocr_error ? h("p", { class: "dk-error" }, info.ocr_error) : "",
